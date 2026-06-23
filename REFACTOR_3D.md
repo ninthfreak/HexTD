@@ -48,18 +48,24 @@ plane coordinates (`Vector2`).
 
 ## Visual / mesh approach
 
-- **Board** = generated meshes (SurfaceTool / ArrayMesh): a single continuous
-  flat sheet of mask caps (NOT per-cell prisms — those exposed their side walls
-  as a honeycomb grid; the hex grid is functional, never drawn), the path trace
-  raised proud on top via the clipped-polygon logic with boundary-only walls
-  (one continuous raised surface, no internal lines), walls as low prisms,
-  spawn/goal as caps. Normals: `set_smooth_group(-1)` + `generate_normals` for
-  flat per-face shading; cull disabled (flat board, removes winding fragility).
+- **Board** = generated meshes (SurfaceTool / ArrayMesh): the build area is a
+  raised PLATEAU of hex caps at `COPPER_TOP` (caps only — NOT per-cell prisms,
+  which exposed their sides as a honeycomb; the hex grid is functional, never
+  drawn), the path is a SUNKEN channel carved below it (clipped floor polygon at
+  `PATH_TOP`, boundary-only trench walls rising to the plateau rim — one
+  continuous channel, no internal lines), a perimeter skirt on off-map edges so
+  the slab looks solid, blocking walls as prisms above the plateau, spawn/goal as
+  caps on the sunken floor. Normals: `set_smooth_group(-1)` + `generate_normals`
+  for flat per-face shading; cull disabled (removes winding fragility).
+  `COPPER_TOP` stays the shared placement plane (towers/picking/overlays anchor
+  there); enemies travel on the sunken floor (`PATH_TOP`).
 - **Theme = dark neon / digital grid** (chosen after the PCB palette read as
-  flat mint+brown and fought the glow). Substrate = near-black, glossy,
-  semi-metallic so the dark floor mirrors the neon via SSR (wet-asphalt look).
-  Path trace + spawn/goal = **emissive neon** (cyan / green / red) bloomed by
-  the HDR glow. Walls = dark with a faint red rim glow. Towers get a modest
+  flat mint+brown and fought the glow). The build plateau = **purple-pink with a
+  very dim self-glow** (emission < 1 so it reads as faintly lit but doesn't
+  bloom), lightly glossy. The sunken path floor = near-mirror polished black so
+  enemies and the neon walls reflect in it via SSR (wet-asphalt look); the trench
+  walls + spawn/goal = **emissive neon** (cyan / green / red) bloomed by the HDR
+  glow. Blocking walls = dark with a faint red rim glow. Towers get a modest
   emissive accent so they read on the dark board. Environment: dark night sky,
   dim cool key light, SSAO for contact depth, SSR for the reflections, strong
   HDR glow. The earlier copper/green PCB values are preserved in git history if
