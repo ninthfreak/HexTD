@@ -255,13 +255,16 @@ func _vkey(v: Vector2) -> Vector2i:
 	return Vector2i(roundi(v.x * 20.0), roundi(v.y * 20.0))
 
 # The neon border, built as ONE mitered ribbon (into `rim_st`) on the plateau,
-# lifted clearly proud of the cap. Every boundary edge contributes its outward
-# normal to its two endpoints; each vertex's offset direction is the normalised
-# SUM of the normals meeting there. Adjacent edges therefore share the exact same
-# offset point at their shared vertex, so the ribbon is continuous with no corner
-# gaps and no overlaps (so no z-fighting). Flat, so it reads from straight above.
+# lifted clearly proud of the cap. Each boundary edge adds its outward normal to
+# its two endpoints. Per vertex we then offset by RIM_WIDTH / cos(half-angle)
+# along the averaged normal — a proper miter, so the ribbon keeps CONSTANT
+# perpendicular width through corners (not pinched), clamped by a miter limit to
+# avoid spikes at sharp turns. The offset point is computed per-vertex and shared
+# by both edges meeting there, so the ribbon stays continuous (no gaps/overlaps).
 func _build_path_border(rim_st: SurfaceTool) -> void:
-	var vsum := {}
+	var vsum := {}   # vkey -> summed outward normals
+	var vnrm := {}   # vkey -> one representative incident normal (for the half-angle)
+	var vpos := {}   # vkey -> plane position
 	var segs: Array = []
 	for cell in map.cells:
 		if not _is_path_cell(cell):
@@ -281,22 +284,27 @@ func _build_path_border(rim_st: SurfaceTool) -> void:
 			var nrm := Vector2(-d.y, d.x)
 			if nrm.dot(((a + b) * 0.5) - c) < 0.0:
 				nrm = -nrm
-			segs.append([a, b, nrm])
-			var ka := _vkey(a)
-			var kb := _vkey(b)
-			vsum[ka] = (vsum.get(ka, Vector2.ZERO)) + nrm
-			vsum[kb] = (vsum.get(kb, Vector2.ZERO)) + nrm
+			segs.append([a, b])
+			for v in [a, b]:
+				var key := _vkey(v)
+				vpos[key] = v
+				vnrm[key] = nrm
+				vsum[key] = (vsum.get(key, Vector2.ZERO)) + nrm
+	# resolve each vertex's mitered offset point once (shared by its edges)
+	var voff := {}
+	for key in vsum:
+		var rep: Vector2 = vnrm[key]
+		var mdir: Vector2 = vsum[key]
+		mdir = mdir.normalized() if mdir.length() > 0.0001 else rep
+		var cosang: float = maxf(mdir.dot(rep), 0.5)   # miter limit: cap extension at 2x
+		var p: Vector2 = vpos[key]
+		voff[key] = p + mdir * (RIM_WIDTH / cosang)
 	var ry := COPPER_TOP + 0.25
 	for seg in segs:
 		var a: Vector2 = seg[0]
 		var b: Vector2 = seg[1]
-		var fallback: Vector2 = seg[2]
-		var ma: Vector2 = vsum[_vkey(a)]
-		var mb: Vector2 = vsum[_vkey(b)]
-		ma = ma.normalized() if ma.length() > 0.0001 else fallback
-		mb = mb.normalized() if mb.length() > 0.0001 else fallback
-		var ao: Vector2 = a + ma * RIM_WIDTH
-		var bo: Vector2 = b + mb * RIM_WIDTH
+		var ao: Vector2 = voff[_vkey(a)]
+		var bo: Vector2 = voff[_vkey(b)]
 		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(b.x, ry, b.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
 		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
 
