@@ -102,11 +102,19 @@ plane coordinates (`Vector2`).
 
 ## Open items to verify (needs a running Godot / a visual check)
 
-- Mesh **normals / winding** on the prism caps vs. sides (could light from the
-  wrong side until seen). All entity prisms use the same fan-from-center
-  winding as `game_board_3d._add_prism`, so a winding fix in one place applies
-  everywhere.
+- Mesh **normals / winding** — RESOLVED. Two fixes landed: (1) caps/walls were
+  wound to face down/inward under the handedness flip, so they back-face culled
+  when viewed from above; reversed the winding everywhere. (2) `generate_normals`
+  was averaging cap and side-wall normals across shared edges (default smooth
+  group 0), rounding every hex into a beveled "button" with a dark groove — the
+  grid then read as discrete tiles instead of a continuous surface. Now every
+  generated surface uses flat shading (`set_smooth_group(-1)`), so a continuous
+  region (mask or copper) renders as one flat, uniform, line-free surface. The
+  hex grid stays purely functional, never visual — as intended.
 - Whether the **clipped-copper corners** read the same as the 2D board's look.
+  Copper is now a near-flush flat inlay (`COPPER_TOP = 0.1`, caps only) so the
+  region is continuous, distinguished from the mask by its metallic material
+  rather than relief.
 - Whether the simplified 3D overlay (flat coloured hex tiles for range / footprint,
   no internal hex outlines) reads as well as the 2D outline-and-fill version.
 - Camera framing heuristic in `Main3D._frame_camera` — it's a rough fit of board

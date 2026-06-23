@@ -386,6 +386,7 @@ func _build_body_mesh() -> ArrayMesh:
 			pts = _diamond_points()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_smooth_group(-1)   # flat facets, so the body's edges stay crisp
 	_emit_prism_fan(st, pts, BODY_HEIGHT, 0.0)
 	st.generate_normals()
 	return st.commit()

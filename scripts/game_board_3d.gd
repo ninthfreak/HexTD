@@ -23,7 +23,7 @@ const WALL_COLOR := Color(0.16, 0.17, 0.22)
 # clip-tile boundaries into dovetailed 3D tabs (the "puzzle piece" look).
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
-const COPPER_TOP := 0.25        # copper inlay sits a hair above the mask surface
+const COPPER_TOP := 0.1         # copper inlay sits a hair above the mask (flush look, no z-fight)
 const WALL_TOP := 10.0
 
 ## Copper clip tiles — identical rule to the 2D board (see that file for the full
@@ -117,13 +117,19 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# substrate: every cell as a mask-topped prism (the green board)
+	# substrate: every cell as a mask-topped prism (the green board).
+	# Flat shading (smooth group -1) on every surface: generate_normals()
+	# otherwise AVERAGES the flat up-facing cap normals with the outward side
+	# walls at every shared edge, bending the surface into rounded "buttons"
+	# with a dark groove around each hex. Flat shading keeps each cap face's
+	# normal straight up, so a continuous region renders as one flat surface
+	# with no per-hex dividing lines.
 	var mask_st := SurfaceTool.new()
-	mask_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	mask_st.begin(Mesh.PRIMITIVE_TRIANGLES); mask_st.set_smooth_group(-1)
+	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES); spawn_st.set_smooth_group(-1)
+	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES); goal_st.set_smooth_group(-1)
+	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES); wall_st.set_smooth_group(-1)
+	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES); copper_st.set_smooth_group(-1)
 	var have_spawn := false
 	var have_goal := false
 	var have_wall := false
