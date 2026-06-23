@@ -94,18 +94,16 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var psm := ProceduralSkyMaterial.new()
-	psm.sky_top_color = Color(0.30, 0.46, 0.78)
-	psm.sky_horizon_color = Color(0.70, 0.78, 0.88)
+	psm.sky_top_color = Color(0.36, 0.50, 0.78)
+	psm.sky_horizon_color = Color(0.65, 0.72, 0.82)
 	psm.ground_bottom_color = Color(0.07, 0.09, 0.11)
 	psm.ground_horizon_color = Color(0.18, 0.20, 0.24)
-	# A small, bright sun disk: the metallic copper reflects it as a crisp glint,
-	# which is most of what reads as "metal". sun_angle_max is the disk size.
 	psm.sun_angle_max = 6.0
 	psm.sun_curve = 0.08
 	sky.sky_material = psm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.5
+	env.ambient_light_energy = 0.38
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	# Screen-space ambient occlusion: darkens the copper-trace edges, wall bases
 	# and contact crevices, so the board reads with depth instead of flat regions.
@@ -126,17 +124,17 @@ func _build_environment() -> void:
 	env.glow_bloom = 0.05
 	env.glow_hdr_threshold = 1.0
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.15
+	env.tonemap_exposure = 1.0
 	world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
 	directional_light = DirectionalLight3D.new()
 	directional_light.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(35.0), 0.0)
-	# Brighter than the original (1.1): the board is now a correctly FLAT surface,
-	# which catches light at one uniform angle rather than the many angles of the
-	# (buggy) faceted version, so it needs more sun to read as bright.
-	directional_light.light_energy = 1.7
+	# Close to the original (1.1), a touch up to compensate for the flat surface
+	# catching light at one angle. Higher than this over-brightens the green into
+	# a washed-out mint, so keep it restrained.
+	directional_light.light_energy = 1.25
 	directional_light.shadow_enabled = true
 	add_child(directional_light)
 
