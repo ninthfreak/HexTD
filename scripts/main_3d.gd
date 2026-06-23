@@ -115,9 +115,9 @@ func _build_environment() -> void:
 	# SSR: the dark glossy substrate mirrors the neon traces, enemies and towers
 	# — the wet-floor-under-neon look. This is where the reflections finally read.
 	env.ssr_enabled = true
-	env.ssr_max_steps = 64
+	env.ssr_max_steps = 96
 	env.ssr_fade_in = 0.1
-	env.ssr_fade_out = 4.0
+	env.ssr_fade_out = 6.0
 	# HDR glow blooms every emissive surface (traces, markers, enemies, lasers,
 	# projectiles). Stronger here since the dark scene is built around the glow.
 	env.glow_enabled = true

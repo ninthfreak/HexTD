@@ -372,7 +372,8 @@ func _radius_estimate() -> float:
 # +X -> world +X, plane +Y -> world +Z. A 2D rotation by `heading` corresponds
 # to a world rotation around Y by `-heading` (handedness flips because Y is up).
 func _sync_transform() -> void:
-	position = Vector3(pp.x, GameBoard3D.COPPER_TOP, pp.y)
+	# Enemies travel along the sunken path floor (PATH_TOP), not the build plateau.
+	position = Vector3(pp.x, GameBoard3D.PATH_TOP, pp.y)
 	_body_root.rotation = Vector3(0.0, -heading, 0.0)
 
 # --------------------------------------------------------------- per-frame

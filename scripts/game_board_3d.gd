@@ -14,20 +14,23 @@ const HEX_SIZE := 11.34
 ## Dark neon / digital-grid theme. The board is a near-black glossy reflective
 ## substrate; the path "trace", spawn and goal are emissive neon so the HDR glow
 ## blooms them and the dark floor mirrors them (SSR).
-const TRACE_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan data-lane (emissive)
-const MASK_COLOR := Color(0.025, 0.03, 0.05)   # near-black substrate
+const TRACE_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan path edge (emissive)
+const MASK_COLOR := Color(0.42, 0.16, 0.40)    # purple-pink build plateau (dim glow)
 const SPAWN_COLOR := Color(0.20, 1.00, 0.45)   # neon green
 const GOAL_COLOR := Color(1.00, 0.35, 0.30)    # neon red
 const WALL_COLOR := Color(0.09, 0.10, 0.15)    # dark obstacle (faint red rim)
 
-# Heights (world units). Copper is a near-flush inlay (a real PCB's copper is
-# ~flat); walls stand tall. Copper is raised only a hair so it never z-fights
-# the mask beneath it — NOT extruded into per-cell prisms, which would turn the
-# clip-tile boundaries into dovetailed 3D tabs (the "puzzle piece" look).
+# Heights (world units). The build area is a raised plateau at COPPER_TOP (the
+# shared placement plane — towers, ray-picking and overlays all anchor here, so
+# that constant is unchanged); the PATH is carved BELOW it, a sunken glossy
+# channel whose side walls (rising from PATH_TOP up to the plateau rim) carry the
+# neon edge glow. Enemies travel along the sunken floor. Blocking walls stand
+# above the plateau.
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
-const COPPER_TOP := 1.2         # copper traces stand proud of the mask (depth + contact shadow)
-const WALL_TOP := 4.0           # blocking walls stand modestly proud (LOS blockers), not towering
+const COPPER_TOP := 1.2         # build plateau top = placement plane (towers/picking/overlays)
+const PATH_TOP := -2.0          # sunken path floor (glossy black); enemies travel here
+const WALL_TOP := 4.2           # blocking walls stand above the plateau
 
 ## Copper clip tiles — identical rule to the 2D board (see that file for the full
 ## explanation). 0=NE,1=SE,2=S,3=SW,4=NW,5=N.
@@ -81,23 +84,30 @@ func _build_materials() -> void:
 	# as polished black, mirroring the scene), with the glow confined to the
 	# raised EDGE walls — a neon outline that traces the path. Two materials, two
 	# surfaces (see _add_copper_cell): top = glossy black, edge = emissive neon.
+	# Sunken path floor: a near-mirror polished black so the enemies (and the
+	# neon walls) reflect in it via SSR — wet-asphalt-under-neon.
 	_mat_copper = StandardMaterial3D.new()
 	_mat_copper.albedo_color = Color(0.01, 0.012, 0.015)
-	_mat_copper.metallic = 0.5
-	_mat_copper.roughness = 0.06            # near-mirror polished black
+	_mat_copper.metallic = 0.95
+	_mat_copper.roughness = 0.04            # sharp mirror reflections
 	_mat_copper.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Trench side walls: the neon edge that outlines the sunken path.
 	_mat_copper_edge = StandardMaterial3D.new()
 	_mat_copper_edge.albedo_color = TRACE_COLOR.darkened(0.7)
 	_mat_copper_edge.emission_enabled = true
 	_mat_copper_edge.emission = TRACE_COLOR
-	_mat_copper_edge.emission_energy_multiplier = 3.0   # bright thin strip -> strong bloom
+	_mat_copper_edge.emission_energy_multiplier = 2.2
 	_mat_copper_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Substrate: a dark, glossy, semi-metallic floor so it reflects the neon
-	# traces / enemies (SSR) like wet asphalt under city lights.
+	# Build plateau: purple-pink with a VERY DIM self-glow (emission < 1 so it
+	# reads as faintly lit but does not bloom), lightly glossy so it still catches
+	# the key light and a little reflection.
 	_mat_mask = StandardMaterial3D.new()
 	_mat_mask.albedo_color = MASK_COLOR
-	_mat_mask.metallic = 0.5
-	_mat_mask.roughness = 0.22
+	_mat_mask.metallic = 0.3
+	_mat_mask.roughness = 0.42
+	_mat_mask.emission_enabled = true
+	_mat_mask.emission = Color(0.85, 0.35, 0.75)
+	_mat_mask.emission_energy_multiplier = 0.18
 	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Walls: dark obstacles with a faint red rim glow (a hazard cue), not bloomed.
 	_mat_wall = StandardMaterial3D.new()
@@ -146,16 +156,12 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# The mask (green board) is a single FLAT SHEET of hex caps — caps only, no
-	# per-cell side walls. Adjacent caps share exact edge vertices, so the whole
-	# region is one continuous, gap-free, uniformly lit surface with no per-hex
-	# lines. (Per-cell prisms exposed their side walls as a green honeycomb grid;
-	# the hex grid is functional, never meant to be drawn.) Blocking walls DO get
-	# raised prisms — they're meant to stand proud — but they're sparse.
-	# Flat shading (smooth group -1) + generate_normals gives each face a correct
-	# per-face normal (caps face +Y up, walls outward) with no averaging across
-	# shared edges. Caps-only mask => no walls to expose, so the surface is both
-	# continuous AND properly up-lit.
+	# The build plateau is a sheet of hex caps (caps only, no per-cell side walls
+	# — adjacent caps share edge vertices, so it's one continuous surface with no
+	# per-hex lines; the hex grid is functional, never drawn). The only vertical
+	# faces are the path's trench walls, the plateau's perimeter skirt, and the
+	# sparse blocking-wall prisms. Flat shading (smooth group -1) + generate_normals
+	# gives each face its own normal (caps +Y up, walls outward) without averaging.
 	var mask_st := SurfaceTool.new(); mask_st.begin(Mesh.PRIMITIVE_TRIANGLES); mask_st.set_smooth_group(-1)
 	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES); spawn_st.set_smooth_group(-1)
 	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES); goal_st.set_smooth_group(-1)
@@ -167,23 +173,36 @@ func _build_board_meshes() -> void:
 	var have_wall := false
 	var have_copper := false
 
+	# Build plateau: a flat cap at COPPER_TOP for every NON-path cell (one
+	# continuous raised surface). Path cells are left open here — their sunken
+	# floor and the glowing trench walls are added in the path pass below.
+	# spawn/goal sit on the sunken floor as emissive markers.
 	for cell in map.cells:
 		var c := _cell_to_pixel(cell)
 		var hex := _hex_plane_polygon(c)
-		# flat mask cap for every cell (the continuous green surface)
-		_add_cap(mask_st, hex, MASK_TOP)
 		if cell == map.spawn:
-			_add_cap(spawn_st, hex, MASK_TOP + 0.05); have_spawn = true
+			_add_cap(spawn_st, hex, PATH_TOP + 0.05); have_spawn = true
 		elif cell == map.goal:
-			_add_cap(goal_st, hex, MASK_TOP + 0.05); have_goal = true
+			_add_cap(goal_st, hex, PATH_TOP + 0.05); have_goal = true
+		elif trace_set.has(cell):
+			pass   # sunken path floor drawn in the path pass
 		elif blocking_set.has(cell):
-			_add_prism(wall_st, hex, WALL_TOP, MASK_TOP); have_wall = true
+			_add_prism(wall_st, hex, WALL_TOP, PATH_TOP); have_wall = true
+		else:
+			_add_cap(mask_st, hex, COPPER_TOP)   # build plateau
+			_add_plateau_skirt(mask_st, c, hex)  # solid sides at the board's outer rim
 
-	# copper traces: clipped top polygon raised proud of the mask, with side walls
-	# only on the region's OUTER boundary — so the trace is one continuous raised
-	# surface (no internal dividing lines) that reads with real depth and casts a
-	# contact shadow onto the board. Internal copper-copper edges get no wall.
+	# Sunken path: clipped floor polygon at PATH_TOP, with trench side walls only
+	# on the region's OUTER boundary (rising to the plateau rim at COPPER_TOP) —
+	# one continuous channel (no internal dividing walls) outlined in neon. Always
+	# includes spawn/goal so the markers sit in a proper floor even if an explicit
+	# trace list omits the endpoints.
+	var path_cells := {}
 	for cell in trace_set.keys():
+		path_cells[cell] = true
+	path_cells[map.spawn] = true
+	path_cells[map.goal] = true
+	for cell in path_cells.keys():
 		var c := _cell_to_pixel(cell)
 		var poly := _clipped_plane_polygon(cell, c)
 		if poly.size() >= 3:
@@ -198,13 +217,19 @@ func _build_board_meshes() -> void:
 		_commit(copper_st, _mat_copper, true)            # glossy black top, casts a contact shadow
 		_commit(copper_edge_st, _mat_copper_edge)        # neon edge outline
 
-# A copper cell: a glossy-black top cap (into `top_st`) plus a neon edge wall
-# (into `edge_st`) on each edge that borders a non-copper cell. Boundary
-# detection probes just outside the edge midpoint: if that lands on another
-# copper cell the edge is internal (no wall), keeping the trace continuous;
-# otherwise it's the trace's silhouette and gets the glowing edge wall.
+# A path cell: a glossy-black sunken FLOOR cap (into `top_st`, at PATH_TOP) plus
+# a glowing trench WALL (into `edge_st`) on each edge that borders a non-path
+# cell — rising from the floor up to the plateau rim at COPPER_TOP. Boundary
+# detection probes just outside the edge midpoint: if that lands on another path
+# cell the edge is internal (no wall), keeping the channel continuous; otherwise
+# it's the channel silhouette and gets the glowing wall. (The wall material has
+# culling disabled, so the glow reads from inside the trench regardless of
+# winding.)
+func _is_path_cell(cell: Vector2i) -> bool:
+	return trace_set.has(cell) or cell == map.spawn or cell == map.goal
+
 func _add_copper_cell(top_st: SurfaceTool, edge_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
-	_add_cap(top_st, poly, COPPER_TOP)
+	_add_cap(top_st, poly, PATH_TOP)
 	var n := poly.size()
 	for i in range(n):
 		var a := poly[i]
@@ -214,14 +239,38 @@ func _add_copper_cell(top_st: SurfaceTool, edge_st: SurfaceTool, center: Vector2
 		if outward.length() < 0.0001:
 			continue
 		var probe: Vector2 = mid + outward.normalized() * (HEX_SIZE * 0.5)
-		if trace_set.has(world_cell(probe)):
-			continue   # internal edge shared with a copper neighbour
-		var at := Vector3(a.x, COPPER_TOP, a.y)
+		if _is_path_cell(world_cell(probe)):
+			continue   # internal edge shared with a path neighbour
+		var at := Vector3(a.x, COPPER_TOP, a.y)   # plateau rim
 		var bt := Vector3(b.x, COPPER_TOP, b.y)
-		var ab := Vector3(a.x, MASK_TOP, a.y)
-		var bb := Vector3(b.x, MASK_TOP, b.y)
+		var ab := Vector3(a.x, PATH_TOP, a.y)     # sunken floor
+		var bb := Vector3(b.x, PATH_TOP, b.y)
 		edge_st.add_vertex(at); edge_st.add_vertex(bb); edge_st.add_vertex(ab)
 		edge_st.add_vertex(at); edge_st.add_vertex(bt); edge_st.add_vertex(bb)
+
+# Plateau skirt: a vertical wall dropping from the plateau rim to the path floor
+# on edges that border OFF-MAP (no neighbour cell) — so the board reads as a
+# solid slab at its perimeter. Interior edges (plateau/plateau, plateau/path)
+# get no skirt: plateau/plateau stays continuous, plateau/path is covered by the
+# glowing trench wall. Probes outside the edge midpoint like the trench logic.
+func _add_plateau_skirt(st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
+	var n := poly.size()
+	for i in range(n):
+		var a := poly[i]
+		var b := poly[(i + 1) % n]
+		var mid: Vector2 = (a + b) * 0.5
+		var outward: Vector2 = mid - center
+		if outward.length() < 0.0001:
+			continue
+		var probe: Vector2 = mid + outward.normalized() * (HEX_SIZE * 0.5)
+		if has_cell(world_cell(probe)):
+			continue   # interior edge — no perimeter skirt
+		var at := Vector3(a.x, COPPER_TOP, a.y)
+		var bt := Vector3(b.x, COPPER_TOP, b.y)
+		var ab := Vector3(a.x, PATH_TOP, a.y)
+		var bb := Vector3(b.x, PATH_TOP, b.y)
+		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
+		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
 
 # generate_normals respects the flat smooth group set by the callers, so each
 # face gets its own normal (no averaging) — caps up, walls out. Flat ground
