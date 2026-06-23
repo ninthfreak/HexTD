@@ -29,10 +29,10 @@ const WALL_COLOR := Color(0.09, 0.10, 0.15)    # dark obstacle (faint red rim)
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
 const COPPER_TOP := 1.2         # build plateau top = placement plane (towers/picking/overlays)
-const PATH_TOP := -2.0          # sunken path floor (glossy black); enemies travel here
+const PATH_TOP := -1.2          # sunken path floor (glossy black); enemies travel here
 const WALL_TOP := 4.2           # blocking walls stand above the plateau
 const ENEMY_Y := COPPER_TOP + 5.5   # enemies hover this high (above the plateau; shadow sells the gap)
-const RIM_WIDTH := 1.8          # width of the flat neon border strip along the path rim
+const RIM_WIDTH := 2.4          # width of the flat neon border strip along the path rim
 
 ## Copper clip tiles — identical rule to the 2D board (see that file for the full
 ## explanation). 0=NE,1=SE,2=S,3=SW,4=NW,5=N.
@@ -98,7 +98,7 @@ func _build_materials() -> void:
 	_mat_copper_edge.albedo_color = TRACE_COLOR.darkened(0.7)
 	_mat_copper_edge.emission_enabled = true
 	_mat_copper_edge.emission = TRACE_COLOR
-	_mat_copper_edge.emission_energy_multiplier = 2.2
+	_mat_copper_edge.emission_energy_multiplier = 3.4   # bright crisp neon line
 	_mat_copper_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Build plateau: purple-pink with a VERY DIM self-glow (emission < 1 so it
 	# reads as faintly lit but does not bloom), lightly glossy so it still catches
@@ -257,7 +257,7 @@ func _add_path_walls(black_st: SurfaceTool, rim_st: SurfaceTool, center: Vector2
 		var b2: Vector2 = b + dir * RIM_WIDTH
 		var ao: Vector2 = a2 + nrm * RIM_WIDTH
 		var bo: Vector2 = b2 + nrm * RIM_WIDTH
-		var ry := COPPER_TOP + 0.05
+		var ry := COPPER_TOP + 0.25   # clearly proud of the plateau cap (no z-fighting drop-outs)
 		rim_st.add_vertex(Vector3(a2.x, ry, a2.y)); rim_st.add_vertex(Vector3(b2.x, ry, b2.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
 		rim_st.add_vertex(Vector3(a2.x, ry, a2.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
 

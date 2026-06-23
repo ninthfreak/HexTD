@@ -107,11 +107,12 @@ func _build_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 0.5
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	# SSAO: contact darkening at trace edges, wall bases and crevices, for depth.
+	# SSAO: subtle contact darkening for depth. Kept LOW — a strong/wide AO threw
+	# a dark halo into the plateau around the path that muddied the neon border.
 	env.ssao_enabled = true
-	env.ssao_radius = 6.0
-	env.ssao_intensity = 2.5
-	env.ssao_power = 1.5
+	env.ssao_radius = 2.5
+	env.ssao_intensity = 0.9
+	env.ssao_power = 2.0
 	# SSR: the dark glossy substrate mirrors the neon traces, enemies and towers
 	# — the wet-floor-under-neon look. This is where the reflections finally read.
 	env.ssr_enabled = true
