@@ -48,17 +48,21 @@ plane coordinates (`Vector2`).
 
 ## Visual / mesh approach
 
-- **Board** = generated meshes (SurfaceTool / ArrayMesh): the build area is a
-  raised PLATEAU of hex caps at `COPPER_TOP` (caps only — NOT per-cell prisms,
-  which exposed their sides as a honeycomb; the hex grid is functional, never
-  drawn), the path is a SUNKEN channel carved below it (clipped floor polygon at
-  `PATH_TOP`, boundary-only trench walls rising to the plateau rim — one
-  continuous channel, no internal lines), a perimeter skirt on off-map edges so
-  the slab looks solid, blocking walls as prisms above the plateau, spawn/goal as
-  caps on the sunken floor. Normals: `set_smooth_group(-1)` + `generate_normals`
-  for flat per-face shading; cull disabled (removes winding fragility).
-  `COPPER_TOP` stays the shared placement plane (towers/picking/overlays anchor
-  there); enemies travel on the sunken floor (`PATH_TOP`).
+- **Board** = generated meshes (SurfaceTool / ArrayMesh) at two levels. The build
+  area is a raised PLATEAU of FULL-HEX caps at `COPPER_TOP` (full hexes so
+  buildable cells stay unambiguous — clipping them would muddy placement). The
+  path is a SUNKEN, SMOOTH ribbon below it: each path cell's floor is the clipped
+  polygon (the 2D copper clip rule, smoothing the *trace* silhouette) at
+  `PATH_TOP`, and the corner(s) clipped off each path cell are filled back in at
+  `COPPER_TOP` as plateau "slivers" — clipped floor + sliver exactly partition
+  the hex (validated), so the plateau reads as one continuous full-hex surface
+  with a smooth inner edge along the path. Trench walls on the clipped boundary
+  (rising `PATH_TOP`→rim) carry the neon glow; a perimeter skirt closes off-map
+  edges; blocking walls are prisms above the plateau; spawn/goal are clipped
+  markers on the sunken floor. Flat shading (`set_smooth_group(-1)` +
+  `generate_normals`); cull disabled (removes winding fragility). `COPPER_TOP`
+  stays the shared placement plane (towers/picking/overlays); enemies travel on
+  the sunken floor (`PATH_TOP`).
 - **Theme = dark neon / digital grid** (chosen after the PCB palette read as
   flat mint+brown and fought the glow). The build plateau = **purple-pink with a
   very dim self-glow** (emission < 1 so it reads as faintly lit but doesn't
