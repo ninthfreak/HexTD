@@ -371,8 +371,14 @@ func _rebuild_body() -> void:
 func _body_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = data.color
-	mat.metallic = 0.55
-	mat.roughness = 0.32
+	mat.metallic = 0.6
+	mat.roughness = 0.25
+	# A modest emissive accent in the tower's own colour so it reads as a glowing
+	# tech construct on the dark board (and the floor reflects it) without
+	# blooming as hard as the path/enemies.
+	mat.emission_enabled = true
+	mat.emission = data.color
+	mat.emission_energy_multiplier = 0.5
 	return mat
 
 func _build_body_mesh() -> ArrayMesh:
