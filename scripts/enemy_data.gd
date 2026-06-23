@@ -7,7 +7,11 @@ extends Resource
 @export var id := ""
 @export var display_name := "Enemy"
 
-# shape: "square" | "rect" | "octagon" | "polygon"
+# shape — legacy extruded silhouettes: "square" | "rect" | "octagon" | "polygon"
+# 3D platonic solids (sized by `radius`): "tetrahedron" | "cube" | "octahedron" |
+#   "dodecahedron" | "icosahedron"
+# dual compounds (sized by `radius`): "stella_octangula" (2 tetrahedra) |
+#   "cube_octahedron" | "dodeca_icosahedron"
 @export var shape := "square"
 @export var color := Color(0.85, 0.3, 0.3)
 

@@ -65,8 +65,16 @@ plane coordinates (`Vector2`).
   HDR glow. The earlier copper/green PCB values are preserved in git history if
   we ever revert.
 - **Towers:** extrude the existing 2D tower shapes into 3D prisms with materials.
-- **Enemies:** extruded 3D shapes moving along the path, with **billboarded health
-  bars** above them.
+- **Enemies:** true 3D **platonic solids** and their **dual compounds** (shape =
+  `tetrahedron`/`cube`/`octahedron`/`dodecahedron`/`icosahedron`, or
+  `stella_octangula`/`cube_octahedron`/`dodeca_icosahedron`), sized by `radius`,
+  resting on the board. Style = "faceted + edge glow": lit metallic faces +
+  emissive neon edge lines that bloom. Geometry is derived at runtime — faces via
+  a brute-force convex hull, edges via min vertex distance (per member, so
+  compounds keep their own edges) — so no per-solid face table is maintained.
+  Legacy extruded silhouettes (`square`/`rect`/`octagon`/`polygon`) still render.
+  **Billboarded health bars** sit above each body. The editor offers all shapes
+  with a live 3D wireframe preview; old enemy JSON loads unchanged.
 - **Projectiles:** small 3D spheres.
 - **Camera / lighting / input:** tilted 3D camera + directional light + sky
   environment; click handling via a **raycast from the camera through the cursor to
