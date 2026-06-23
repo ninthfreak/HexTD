@@ -82,11 +82,11 @@ func _build_materials() -> void:
 	# Dark neon theme. Back-face culling disabled on every board material (flat
 	# board viewed from above — removes any winding fragility).
 	#
-	# The path is a sunken channel: a glossy polished-black floor (_mat_copper,
-	# reflects enemies/neon via SSR) bordered by EMISSIVE trench walls
-	# (_mat_copper_edge). The walls ARE the neon border — being vertical they meet
-	# at a shared edge at every corner, so the outline is continuous (a flat
-	# plateau strip leaves wedge gaps at corners and dashes; see _add_path_walls).
+	# The path is a sunken channel: a glossy polished-black floor + trench walls
+	# (_mat_copper, reflects enemies/neon via SSR). The neon border is a single
+	# continuous mitered ribbon on the plateau (_mat_copper_edge, see
+	# _build_path_border) — adjacent boundary edges share an averaged offset point,
+	# so it never gaps at corners and never overlaps (no z-fighting).
 	_mat_copper = StandardMaterial3D.new()
 	_mat_copper.albedo_color = Color(0.01, 0.012, 0.015)
 	_mat_copper.metallic = 0.95
@@ -97,7 +97,7 @@ func _build_materials() -> void:
 	_mat_copper_edge.albedo_color = TRACE_COLOR.darkened(0.7)
 	_mat_copper_edge.emission_enabled = true
 	_mat_copper_edge.emission = TRACE_COLOR
-	_mat_copper_edge.emission_energy_multiplier = 2.0   # emissive trench walls (continuous border)
+	_mat_copper_edge.emission_energy_multiplier = 3.0   # neon border ribbon
 	_mat_copper_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Build plateau: purple-pink with a VERY DIM self-glow (emission < 1 so it
 	# reads as faintly lit but does not bloom), lightly glossy so it still catches
@@ -191,7 +191,7 @@ func _build_board_meshes() -> void:
 					_add_cap(goal_st, poly, PATH_TOP + 0.05); have_goal = true
 				else:
 					_add_cap(path_st, poly, PATH_TOP)
-				_add_path_walls(edge_st, c, poly)
+				_add_path_walls(path_st, c, poly)   # glossy black trench walls
 				have_path = true
 			# fill the clipped-off corner(s) at plateau level so the plateau stays
 			# continuous (and full-hex everywhere except this smooth path edge)
@@ -209,38 +209,96 @@ func _build_board_meshes() -> void:
 	if have_goal: _commit(goal_st, _mat_goal)
 	if have_wall: _commit(wall_st, _mat_wall, true)   # walls cast shadows (depth)
 	if have_path:
-		_commit(path_st, _mat_copper, true)              # glossy black sunken floor
-		_commit(edge_st, _mat_copper_edge)               # emissive trench walls = continuous neon border
+		_build_path_border(edge_st)                      # one continuous mitered neon ribbon
+		_commit(path_st, _mat_copper, true)              # glossy black sunken floor + trench walls
+		_commit(edge_st, _mat_copper_edge)               # neon border ribbon
 
 func _is_path_cell(cell: Vector2i) -> bool:
 	return trace_set.has(cell) or cell == map.spawn or cell == map.goal
 
-# The neon border = the trench WALL itself, emissive (into `edge_st`), for each
-# clipped-floor edge that borders a non-path cell — a vertical quad from the
-# sunken floor (PATH_TOP) up to the plateau rim (COPPER_TOP). Vertical walls meet
-# at a shared vertical edge at every corner, so the border is continuous by
-# construction (a flat plateau strip cannot do this — two flat quads leave a
-# wedge gap at each corner, which is what made the border dash). Boundary
-# detection probes just outside the edge midpoint: a path neighbour means an
-# internal edge (no wall, channel stays continuous); otherwise it's the silhouette.
-func _add_path_walls(edge_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
+# Glossy-black trench walls (into `black_st`) for each clipped-floor edge that
+# borders a non-path cell — vertical quads from the sunken floor up to the rim.
+# (The neon border is built separately, see _build_path_border.)
+func _add_path_walls(black_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
 	var n := poly.size()
 	for i in range(n):
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
-		var mid: Vector2 = (a + b) * 0.5
-		var outward: Vector2 = mid - center
-		if outward.length() < 0.0001:
+		if not _is_border_edge(center, a, b):
 			continue
-		var probe: Vector2 = mid + outward.normalized() * (HEX_SIZE * 0.5)
-		if _is_path_cell(world_cell(probe)):
-			continue   # internal edge shared with a path neighbour
 		var at := Vector3(a.x, COPPER_TOP, a.y)
 		var bt := Vector3(b.x, COPPER_TOP, b.y)
 		var ab := Vector3(a.x, PATH_TOP, a.y)
 		var bb := Vector3(b.x, PATH_TOP, b.y)
-		edge_st.add_vertex(at); edge_st.add_vertex(bb); edge_st.add_vertex(ab)
-		edge_st.add_vertex(at); edge_st.add_vertex(bt); edge_st.add_vertex(bb)
+		black_st.add_vertex(at); black_st.add_vertex(bb); black_st.add_vertex(ab)
+		black_st.add_vertex(at); black_st.add_vertex(bt); black_st.add_vertex(bb)
+
+# Is edge (a,b) of a path cell on the OUTER boundary of the path region?
+# - A clip chord (the straight cut smoothing makes across an omitted corner) is
+#   ALWAYS a boundary — it is the smoothed silhouette, by definition facing
+#   non-path. Detect it by length: a chord spans >=2 hex vertices so it is far
+#   longer than a hex edge. (Probing a chord is unreliable — its midpoint sits so
+#   far inside the hex that the probe lands on the ambiguous omitted corner and
+#   usually reads back as path, which is why clipped tiles lost their border.)
+# - A normal hex edge: probe just outside its midpoint; boundary iff non-path.
+func _is_border_edge(center: Vector2, a: Vector2, b: Vector2) -> bool:
+	if a.distance_to(b) > HEX_SIZE * 1.3:
+		return true
+	var mid: Vector2 = (a + b) * 0.5
+	var outward: Vector2 = mid - center
+	if outward.length() < 0.0001:
+		return false
+	var probe: Vector2 = mid + outward.normalized() * (HEX_SIZE * 0.5)
+	return not _is_path_cell(world_cell(probe))
+
+func _vkey(v: Vector2) -> Vector2i:
+	return Vector2i(roundi(v.x * 20.0), roundi(v.y * 20.0))
+
+# The neon border, built as ONE mitered ribbon (into `rim_st`) on the plateau,
+# lifted clearly proud of the cap. Every boundary edge contributes its outward
+# normal to its two endpoints; each vertex's offset direction is the normalised
+# SUM of the normals meeting there. Adjacent edges therefore share the exact same
+# offset point at their shared vertex, so the ribbon is continuous with no corner
+# gaps and no overlaps (so no z-fighting). Flat, so it reads from straight above.
+func _build_path_border(rim_st: SurfaceTool) -> void:
+	var vsum := {}
+	var segs: Array = []
+	for cell in map.cells:
+		if not _is_path_cell(cell):
+			continue
+		var c := _cell_to_pixel(cell)
+		var poly := _clipped_plane_polygon(cell, c, trace_set)
+		var n := poly.size()
+		for i in range(n):
+			var a := poly[i]
+			var b := poly[(i + 1) % n]
+			if not _is_border_edge(c, a, b):
+				continue
+			var d: Vector2 = b - a
+			if d.length() < 0.0001:
+				continue
+			d = d.normalized()
+			var nrm := Vector2(-d.y, d.x)
+			if nrm.dot(((a + b) * 0.5) - c) < 0.0:
+				nrm = -nrm
+			segs.append([a, b, nrm])
+			var ka := _vkey(a)
+			var kb := _vkey(b)
+			vsum[ka] = (vsum.get(ka, Vector2.ZERO)) + nrm
+			vsum[kb] = (vsum.get(kb, Vector2.ZERO)) + nrm
+	var ry := COPPER_TOP + 0.25
+	for seg in segs:
+		var a: Vector2 = seg[0]
+		var b: Vector2 = seg[1]
+		var fallback: Vector2 = seg[2]
+		var ma: Vector2 = vsum[_vkey(a)]
+		var mb: Vector2 = vsum[_vkey(b)]
+		ma = ma.normalized() if ma.length() > 0.0001 else fallback
+		mb = mb.normalized() if mb.length() > 0.0001 else fallback
+		var ao: Vector2 = a + ma * RIM_WIDTH
+		var bo: Vector2 = b + mb * RIM_WIDTH
+		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(b.x, ry, b.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
+		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
 
 # Fill the corner(s) clipped off a path cell, capped at `y` (plateau level), so
 # the plateau stays continuous up to the smooth clip edge. `omit` is a single
