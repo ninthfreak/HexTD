@@ -94,17 +94,31 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var psm := ProceduralSkyMaterial.new()
-	psm.sky_top_color = Color(0.36, 0.50, 0.78)
-	psm.sky_horizon_color = Color(0.65, 0.72, 0.82)
+	psm.sky_top_color = Color(0.30, 0.46, 0.78)
+	psm.sky_horizon_color = Color(0.70, 0.78, 0.88)
 	psm.ground_bottom_color = Color(0.07, 0.09, 0.11)
 	psm.ground_horizon_color = Color(0.18, 0.20, 0.24)
-	psm.sun_angle_max = 30.0
-	psm.sun_curve = 0.15
+	# A small, bright sun disk: the metallic copper reflects it as a crisp glint,
+	# which is most of what reads as "metal". sun_angle_max is the disk size.
+	psm.sun_angle_max = 6.0
+	psm.sun_curve = 0.08
 	sky.sky_material = psm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 0.5
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	# Screen-space ambient occlusion: darkens the copper-trace edges, wall bases
+	# and contact crevices, so the board reads with depth instead of flat regions.
+	env.ssao_enabled = true
+	env.ssao_radius = 6.0
+	env.ssao_intensity = 2.5
+	env.ssao_power = 1.5
+	# Screen-space reflections: the near-mirror copper reflects the green board,
+	# the walls and the towers around it — the main "real material" cue.
+	env.ssr_enabled = true
+	env.ssr_max_steps = 48
+	env.ssr_fade_in = 0.1
+	env.ssr_fade_out = 2.0
 	# Carry over the bloom feel from the 2D HDR glow: bright emissive pixels
 	# (laser beams, glowing enemies, projectiles) bloom into the scene.
 	env.glow_enabled = true
