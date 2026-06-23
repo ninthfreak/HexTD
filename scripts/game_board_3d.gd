@@ -24,7 +24,7 @@ const WALL_COLOR := Color(0.16, 0.17, 0.22)
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
 const COPPER_TOP := 0.1         # copper inlay sits a hair above the mask (flush look, no z-fight)
-const WALL_TOP := 10.0
+const WALL_TOP := 4.0           # blocking walls stand modestly proud (LOS blockers), not towering
 
 ## Copper clip tiles — identical rule to the 2D board (see that file for the full
 ## explanation). 0=NE,1=SE,2=S,3=SW,4=NW,5=N.
@@ -70,18 +70,21 @@ func _ready() -> void:
 	add_child(_entities)
 
 func _build_materials() -> void:
+	# Back-face culling disabled on every board material: the board is a flat
+	# sheet viewed from above, so two-sided rendering is free of cost concern
+	# and removes any winding/culling fragility (a wrong-way face would simply
+	# vanish otherwise).
 	_mat_copper = StandardMaterial3D.new()
 	_mat_copper.albedo_color = TRACE_COLOR
 	_mat_copper.metallic = 1.0
 	_mat_copper.metallic_specular = 0.9
-	_mat_copper.roughness = 0.18          # near-mirror; raise for a satin look
+	_mat_copper.roughness = 0.4           # satin copper; lower for more mirror
+	_mat_copper.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat_mask = StandardMaterial3D.new()
 	_mat_mask.albedo_color = MASK_COLOR
 	_mat_mask.metallic = 0.0
-	_mat_mask.roughness = 0.35
-	_mat_mask.clearcoat_enabled = true
-	_mat_mask.clearcoat = 1.0
-	_mat_mask.clearcoat_roughness = 0.08   # glossy clear epoxy over the green
+	_mat_mask.roughness = 0.5
+	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat_wall = _flat_mat(WALL_COLOR, 0.6)
 	_mat_spawn = _flat_mat(SPAWN_COLOR, 0.5)
 	_mat_goal = _flat_mat(GOAL_COLOR, 0.5)
@@ -90,6 +93,7 @@ func _flat_mat(c: Color, rough: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c
 	m.roughness = rough
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
 func setup(m: HexMapData) -> void:
@@ -117,19 +121,17 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# substrate: every cell as a mask-topped prism (the green board).
-	# Flat shading (smooth group -1) on every surface: generate_normals()
-	# otherwise AVERAGES the flat up-facing cap normals with the outward side
-	# walls at every shared edge, bending the surface into rounded "buttons"
-	# with a dark groove around each hex. Flat shading keeps each cap face's
-	# normal straight up, so a continuous region renders as one flat surface
-	# with no per-hex dividing lines.
-	var mask_st := SurfaceTool.new()
-	mask_st.begin(Mesh.PRIMITIVE_TRIANGLES); mask_st.set_smooth_group(-1)
-	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES); spawn_st.set_smooth_group(-1)
-	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES); goal_st.set_smooth_group(-1)
-	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES); wall_st.set_smooth_group(-1)
-	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES); copper_st.set_smooth_group(-1)
+	# The mask (green board) is a single FLAT SHEET of hex caps — caps only, no
+	# per-cell side walls. Adjacent caps share exact edge vertices, so the whole
+	# region is one continuous, gap-free, uniformly lit surface with no per-hex
+	# lines. (Per-cell prisms exposed their side walls as a green honeycomb grid;
+	# the hex grid is functional, never meant to be drawn.) Blocking walls DO get
+	# raised prisms — they're meant to stand proud — but they're sparse.
+	var mask_st := SurfaceTool.new(); mask_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var have_spawn := false
 	var have_goal := false
 	var have_wall := false
@@ -138,8 +140,8 @@ func _build_board_meshes() -> void:
 	for cell in map.cells:
 		var c := _cell_to_pixel(cell)
 		var hex := _hex_plane_polygon(c)
-		# substrate prism for every cell (mask). Spawn/goal/wall get a coloured cap on top.
-		_add_prism(mask_st, hex, MASK_TOP, MASK_TOP - MASK_THICK)
+		# flat mask cap for every cell (the continuous green surface)
+		_add_cap(mask_st, hex, MASK_TOP)
 		if cell == map.spawn:
 			_add_cap(spawn_st, hex, MASK_TOP + 0.05); have_spawn = true
 		elif cell == map.goal:
@@ -164,8 +166,11 @@ func _build_board_meshes() -> void:
 	if have_wall: _commit(wall_st, _mat_wall)
 	if have_copper: _commit(copper_st, _mat_copper)
 
+# Normals are set EXPLICITLY per face (UP for caps, outward for walls) and we
+# do NOT call generate_normals — generate_normals averages across shared
+# vertices, which bent the surface into per-hex buttons. Explicit normals keep
+# a continuous region perfectly flat and uniformly lit.
 func _commit(st: SurfaceTool, mat: Material) -> void:
-	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	mi.material_override = mat
@@ -175,7 +180,7 @@ func _commit(st: SurfaceTool, mat: Material) -> void:
 # Winding note: the plane polygon is CCW in plane space, but the (x,y)->(x,0,y)
 # mapping flips handedness, so a (center, a, b) fan would face DOWN (and get
 # back-face culled when viewed from above). We emit (center, b, a) so the cap
-# normal points +Y up.
+# faces +Y up, and set the normal to UP explicitly.
 func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 	var center := Vector2.ZERO
 	for p in poly:
@@ -183,6 +188,7 @@ func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 	center /= float(poly.size())
 	var c3 := Vector3(center.x, y, center.y)
 	var n := poly.size()
+	st.set_normal(Vector3.UP)
 	for i in range(n):
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
@@ -190,8 +196,8 @@ func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 		st.add_vertex(Vector3(b.x, y, b.y))
 		st.add_vertex(Vector3(a.x, y, a.y))
 
-# A prism: top cap at `top`, vertical sides down to `bottom`. Side triangles are
-# wound to face OUTWARD given the same handedness flip as the cap above.
+# A prism: top cap at `top`, vertical sides down to `bottom`. Each side quad
+# gets an explicit outward normal.
 func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
 	_add_cap(st, poly, top)
 	var n := poly.size()
@@ -202,6 +208,9 @@ func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: f
 		var bt := Vector3(b.x, top, b.y)
 		var ab := Vector3(a.x, bottom, a.y)
 		var bb := Vector3(b.x, bottom, b.y)
+		var e := b - a
+		var nrm := Vector3(e.y, 0.0, -e.x).normalized()   # outward (plane perpendicular)
+		st.set_normal(nrm)
 		# two triangles per side quad (outward winding)
 		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
 		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
