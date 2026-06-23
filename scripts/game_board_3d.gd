@@ -61,6 +61,7 @@ var _bounds := Rect2()
 var _entities: Node3D
 
 var _mat_copper: StandardMaterial3D
+var _mat_copper_edge: StandardMaterial3D
 var _mat_mask: StandardMaterial3D
 var _mat_wall: StandardMaterial3D
 var _mat_spawn: StandardMaterial3D
@@ -76,15 +77,21 @@ func _build_materials() -> void:
 	# Dark neon theme. Back-face culling disabled on every board material (flat
 	# board viewed from above — removes any winding fragility).
 	#
-	# The trace is the glowing data-lane: dark base + bright emissive neon so the
-	# HDR glow blooms it.
+	# The trace is a data-lane channel: a very glossy near-black TOP (so it reads
+	# as polished black, mirroring the scene), with the glow confined to the
+	# raised EDGE walls — a neon outline that traces the path. Two materials, two
+	# surfaces (see _add_copper_cell): top = glossy black, edge = emissive neon.
 	_mat_copper = StandardMaterial3D.new()
-	_mat_copper.albedo_color = TRACE_COLOR.darkened(0.6)
-	_mat_copper.emission_enabled = true
-	_mat_copper.emission = TRACE_COLOR
-	_mat_copper.emission_energy_multiplier = 2.2   # >1 blooms in the HDR glow
-	_mat_copper.roughness = 0.3
+	_mat_copper.albedo_color = Color(0.01, 0.012, 0.015)
+	_mat_copper.metallic = 0.5
+	_mat_copper.roughness = 0.06            # near-mirror polished black
 	_mat_copper.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mat_copper_edge = StandardMaterial3D.new()
+	_mat_copper_edge.albedo_color = TRACE_COLOR.darkened(0.7)
+	_mat_copper_edge.emission_enabled = true
+	_mat_copper_edge.emission = TRACE_COLOR
+	_mat_copper_edge.emission_energy_multiplier = 3.0   # bright thin strip -> strong bloom
+	_mat_copper_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Substrate: a dark, glossy, semi-metallic floor so it reflects the neon
 	# traces / enemies (SSR) like wet asphalt under city lights.
 	_mat_mask = StandardMaterial3D.new()
@@ -154,6 +161,7 @@ func _build_board_meshes() -> void:
 	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES); goal_st.set_smooth_group(-1)
 	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES); wall_st.set_smooth_group(-1)
 	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES); copper_st.set_smooth_group(-1)
+	var copper_edge_st := SurfaceTool.new(); copper_edge_st.begin(Mesh.PRIMITIVE_TRIANGLES); copper_edge_st.set_smooth_group(-1)
 	var have_spawn := false
 	var have_goal := false
 	var have_wall := false
@@ -179,21 +187,24 @@ func _build_board_meshes() -> void:
 		var c := _cell_to_pixel(cell)
 		var poly := _clipped_plane_polygon(cell, c)
 		if poly.size() >= 3:
-			_add_copper_cell(copper_st, c, poly)
+			_add_copper_cell(copper_st, copper_edge_st, c, poly)
 			have_copper = true
 
 	_commit(mask_st, _mat_mask)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
 	if have_goal: _commit(goal_st, _mat_goal)
 	if have_wall: _commit(wall_st, _mat_wall, true)   # walls cast shadows (depth)
-	if have_copper: _commit(copper_st, _mat_copper, true)   # raised trace casts a contact shadow
+	if have_copper:
+		_commit(copper_st, _mat_copper, true)            # glossy black top, casts a contact shadow
+		_commit(copper_edge_st, _mat_copper_edge)        # neon edge outline
 
-# A copper cell: a raised top cap plus a wall on each edge that borders a
-# non-copper cell. Boundary detection probes just outside the edge midpoint:
-# if that lands on another copper cell the edge is internal (no wall), keeping
-# the trace continuous; otherwise it's the trace's silhouette and gets a wall.
-func _add_copper_cell(st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
-	_add_cap(st, poly, COPPER_TOP)
+# A copper cell: a glossy-black top cap (into `top_st`) plus a neon edge wall
+# (into `edge_st`) on each edge that borders a non-copper cell. Boundary
+# detection probes just outside the edge midpoint: if that lands on another
+# copper cell the edge is internal (no wall), keeping the trace continuous;
+# otherwise it's the trace's silhouette and gets the glowing edge wall.
+func _add_copper_cell(top_st: SurfaceTool, edge_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
+	_add_cap(top_st, poly, COPPER_TOP)
 	var n := poly.size()
 	for i in range(n):
 		var a := poly[i]
@@ -209,8 +220,8 @@ func _add_copper_cell(st: SurfaceTool, center: Vector2, poly: PackedVector2Array
 		var bt := Vector3(b.x, COPPER_TOP, b.y)
 		var ab := Vector3(a.x, MASK_TOP, a.y)
 		var bb := Vector3(b.x, MASK_TOP, b.y)
-		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
-		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
+		edge_st.add_vertex(at); edge_st.add_vertex(bb); edge_st.add_vertex(ab)
+		edge_st.add_vertex(at); edge_st.add_vertex(bt); edge_st.add_vertex(bb)
 
 # generate_normals respects the flat smooth group set by the callers, so each
 # face gets its own normal (no averaging) — caps up, walls out. Flat ground
