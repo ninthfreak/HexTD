@@ -103,7 +103,7 @@ func _build_environment() -> void:
 	sky.sky_material = psm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.6
+	env.ambient_light_energy = 0.5
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	# Carry over the bloom feel from the 2D HDR glow: bright emissive pixels
 	# (laser beams, glowing enemies, projectiles) bloom into the scene.
@@ -112,14 +112,17 @@ func _build_environment() -> void:
 	env.glow_bloom = 0.05
 	env.glow_hdr_threshold = 1.0
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 1.0
+	env.tonemap_exposure = 1.15
 	world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
 	directional_light = DirectionalLight3D.new()
 	directional_light.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(35.0), 0.0)
-	directional_light.light_energy = 1.35
+	# Brighter than the original (1.1): the board is now a correctly FLAT surface,
+	# which catches light at one uniform angle rather than the many angles of the
+	# (buggy) faceted version, so it needs more sun to read as bright.
+	directional_light.light_energy = 1.7
 	directional_light.shadow_enabled = true
 	add_child(directional_light)
 

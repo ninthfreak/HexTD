@@ -78,12 +78,20 @@ func _build_materials() -> void:
 	_mat_copper.albedo_color = TRACE_COLOR
 	_mat_copper.metallic = 1.0
 	_mat_copper.metallic_specular = 0.9
-	_mat_copper.roughness = 0.4           # satin copper; lower for more mirror
+	# Low roughness keeps the warm sun GLINT sharp so the copper reads as bright
+	# metal. A fully metallic surface has no diffuse, so at high roughness it just
+	# averages the dim blue sky and goes dark/grey — keep this near-mirror.
+	_mat_copper.roughness = 0.18
 	_mat_copper.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat_mask = StandardMaterial3D.new()
 	_mat_mask.albedo_color = MASK_COLOR
 	_mat_mask.metallic = 0.0
-	_mat_mask.roughness = 0.5
+	_mat_mask.roughness = 0.35
+	# Clear epoxy coat over the green: a glossy sky reflection that lifts the
+	# board's brightness and gives the PCB its wet sheen.
+	_mat_mask.clearcoat_enabled = true
+	_mat_mask.clearcoat = 1.0
+	_mat_mask.clearcoat_roughness = 0.08
 	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat_wall = _flat_mat(WALL_COLOR, 0.6)
 	_mat_spawn = _flat_mat(SPAWN_COLOR, 0.5)
