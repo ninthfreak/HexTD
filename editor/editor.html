@@ -8,7 +8,10 @@
   :root{
     --bg:#0e1217; --panel:#161b22; --panel2:#1c2230; --border:#2a3340;
     --text:#d7dee8; --muted:#8b97a7; --accent:#ffd23f;
-    --grass:#3D6647; --road:#B87333; --spawn:#4D8C52; --goal:#A84747;
+    /* dark-neon board palette (mirrors GameBoard3D): dark substrate, glowing
+       cyan path, neon green/red markers. Substrate kept a touch lighter than
+       the in-game near-black so cells stay legible while painting. */
+    --grass:#141a24; --road:#22c8ee; --spawn:#2bd968; --goal:#ff5a4d;
     --ok:#5bd17e; --warn:#ffce5b; --bad:#ff6b6b;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
@@ -216,6 +219,10 @@ function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg
 function uniqueId(base, taken){ let i=1, id=base; while(taken.includes(id)){ id=base+i; i++; } return id; }
 
 // ===================== transforms (DOM-free) =====================
+// 3D platonic-solid + dual-compound enemy shapes (sized by `radius`). Legacy
+// extruded shapes (square/rect/octagon/polygon) still load and save unchanged.
+const SOLIDS=['tetrahedron','cube','octahedron','dodecahedron','icosahedron',
+  'stella_octangula','cube_octahedron','dodeca_icosahedron'];
 function enemiesToJSON(enemies, order){
   const out={};
   for(const id of order){ const e=enemies[id]; if(!e) continue;
@@ -223,6 +230,7 @@ function enemiesToJSON(enemies, order){
     if(e.shape==='rect'){ o.length=+e.length; o.width=+e.width; }
     else if(e.shape==='octagon'){ o.radius=+e.radius; }
     else if(e.shape==='polygon'){ o.radius=+e.radius; o.sides=+e.sides; }
+    else if(SOLIDS.includes(e.shape)){ o.radius=+e.radius; }
     else { o.side=+e.side; }
     o.health=+e.health; o.speed=+e.speed; o.reward=+e.reward; o.reduces_to=e.reduces_to||'';
     if(+e.glow!==1) o.glow=+e.glow;
@@ -381,12 +389,54 @@ function drawPoly(ctx,pts,cx,cy,scale,fill){
   ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.stroke();
 }
 function drawEnemyPreview(canvas,e){
+  if(SOLIDS.includes(e.shape)){ drawSolidPreview(canvas,e); return; }
   const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height; ctx.clearRect(0,0,W,H);
   const pts=enemyPoints(e); const ext=Math.max(...pts.flatMap(([x,y])=>[Math.abs(x),Math.abs(y)]),1);
   const scale=Math.min(W,H)*0.42/ext;
   ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(8,H/2);ctx.lineTo(W-8,H/2);ctx.stroke();
   ctx.fillStyle='rgba(255,255,255,.35)';ctx.beginPath();ctx.moveTo(W-8,H/2);ctx.lineTo(W-15,H/2-4);ctx.lineTo(W-15,H/2+4);ctx.fill();
   drawPoly(ctx,pts,W/2,H/2,scale,e.color);
+}
+// ===================== 3D solid preview (matches the in-game enemy body) =====
+const PHI3=(1+Math.sqrt(5))/2;
+const SOLID_V={
+  tetrahedron:[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]],
+  cube:[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]],
+  octahedron:[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],
+  dodecahedron:[[-1,-1,-1],[-1,-1,1],[-1,1,-1],[-1,1,1],[1,-1,-1],[1,-1,1],[1,1,-1],[1,1,1],
+    [0,-1/PHI3,-PHI3],[0,-1/PHI3,PHI3],[0,1/PHI3,-PHI3],[0,1/PHI3,PHI3],
+    [-1/PHI3,-PHI3,0],[-1/PHI3,PHI3,0],[1/PHI3,-PHI3,0],[1/PHI3,PHI3,0],
+    [-PHI3,0,-1/PHI3],[-PHI3,0,1/PHI3],[PHI3,0,-1/PHI3],[PHI3,0,1/PHI3]],
+  icosahedron:[[0,-1,-PHI3],[0,-1,PHI3],[0,1,-PHI3],[0,1,PHI3],[-1,-PHI3,0],[-1,PHI3,0],
+    [1,-PHI3,0],[1,PHI3,0],[-PHI3,0,-1],[-PHI3,0,1],[PHI3,0,-1],[PHI3,0,1]],
+};
+const normV=v=>{let m=0;for(const p of v)m=Math.max(m,Math.hypot(p[0],p[1],p[2]));return v.map(p=>[p[0]/m,p[1]/m,p[2]/m]);};
+const scaleV=(v,s)=>v.map(p=>[p[0]*s,p[1]*s,p[2]*s]);
+const negV=v=>v.map(p=>[-p[0],-p[1],-p[2]]);
+function solidMembers(shape){
+  if(shape==='stella_octangula'){const t=normV(SOLID_V.tetrahedron);return [t,negV(t)];}
+  if(shape==='cube_octahedron')return [normV(SOLID_V.cube),scaleV(normV(SOLID_V.octahedron),1.18)];
+  if(shape==='dodeca_icosahedron')return [normV(SOLID_V.dodecahedron),scaleV(normV(SOLID_V.icosahedron),1.12)];
+  return [normV(SOLID_V[shape]||SOLID_V.cube)];
+}
+function minEdges(v){ const n=v.length,d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]); let mind=1e9;
+  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)mind=Math.min(mind,d(v[i],v[j]));
+  const out=[]; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)if(Math.abs(d(v[i],v[j])-mind)<mind*0.05)out.push([i,j]); return out; }
+function rot3(p,ax,ay){ const[x,y,z]=p;
+  const x1=x*Math.cos(ay)+z*Math.sin(ay), z1=-x*Math.sin(ay)+z*Math.cos(ay);
+  const y2=y*Math.cos(ax)-z1*Math.sin(ax); return [x1,y2]; }
+function drawSolidPreview(canvas,e){
+  const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height; ctx.clearRect(0,0,W,H);
+  const members=solidMembers(e.shape), ax=-0.42, ay=0.7;
+  const proj=members.map(v=>v.map(p=>rot3(p,ax,ay)));
+  let ext=0.0001; for(const p of proj) for(const[x,y]of p) ext=Math.max(ext,Math.abs(x),Math.abs(y));
+  const scale=Math.min(W,H)*0.40/ext, cx=W/2, cy=H/2;
+  ctx.save(); ctx.shadowColor=e.color; ctx.shadowBlur=8; ctx.strokeStyle=e.color; ctx.lineWidth=2;
+  for(let m=0;m<members.length;m++){ const p=proj[m]; ctx.beginPath();
+    for(const[i,j]of minEdges(members[m])){ ctx.moveTo(cx+p[i][0]*scale,cy-p[i][1]*scale); ctx.lineTo(cx+p[j][0]*scale,cy-p[j][1]*scale); }
+    ctx.stroke(); }
+  ctx.restore();
+  ctx.fillStyle=e.color; for(const p of proj) for(const[x,y]of p){ ctx.beginPath(); ctx.arc(cx+x*scale,cy-y*scale,2,0,7); ctx.fill(); }
 }
 function drawTowerPreview(canvas,t){
   const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height; ctx.clearRect(0,0,W,H);
@@ -481,7 +531,7 @@ function renderEnemyEditor(){
   const idInput=el('input',{type:'text',value:id,onchange:ev=>renameEnemy(id,ev.target.value.trim())});
   const nameInput=el('input',{type:'text',value:e.name,oninput:ev=>upd('name',ev.target.value)});
   const shapeSel=el('select',{onchange:ev=>{e.shape=ev.target.value; setDirty('enemies'); renderEnemyEditor();}},
-    ...['square','rect','octagon','polygon'].map(s=>el('option',{value:s,selected:e.shape===s},s)));
+    ...['square','rect','octagon','polygon',...SOLIDS].map(s=>el('option',{value:s,selected:e.shape===s},s)));
   const colorInput=el('input',{type:'color',value:e.color,oninput:ev=>upd('color',ev.target.value)});
   const sizeRow=el('div',{class:'full row'});
   if(e.shape==='rect'){ sizeRow.append(...field('length (front-back)',el('input',{type:'number',value:e.length,oninput:ev=>upd('length',ev.target.value)})),
@@ -489,6 +539,7 @@ function renderEnemyEditor(){
   else if(e.shape==='octagon'){ sizeRow.append(...field('radius',el('input',{type:'number',value:e.radius,oninput:ev=>upd('radius',ev.target.value)}))); }
   else if(e.shape==='polygon'){ sizeRow.append(...field('radius',el('input',{type:'number',value:e.radius,oninput:ev=>upd('radius',ev.target.value)})),
       ...field('sides',el('input',{type:'number',value:e.sides,min:3,oninput:ev=>upd('sides',ev.target.value)}))); }
+  else if(SOLIDS.includes(e.shape)){ sizeRow.append(...field('radius (size)',el('input',{type:'number',value:e.radius,oninput:ev=>upd('radius',ev.target.value)}))); }
   else { sizeRow.append(...field('side',el('input',{type:'number',value:e.side,oninput:ev=>upd('side',ev.target.value)}))); }
   const reduceSel=el('select',{onchange:ev=>upd('reduces_to',ev.target.value)},
     el('option',{value:'',selected:!e.reduces_to},'(dies — none)'),
@@ -717,7 +768,7 @@ document.getElementById('tw_revert').onclick=()=>{
 let MapTab=null;
 (function(){
   const SQRT3=Math.sqrt(3);
-  const COL={grass:'#3D6647',path:'#B87333',spawn:'#4D8C52',goal:'#A84747',block:'#2b2f3a'};
+  const COL={grass:'#141a24',path:'#22c8ee',spawn:'#2bd968',goal:'#ff5a4d',block:'#3a2630'};
   const st={cols:20,rows:14,size:22,name:'My Map',cells:new Map(),spawn:null,goal:null,tool:'path',brush:1,hover:null};
   const k=(c,r)=>c+','+r, parseKey=s=>s.split(',').map(Number);
   const offToAxial=(c,r)=>[c-(r-(r&1))/2,r], axialToOff=(q,r)=>[Math.round(q+(r-(r&1))/2),r];

@@ -486,7 +486,8 @@ func _enemy_radius(ed: EnemyData) -> float:
 	match ed.shape:
 		"rect":
 			return maxf(ed.length, ed.width) * 0.5
-		"octagon", "polygon":
+		"octagon", "polygon", "tetrahedron", "cube", "octahedron", "dodecahedron", \
+		"icosahedron", "stella_octangula", "cube_octahedron", "dodeca_icosahedron":
 			return ed.radius
 		_:
 			return ed.side * 0.5

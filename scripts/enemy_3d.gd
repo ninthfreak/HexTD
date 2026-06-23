@@ -14,6 +14,33 @@ const TURN_RATE := 9.0
 const ECC_RESIST := 0.9
 const GLOW_HDR_BOOST := 0.9
 const BODY_HEIGHT := 4.0
+
+# Platonic solids + their dual compounds, used as true-3D enemy bodies (the
+# "faceted + edge glow" look). Sizes are driven by EnemyData.radius (the body's
+# circumradius). Vertex tables below are unit-ish; geometry is normalised to a
+# circumradius of 1 then scaled by radius. Faces/edges are derived at runtime
+# (brute-force convex hull + min-distance edges) so no per-solid face table is
+# hand-maintained — and it extends to the compounds member-by-member.
+const PHI := 1.618033988749895
+const SOLIDS := ["tetrahedron", "cube", "octahedron", "dodecahedron", "icosahedron",
+	"stella_octangula", "cube_octahedron", "dodeca_icosahedron"]
+const SOLID_VERTS := {
+	"tetrahedron": [Vector3(1,1,1), Vector3(1,-1,-1), Vector3(-1,1,-1), Vector3(-1,-1,1)],
+	"cube": [Vector3(-1,-1,-1), Vector3(1,-1,-1), Vector3(1,1,-1), Vector3(-1,1,-1),
+		Vector3(-1,-1,1), Vector3(1,-1,1), Vector3(1,1,1), Vector3(-1,1,1)],
+	"octahedron": [Vector3(1,0,0), Vector3(-1,0,0), Vector3(0,1,0), Vector3(0,-1,0),
+		Vector3(0,0,1), Vector3(0,0,-1)],
+	"dodecahedron": [
+		Vector3(-1,-1,-1), Vector3(-1,-1,1), Vector3(-1,1,-1), Vector3(-1,1,1),
+		Vector3(1,-1,-1), Vector3(1,-1,1), Vector3(1,1,-1), Vector3(1,1,1),
+		Vector3(0,-1.0/PHI,-PHI), Vector3(0,-1.0/PHI,PHI), Vector3(0,1.0/PHI,-PHI), Vector3(0,1.0/PHI,PHI),
+		Vector3(-1.0/PHI,-PHI,0), Vector3(-1.0/PHI,PHI,0), Vector3(1.0/PHI,-PHI,0), Vector3(1.0/PHI,PHI,0),
+		Vector3(-PHI,0,-1.0/PHI), Vector3(-PHI,0,1.0/PHI), Vector3(PHI,0,-1.0/PHI), Vector3(PHI,0,1.0/PHI)],
+	"icosahedron": [
+		Vector3(0,-1,-PHI), Vector3(0,-1,PHI), Vector3(0,1,-PHI), Vector3(0,1,PHI),
+		Vector3(-1,-PHI,0), Vector3(-1,PHI,0), Vector3(1,-PHI,0), Vector3(1,PHI,0),
+		Vector3(-PHI,0,-1), Vector3(-PHI,0,1), Vector3(PHI,0,-1), Vector3(PHI,0,1)],
+}
 const BAR_PIX_W := 40
 const BAR_PIX_H := 6
 const BAR_PIXEL_SIZE := 0.18    # world units per bar texel
@@ -27,7 +54,8 @@ var pp := Vector2.ZERO
 var _index := 0
 var _alive := true
 var _body_root: Node3D         # rotates with heading (body only — bar stays upright)
-var _body: MeshInstance3D
+var _body: MeshInstance3D      # the body faces (prism for legacy shapes, hull faces for solids)
+var _body_top := BODY_HEIGHT   # world height of the body's top (drives the health bar)
 var _bar: Sprite3D
 var _bar_tex: ImageTexture
 
@@ -52,33 +80,213 @@ func progress() -> int:
 func _build_visuals() -> void:
 	_body_root = Node3D.new()
 	add_child(_body_root)
-	_body = MeshInstance3D.new()
-	_body.mesh = _build_body_mesh()
-	_body.material_override = _body_material()
-	_body_root.add_child(_body)
+	_build_body()
 	_bar = Sprite3D.new()
 	_bar.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_bar.shaded = false
 	_bar.pixel_size = BAR_PIXEL_SIZE / float(BAR_PIX_H)
-	_bar.position = Vector3(0, BODY_HEIGHT + BAR_HEIGHT_PAD, 0)
 	add_child(_bar)
+	_place_bar()
 
-func _body_material() -> StandardMaterial3D:
+# (Re)build the body under _body_root. Solids get a faceted shaded body PLUS a
+# glowing neon edge outline (two child meshes); the legacy extruded prism shapes
+# get the single extruded body. Callers clear _body_root first (morph rebuilds).
+func _build_body() -> void:
+	for c in _body_root.get_children():
+		c.queue_free()
+	if data.shape in SOLIDS:
+		_build_solid_body()
+	else:
+		_body = MeshInstance3D.new()
+		_body.mesh = _build_prism_mesh()
+		_body.material_override = _faces_material()
+		_body_root.add_child(_body)
+		_body_top = BODY_HEIGHT
+
+func _place_bar() -> void:
+	if _bar != null:
+		_bar.position = Vector3(0, _body_top + BAR_HEIGHT_PAD, 0)
+
+# A true 3D platonic solid (or dual compound) as the body. Each member is
+# normalised to a circumradius of 1, scaled by data.radius, and shifted so the
+# body's lowest point rests on the board (y=0). Faces are flat-shaded metallic
+# (form from the key light) + a modest self-glow; edges are bright emissive
+# lines that bloom — the "faceted + edge glow" style.
+func _build_solid_body() -> void:
+	var members := _solid_members(data.shape)
+	var r: float = maxf(2.0, data.radius)
+	# Scale each member to circumradius r into FRESH arrays (packed arrays are
+	# copy-on-write, so mutating the members in place wouldn't persist) and find
+	# the lowest point so the body can be lifted to rest on the board.
+	var scaled: Array = []
+	var min_y := INF
+	var max_y := -INF
+	for verts in members:
+		var sv := PackedVector3Array()
+		for v in verts:
+			var p: Vector3 = v * r
+			sv.append(p)
+			min_y = minf(min_y, p.y)
+			max_y = maxf(max_y, p.y)
+		scaled.append(sv)
+	var lift := -min_y
+	var face_st := SurfaceTool.new()
+	face_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	face_st.set_smooth_group(-1)            # flat facets
+	var edge_st := SurfaceTool.new()
+	edge_st.begin(Mesh.PRIMITIVE_LINES)
+	for verts in scaled:
+		var lifted := PackedVector3Array()
+		for v in verts:
+			lifted.append(v + Vector3(0, lift, 0))
+		for tri in _hull_triangles(lifted):
+			face_st.add_vertex(lifted[tri[0]])
+			face_st.add_vertex(lifted[tri[1]])
+			face_st.add_vertex(lifted[tri[2]])
+		for e in _min_edges(lifted):
+			edge_st.add_vertex(lifted[e[0]])
+			edge_st.add_vertex(lifted[e[1]])
+	face_st.generate_normals()
+	var faces := MeshInstance3D.new()
+	faces.mesh = face_st.commit()
+	faces.material_override = _faces_material()
+	_body_root.add_child(faces)
+	_body = faces
+	var edges := MeshInstance3D.new()
+	edges.mesh = edge_st.commit()
+	edges.material_override = _edge_material()
+	_body_root.add_child(edges)
+	_body_top = max_y + lift
+
+# The members of a solid/compound, as arrays of vertices normalised so the
+# largest member has a circumradius of 1. A compound is two interpenetrating
+# solids built independently (dual pairs) — so each keeps its own faces/edges.
+func _solid_members(shape: String) -> Array:
+	match shape:
+		"stella_octangula":
+			var t := _verts("tetrahedron")
+			var t2 := PackedVector3Array()
+			for v in t:
+				t2.append(-v)
+			return [_normalize(t), _normalize(t2)]
+		"cube_octahedron":
+			return [_normalize(_verts("cube")), _scaled(_normalize(_verts("octahedron")), 1.18)]
+		"dodeca_icosahedron":
+			return [_normalize(_verts("dodecahedron")), _scaled(_normalize(_verts("icosahedron")), 1.12)]
+		_:
+			return [_normalize(_verts(shape))]
+
+func _verts(name: String) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for v in SOLID_VERTS[name]:
+		out.append(v)
+	return out
+
+func _normalize(verts: PackedVector3Array) -> PackedVector3Array:
+	var maxr := 0.0
+	for v in verts:
+		maxr = maxf(maxr, v.length())
+	if maxr < 0.0001:
+		return verts
+	var out := PackedVector3Array()
+	for v in verts:
+		out.append(v / maxr)
+	return out
+
+func _scaled(verts: PackedVector3Array, s: float) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for v in verts:
+		out.append(v * s)
+	return out
+
+# Brute-force convex-hull triangulation (n <= 20, so O(n^3) is trivial): a triple
+# is a hull face when every other vertex lies on one side of its plane. Wound so
+# the normal points outward (away from the origin-centred solid). Coplanar faces
+# emit several overlapping triangles with the same normal — harmless for shading
+# (we never draw the triangle diagonals; the crisp outline comes from _min_edges).
+func _hull_triangles(verts: PackedVector3Array) -> Array:
+	var n := verts.size()
+	var tris := []
+	for i in range(n):
+		for j in range(i + 1, n):
+			for k in range(j + 1, n):
+				var a := verts[i]
+				var b := verts[j]
+				var c := verts[k]
+				var nrm := (b - a).cross(c - a)
+				if nrm.length() < 0.000001:
+					continue
+				nrm = nrm.normalized()
+				var d := nrm.dot(a)
+				var pos := false
+				var neg := false
+				for m in range(n):
+					if m == i or m == j or m == k:
+						continue
+					var s := nrm.dot(verts[m]) - d
+					if s > 0.0001:
+						pos = true
+					elif s < -0.0001:
+						neg = true
+				if pos and neg:
+					continue   # vertices straddle the plane -> not a hull face
+				# orient outward: a face vertex of an origin-centred solid has
+				# outward-normal . vertex > 0
+				if d >= 0.0:
+					tris.append([i, j, k])
+				else:
+					tris.append([i, k, j])
+	return tris
+
+# Polyhedron edges = vertex pairs at the minimum pairwise distance (true for all
+# platonic solids). Computed per member so a compound's two solids keep their
+# own edge lengths rather than picking up spurious cross-member pairs.
+func _min_edges(verts: PackedVector3Array) -> Array:
+	var n := verts.size()
+	var mind := INF
+	for i in range(n):
+		for j in range(i + 1, n):
+			mind = minf(mind, verts[i].distance_to(verts[j]))
+	var out := []
+	for i in range(n):
+		for j in range(i + 1, n):
+			if absf(verts[i].distance_to(verts[j]) - mind) < mind * 0.05:
+				out.append([i, j])
+	return out
+
+# Faces: lit metallic (form from the key light) + a modest self-glow so the body
+# reads on the dark board without washing out the edge outline.
+func _faces_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	var fill: Color = data.color
 	mat.albedo_color = fill
-	mat.metallic = 0.0
-	mat.roughness = 0.55
+	mat.metallic = 0.6
+	mat.roughness = 0.3
+	# Two-sided: the hull winding yields outward normals (so front faces light
+	# correctly), but for convex solids the back faces are occluded anyway, and
+	# disabling culling removes any winding-convention risk (no inside-out body).
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	if data.glow > 0.0:
-		# >1 emission energy is what the WorldEnvironment bloom blooms.
 		mat.emission_enabled = true
 		mat.emission = fill
-		mat.emission_energy_multiplier = 1.0 + data.glow * GLOW_HDR_BOOST
+		mat.emission_energy_multiplier = 0.25 + data.glow * 0.3
 	return mat
 
-# Extrude the 2D silhouette into a prism. Winding mirrors GameBoard3D._add_prism
-# (top cap + outward side walls). SurfaceTool.generate_normals fills the rest.
-func _build_body_mesh() -> ArrayMesh:
+# Edges: unshaded bright emission so the outline blooms in the HDR glow — the
+# "pop" of the faceted-plus-edge-glow look.
+func _edge_material() -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	var fill: Color = data.color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = fill.lightened(0.3)
+	mat.emission_enabled = true
+	mat.emission = fill.lightened(0.3)
+	mat.emission_energy_multiplier = 2.5 + data.glow * GLOW_HDR_BOOST
+	return mat
+
+# Extrude the 2D silhouette into a prism (legacy non-solid shapes). Winding
+# mirrors GameBoard3D._add_prism (top cap + outward side walls).
+func _build_prism_mesh() -> ArrayMesh:
 	var pts := _local_shape_points()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -112,6 +320,14 @@ func _emit_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: 
 # Local (un-rotated) shape, in plane coords. Heading is applied via _body_root yaw.
 func _local_shape_points() -> PackedVector2Array:
 	var pts := PackedVector2Array()
+	if data.shape in SOLIDS:
+		# Footprint approximation for projectile pierce / overlays: an octagon at
+		# the body's circumradius. (The actual 3D shape is built elsewhere.)
+		var r: float = maxf(2.0, data.radius)
+		for i in range(8):
+			var a := deg_to_rad(22.5 + 45.0 * i)
+			pts.append(Vector2(cos(a), sin(a)) * r)
+		return pts
 	match data.shape:
 		"rect":
 			var l := data.length * 0.5
@@ -141,6 +357,8 @@ func _shape_points() -> PackedVector2Array:
 	return out
 
 func _radius_estimate() -> float:
+	if data.shape in SOLIDS:
+		return maxf(2.0, data.radius)
 	match data.shape:
 		"rect":
 			return maxf(data.length, data.width) * 0.5
@@ -205,8 +423,8 @@ func _on_depleted() -> void:
 	# morph this node into the lesser form
 	data = lesser
 	health = data.health
-	_body.mesh = _build_body_mesh()
-	_body.material_override = _body_material()
+	_build_body()
+	_place_bar()
 	_refresh_bar_texture(1.0)
 	if count <= 1:
 		return
