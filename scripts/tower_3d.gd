@@ -506,8 +506,8 @@ func _update_beam(frac: float, on: bool) -> void:
 	# rather than Variant member accesses on an untyped reference.
 	var tpp: Vector2 = _laser_target.pp
 	var from := Vector3(pp.x, GameBoard3D.COPPER_TOP + BEAM_ORIGIN_LIFT, pp.y)
-	# the enemy sits on the sunken path floor, so aim at PATH_TOP + body mid-height
-	var to := Vector3(tpp.x, GameBoard3D.PATH_TOP + BEAM_TARGET_LIFT, tpp.y)
+	# enemies hover at ENEMY_Y, so aim there (+ a little for body mid-height)
+	var to := Vector3(tpp.x, GameBoard3D.ENEMY_Y + BEAM_TARGET_LIFT, tpp.y)
 	var dir := to - from
 	var dlen := dir.length()
 	if dlen < 0.001:
