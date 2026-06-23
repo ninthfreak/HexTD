@@ -95,17 +95,18 @@ func _emit_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: 
 	for i in range(n):
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
-		# top cap (fan from center)
+		# top cap (fan from center). (center, b, a) so the cap faces +Y up under
+		# the (x,y)->(x,0,y) handedness flip; see GameBoard3D._add_cap.
 		st.add_vertex(Vector3(center.x, top, center.y))
-		st.add_vertex(Vector3(a.x, top, a.y))
 		st.add_vertex(Vector3(b.x, top, b.y))
-		# side walls (two tris per quad)
+		st.add_vertex(Vector3(a.x, top, a.y))
+		# side walls (two tris per quad), wound to face outward
 		var at := Vector3(a.x, top, a.y)
 		var bt := Vector3(b.x, top, b.y)
 		var ab := Vector3(a.x, bottom, a.y)
 		var bb := Vector3(b.x, bottom, b.y)
-		st.add_vertex(at); st.add_vertex(ab); st.add_vertex(bb)
-		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(bt)
+		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
+		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
 
 # Local (un-rotated) shape, in plane coords. Heading is applied via _body_root yaw.
 func _local_shape_points() -> PackedVector2Array:
