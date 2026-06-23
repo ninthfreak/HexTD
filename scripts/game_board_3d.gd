@@ -83,10 +83,9 @@ func _build_materials() -> void:
 	# board viewed from above — removes any winding fragility).
 	#
 	# The path is a sunken channel: a glossy polished-black floor + trench walls
-	# (_mat_copper, reflects enemies/neon via SSR). The neon border is a single
-	# continuous mitered ribbon on the plateau (_mat_copper_edge, see
-	# _build_path_border) — adjacent boundary edges share an averaged offset point,
-	# so it never gaps at corners and never overlaps (no z-fighting).
+	# (_mat_copper, reflects enemies/neon via SSR), bordered by a continuous mitered
+	# neon ribbon (_mat_copper_edge). All three are built from ONE smoothed outline
+	# polygon (see _build_path_polys / _stroke_border), so they always align.
 	_mat_copper = StandardMaterial3D.new()
 	_mat_copper.albedo_color = Color(0.01, 0.012, 0.015)
 	_mat_copper.metallic = 0.95
@@ -157,61 +156,226 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# Two levels. The BUILD PLATEAU (every non-path cell) is a FULL-HEX cap at
-	# COPPER_TOP — full hexes so buildable cells stay unambiguous. The PATH is a
-	# sunken, SMOOTH ribbon: each path cell's floor is the clipped polygon (the
-	# 2D copper clip rule, smoothing the trace silhouette) dropped to PATH_TOP,
-	# and the corners clipped OFF each path cell are filled back in at COPPER_TOP
-	# as plateau slivers — so the plateau reads as one continuous surface with a
-	# smooth inner edge along the path, without rounding the build hexes. Trench
-	# walls (clipped boundary, PATH_TOP up to the rim) carry the neon glow.
-	# Flat shading (smooth group -1) + generate_normals gives each face its own
-	# normal without averaging.
-	var plateau_st := SurfaceTool.new(); plateau_st.begin(Mesh.PRIMITIVE_TRIANGLES); plateau_st.set_smooth_group(-1)
-	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES); spawn_st.set_smooth_group(-1)
-	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES); goal_st.set_smooth_group(-1)
-	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES); wall_st.set_smooth_group(-1)
-	var path_st := SurfaceTool.new(); path_st.begin(Mesh.PRIMITIVE_TRIANGLES); path_st.set_smooth_group(-1)
-	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES); edge_st.set_smooth_group(-1)
+	# The path is built from ONE smoothed outline polygon (not per-cell hexes): the
+	# floor, trench walls and neon border are all that same smooth shape, so they
+	# always align — on every orientation, including the vertical/staircase runs the
+	# per-cell clip rule never smoothed. The plateau is the board hexes with that
+	# smooth polygon CUT OUT (Geometry2D), so plateau and path tile with no gap.
+	# Normals are set explicitly (all board materials are two-sided), so triangle
+	# winding is irrelevant.
+	var path_polys := _build_path_polys()
+
+	var plateau_st := SurfaceTool.new(); plateau_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var path_st := SurfaceTool.new(); path_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var have_spawn := false
 	var have_goal := false
 	var have_wall := false
-	var have_path := false
 
+	# path floor (sunken) + trench walls + neon border, all from the smoothed loop(s)
+	for poly in path_polys:
+		_emit_cap_tris(path_st, poly, PATH_TOP)
+		_emit_wall_loop(path_st, poly, COPPER_TOP, PATH_TOP)
+		_stroke_border(edge_st, poly)
+
+	# plateau = board hexes minus the path polygon(s); blocking as prisms; spawn/goal
+	# as emissive markers on the sunken floor
 	for cell in map.cells:
 		var c := _cell_to_pixel(cell)
 		var hex := _hex_plane_polygon(c)
-		if _is_path_cell(cell):
-			# smooth sunken ribbon floor (clip the TRACE region, as in 2D)
-			var poly := _clipped_plane_polygon(cell, c, trace_set)
-			if poly.size() >= 3:
-				if cell == map.spawn:
-					_add_cap(spawn_st, poly, PATH_TOP + 0.05); have_spawn = true
-				elif cell == map.goal:
-					_add_cap(goal_st, poly, PATH_TOP + 0.05); have_goal = true
-				else:
-					_add_cap(path_st, poly, PATH_TOP)
-				_add_path_walls(path_st, c, poly)   # glossy black trench walls
-				have_path = true
-			# fill the clipped-off corner(s) at plateau level so the plateau stays
-			# continuous (and full-hex everywhere except this smooth path edge)
-			var omit: Array = TILE_OMIT.get(_clip_tile(cell, trace_set), [])
-			if not omit.is_empty():
-				_add_clip_slivers(plateau_st, hex, omit, COPPER_TOP)
-		elif blocking_set.has(cell):
+		if blocking_set.has(cell):
 			_add_prism(wall_st, hex, WALL_TOP, PATH_TOP); have_wall = true
-		else:
-			_add_cap(plateau_st, hex, COPPER_TOP)   # full-hex build plateau
-			_add_plateau_skirt(plateau_st, c, hex)  # solid sides at the board's outer rim
+			continue
+		if cell == map.spawn:
+			_emit_cap_tris(spawn_st, hex, PATH_TOP + 0.06); have_spawn = true
+		elif cell == map.goal:
+			_emit_cap_tris(goal_st, hex, PATH_TOP + 0.06); have_goal = true
+		if _near_path(cell):
+			# cells on/touching the path: cut the smooth path out of the hex
+			var parts: Array = [hex]
+			for poly in path_polys:
+				var np: Array = []
+				for part in parts:
+					for r in Geometry2D.clip_polygons(part, poly):
+						np.append(r)
+				parts = np
+			for part in parts:
+				_emit_cap_tris(plateau_st, part, COPPER_TOP)
+		elif not _is_path_cell(cell):
+			_add_cap(plateau_st, hex, COPPER_TOP)   # whole hex, away from the path
 
 	_commit(plateau_st, _mat_mask)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
 	if have_goal: _commit(goal_st, _mat_goal)
 	if have_wall: _commit(wall_st, _mat_wall, true)   # walls cast shadows (depth)
-	if have_path:
-		_build_path_border(edge_st)                      # one continuous mitered neon ribbon
-		_commit(path_st, _mat_copper, true)              # glossy black sunken floor + trench walls
+	if path_polys.size() > 0:
+		_commit(path_st, _mat_copper, true)              # glossy black sunken floor + walls
 		_commit(edge_st, _mat_copper_edge)               # neon border ribbon
+
+# A cell is "near" the path if it is a path cell or borders one — only these need
+# the (more expensive) polygon cut; the rest are whole-hex plateau.
+func _near_path(cell: Vector2i) -> bool:
+	if _is_path_cell(cell):
+		return true
+	for d in EDGE_NB:
+		if _is_path_cell(cell + d):
+			return true
+	return false
+
+# Build the smoothed outline polygon(s) of the path region. Boundary edges are
+# found exactly (a hex edge whose neighbour is non-path — hex edge i faces
+# EDGE_NB[i]), stitched into ordered loops, oriented CCW, and Laplacian-smoothed
+# so the floor/walls/border are smooth curves rather than hex facets.
+func _build_path_polys() -> Array:
+	var pos := {}
+	var nbr := {}
+	for cell in map.cells:
+		if not _is_path_cell(cell):
+			continue
+		var c := _cell_to_pixel(cell)
+		var hp := _hex_plane_polygon(c)
+		for i in range(6):
+			if _is_path_cell(cell + EDGE_NB[i]):
+				continue
+			var a: Vector2 = hp[i]
+			var b: Vector2 = hp[(i + 1) % 6]
+			var ka := _vkey(a)
+			var kb := _vkey(b)
+			pos[ka] = a
+			pos[kb] = b
+			if not nbr.has(ka): nbr[ka] = []
+			if not nbr.has(kb): nbr[kb] = []
+			if not (kb in nbr[ka]): nbr[ka].append(kb)
+			if not (ka in nbr[kb]): nbr[kb].append(ka)
+	var used := {}
+	var polys: Array = []
+	for s in nbr.keys():
+		for first in nbr[s]:
+			var e0 := _ekey(s, first)
+			if used.has(e0):
+				continue
+			used[e0] = true
+			var loop: Array = [s]
+			var prev: Vector2i = s
+			var cur: Vector2i = first
+			var guard := 0
+			while cur != s and guard < 100000:
+				guard += 1
+				loop.append(cur)
+				var nxt: Variant = null
+				for cand in nbr[cur]:
+					if cand == prev:
+						continue
+					var e2 := _ekey(cur, cand)
+					if used.has(e2):
+						continue
+					nxt = cand
+					used[e2] = true
+					break
+				if nxt == null:
+					break
+				prev = cur
+				cur = nxt
+			if loop.size() < 3:
+				continue
+			var pts := PackedVector2Array()
+			for k in loop:
+				pts.append(pos[k])
+			if _signed_area(pts) < 0.0:
+				pts.reverse()
+			polys.append(_smooth_loop(pts, 2))
+	return polys
+
+func _signed_area(p: PackedVector2Array) -> float:
+	var a := 0.0
+	var n := p.size()
+	for i in range(n):
+		var q := p[(i + 1) % n]
+		a += p[i].x * q.y - q.x * p[i].y
+	return a * 0.5
+
+func _smooth_loop(p: PackedVector2Array, iters: int) -> PackedVector2Array:
+	var n := p.size()
+	var pts := p
+	for _it in range(iters):
+		var sm := pts.duplicate()
+		for i in range(n):
+			var p0: Vector2 = pts[(i - 1 + n) % n]
+			var p1: Vector2 = pts[i]
+			var p2: Vector2 = pts[(i + 1) % n]
+			sm[i] = p1 * 0.5 + (p0 + p2) * 0.25
+		pts = sm
+	return pts
+
+# Triangulate a (possibly concave) plane polygon and emit it as a flat cap at
+# height y, with explicit +Y normals (so winding doesn't matter).
+func _emit_cap_tris(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
+	if poly.size() < 3:
+		return
+	var idx := Geometry2D.triangulate_polygon(poly)
+	if idx.is_empty():
+		return
+	for t in range(0, idx.size(), 3):
+		for j in range(3):
+			var p: Vector2 = poly[idx[t + j]]
+			st.set_normal(Vector3.UP)
+			st.add_vertex(Vector3(p.x, y, p.y))
+
+# Vertical wall around a CCW loop, from `top` down to `bottom`, outward normals.
+func _emit_wall_loop(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
+	var n := poly.size()
+	for i in range(n):
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[(i + 1) % n]
+		var d: Vector2 = b - a
+		if d.length() < 0.0001:
+			continue
+		d = d.normalized()
+		var no := Vector3(d.y, 0.0, -d.x)   # outward for a CCW loop
+		var at := Vector3(a.x, top, a.y)
+		var bt := Vector3(b.x, top, b.y)
+		var ab := Vector3(a.x, bottom, a.y)
+		var bb := Vector3(b.x, bottom, b.y)
+		for v in [at, ab, bb, at, bb, bt]:
+			st.set_normal(no)
+			st.add_vertex(v)
+
+# Mitered flat neon ribbon along a (smoothed, CCW) loop, lifted proud of the cap.
+# Inset slightly inward so it covers the floor edge; outward offset is a proper
+# miter (RIM_WIDTH / cos(half-angle), miter-limited) for constant width.
+func _stroke_border(st: SurfaceTool, poly: PackedVector2Array) -> void:
+	var n := poly.size()
+	var outu := PackedVector2Array()
+	var mfac := PackedFloat32Array()
+	for i in range(n):
+		var a: Vector2 = poly[(i - 1 + n) % n]
+		var b: Vector2 = poly[i]
+		var c2: Vector2 = poly[(i + 1) % n]
+		var d1: Vector2 = (b - a).normalized()
+		var d2: Vector2 = (c2 - b).normalized()
+		var n1 := Vector2(d1.y, -d1.x)   # outward (CCW)
+		var n2 := Vector2(d2.y, -d2.x)
+		var sv: Vector2 = n1 + n2
+		var mdir: Vector2 = sv.normalized() if sv.length() > 0.0001 else n2
+		outu.append(mdir)
+		mfac.append(1.0 / maxf(mdir.dot(n2), 0.6))
+	var ry := COPPER_TOP + 0.25
+	var inset := 1.2
+	for i in range(n):
+		var j := (i + 1) % n
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[j]
+		var ai: Vector2 = a - outu[i] * inset
+		var bi: Vector2 = b - outu[j] * inset
+		var ao: Vector2 = a + outu[i] * (RIM_WIDTH * mfac[i])
+		var bo: Vector2 = b + outu[j] * (RIM_WIDTH * mfac[j])
+		for v in [Vector3(ai.x, ry, ai.y), Vector3(bi.x, ry, bi.y), Vector3(bo.x, ry, bo.y),
+				Vector3(ai.x, ry, ai.y), Vector3(bo.x, ry, bo.y), Vector3(ao.x, ry, ao.y)]:
+			st.set_normal(Vector3.UP)
+			st.add_vertex(v)
 
 func _is_path_cell(cell: Vector2i) -> bool:
 	return trace_set.has(cell) or cell == map.spawn or cell == map.goal
@@ -425,22 +589,17 @@ func _add_plateau_skirt(st: SurfaceTool, center: Vector2, poly: PackedVector2Arr
 		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
 		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
 
-# generate_normals respects the flat smooth group set by the callers, so each
-# face gets its own normal (no averaging) — caps up, walls out. Flat ground
-# (mask/spawn/goal) does not cast shadows: two-sided (cull-disabled) ground
-# self-shadowing would darken it. Raised copper and walls DO cast, for depth.
+# All board emitters set explicit normals (every board material is two-sided /
+# cull-disabled, so winding is irrelevant — we never rely on generate_normals).
 func _commit(st: SurfaceTool, mat: Material, cast_shadows := false) -> void:
-	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh_root.add_child(mi)
 
-# Top cap (single face) at height y for a plane polygon, as a triangle fan.
-# Winding note: the plane polygon is CCW in plane space, but the (x,y)->(x,0,y)
-# mapping flips handedness, so a (center, a, b) fan would face DOWN. We emit
-# (center, b, a) so generate_normals computes a +Y up normal.
+# Top cap at height y for a (convex) plane polygon, as a triangle fan from the
+# centroid, with explicit +Y normals.
 func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 	var center := Vector2.ZERO
 	for p in poly:
@@ -451,25 +610,31 @@ func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 	for i in range(n):
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
-		st.add_vertex(c3)
-		st.add_vertex(Vector3(b.x, y, b.y))
-		st.add_vertex(Vector3(a.x, y, a.y))
+		st.set_normal(Vector3.UP); st.add_vertex(c3)
+		st.set_normal(Vector3.UP); st.add_vertex(Vector3(b.x, y, b.y))
+		st.set_normal(Vector3.UP); st.add_vertex(Vector3(a.x, y, a.y))
 
-# A prism: top cap at `top`, vertical sides down to `bottom`. Side triangles are
-# wound to face OUTWARD under the same handedness flip.
+# A prism: top cap at `top`, vertical sides down to `bottom` with outward normals.
 func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
 	_add_cap(st, poly, top)
+	var center := Vector2.ZERO
+	for p in poly:
+		center += p
+	center /= float(poly.size())
 	var n := poly.size()
 	for i in range(n):
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
+		var mid: Vector2 = (a + b) * 0.5
+		var ov: Vector2 = (mid - center).normalized()
+		var no := Vector3(ov.x, 0.0, ov.y)
 		var at := Vector3(a.x, top, a.y)
 		var bt := Vector3(b.x, top, b.y)
 		var ab := Vector3(a.x, bottom, a.y)
 		var bb := Vector3(b.x, bottom, b.y)
-		# two triangles per side quad (outward winding)
-		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
-		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
+		for v in [at, bb, ab, at, bt, bb]:
+			st.set_normal(no)
+			st.add_vertex(v)
 
 func _hex_plane_polygon(center: Vector2) -> PackedVector2Array:
 	var pts := PackedVector2Array()
