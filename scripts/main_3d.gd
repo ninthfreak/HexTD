@@ -358,7 +358,7 @@ func _input(event: InputEvent) -> void:
 		# pixel ≈ that / viewport_height world units.
 		var vp: Vector2 = get_viewport().get_visible_rect().size
 		var world_per_pixel: float = (2.0 * cam_distance * tan(deg_to_rad(camera.fov) * 0.5)) / maxf(1.0, vp.y)
-		var d := -event.relative * world_per_pixel
+		var d: Vector2 = -event.relative * world_per_pixel
 		# Account for the camera pitch when projecting screen-Y into plane-Z.
 		_pan_plane(Vector2(d.x, d.y / maxf(sin(cam_pitch), 0.2)))
 
