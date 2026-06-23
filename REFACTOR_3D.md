@@ -84,17 +84,42 @@ plane coordinates (`Vector2`).
 - **`game_board_3d.gd` — written (foundation).** Reasoned, **not runtime-tested**.
   Tab indentation verified; `:=` discipline verified by reading (explicit types /
   plain `=` used wherever the RHS is a Variant).
-- **Not yet built:** `tower_3d`, `enemy_3d`, `projectile_3d`; `main_3d` scene +
-  script (camera/lighting/input); the `menu.gd` switch. Roughly the foundation
-  only — the rest of the port remains.
+- **`tower_3d.gd`, `enemy_3d.gd`, `projectile_3d.gd`, `radial_projectile_3d.gd`,
+  `board_overlay_3d.gd`, `main_3d.gd` + `scenes/main_3d.tscn` — written.**
+  Same review status: reasoned through, **not runtime-tested**. `menu.gd` now
+  launches `main_3d.tscn`.
+- Entities use `pp` (plane position, Vector2) for all logic; their 3D transform
+  is synced from `pp` per frame. Enemy body rotates around world Y by `-heading`
+  to translate the 2D heading angle into the (x, 0, y) world mapping; the
+  health bar is a billboarded Sprite3D so it stays upright.
+- Laser tower beam is a cylinder reparented under `board._entities` so the
+  tower's local transform doesn't twist it; it's reoriented each frame.
+- Overlay simplified per the decision: range tiles (visible/shadowed/blocked),
+  footprint, and a translucent ghost tower. Badges and tooltips remain deferred.
+- `main_3d.gd` builds the camera/light/sky environment in code, mirroring the
+  way 2D `main.gd` builds its right-pane panel. UI controls are the same minus
+  the badge tooltip layer.
 
 ## Open items to verify (needs a running Godot / a visual check)
 
 - Mesh **normals / winding** on the prism caps vs. sides (could light from the
-  wrong side until seen).
+  wrong side until seen). All entity prisms use the same fan-from-center
+  winding as `game_board_3d._add_prism`, so a winding fix in one place applies
+  everywhere.
 - Whether the **clipped-copper corners** read the same as the 2D board's look.
-- Whether `hexes_in_range` returning `{visible, shadowed, blocked}` matches what the
-  overlay consumers expect (the 2D version split visible vs shadowed).
+- Whether the simplified 3D overlay (flat coloured hex tiles for range / footprint,
+  no internal hex outlines) reads as well as the 2D outline-and-fill version.
+- Camera framing heuristic in `Main3D._frame_camera` — it's a rough fit of board
+  bounds to viewport that compensates for the right-side pane; eyeball it on
+  each map size and tune if it crops the board.
+- Mouse-drag pan factor (`d.y / sin(cam_pitch)`) — chosen so vertical drag tracks
+  the cursor at a tilted view; verify it feels right.
+- Health-bar `pixel_size` and tower / enemy / beam heights (BODY_HEIGHT,
+  BEAM_*_LIFT) — picked as starting points, scale with the board if they
+  visually clash.
+- Enemy-body heading rotation (`rotation.y = -heading`) — should be correct
+  given the (x, y) → (x, 0, y) plane mapping but worth a sanity check on a
+  curving path.
 
 ## Assumptions made (the "best guesses" to confirm or override)
 

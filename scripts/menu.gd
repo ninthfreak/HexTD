@@ -48,4 +48,4 @@ func _ready() -> void:
 
 func _on_pick(path: String) -> void:
 	GameState.selected_path = path
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	get_tree().change_scene_to_file("res://scenes/main_3d.tscn")
