@@ -13,7 +13,6 @@ var pierces_ecc := false
 var pp := Vector2.ZERO
 
 const GLOW := 1.7              # over-bright factor that the env's bloom picks up
-const FLY_HEIGHT := 4.0        # world-Y at which projectiles cruise above the board
 const SPHERE_RADIUS := 1.4
 
 func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := false) -> void:
@@ -46,7 +45,8 @@ func _build_mesh() -> void:
 	add_child(mi)
 
 func _sync_transform() -> void:
-	position = Vector3(pp.x, FLY_HEIGHT, pp.y)
+	# cruise at the enemies' hover height so shots meet them
+	position = Vector3(pp.x, GameBoard3D.ENEMY_Y, pp.y)
 
 # Target.pp is the enemy's plane position; we move pp toward it and resync the
 # 3D transform. On contact we deal damage and self-destruct.
