@@ -48,13 +48,22 @@ plane coordinates (`Vector2`).
 
 ## Visual / mesh approach
 
-- **Board** = layered generated meshes (SurfaceTool / ArrayMesh): a mask substrate
-  prism under every cell (the green board), copper traces raised slightly proud on
-  top using the existing clipped-polygon logic (preserves the edge-smoothing of the
-  2D clip rule), walls as tall prisms, spawn/goal as colored caps.
-- **Materials:** copper = metallic `StandardMaterial3D`, near-mirror
-  (roughness ≈ 0.18); solder mask = green with **clearcoat** (glossy clear epoxy
-  over matte green); walls / spawn / goal are flat.
+- **Board** = generated meshes (SurfaceTool / ArrayMesh): a single continuous
+  flat sheet of mask caps (NOT per-cell prisms — those exposed their side walls
+  as a honeycomb grid; the hex grid is functional, never drawn), the path trace
+  raised proud on top via the clipped-polygon logic with boundary-only walls
+  (one continuous raised surface, no internal lines), walls as low prisms,
+  spawn/goal as caps. Normals: `set_smooth_group(-1)` + `generate_normals` for
+  flat per-face shading; cull disabled (flat board, removes winding fragility).
+- **Theme = dark neon / digital grid** (chosen after the PCB palette read as
+  flat mint+brown and fought the glow). Substrate = near-black, glossy,
+  semi-metallic so the dark floor mirrors the neon via SSR (wet-asphalt look).
+  Path trace + spawn/goal = **emissive neon** (cyan / green / red) bloomed by
+  the HDR glow. Walls = dark with a faint red rim glow. Towers get a modest
+  emissive accent so they read on the dark board. Environment: dark night sky,
+  dim cool key light, SSAO for contact depth, SSR for the reflections, strong
+  HDR glow. The earlier copper/green PCB values are preserved in git history if
+  we ever revert.
 - **Towers:** extrude the existing 2D tower shapes into 3D prisms with materials.
 - **Enemies:** extruded 3D shapes moving along the path, with **billboarded health
   bars** above them.

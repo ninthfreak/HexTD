@@ -11,11 +11,14 @@ extends Node3D
 ## position) for all logic, syncing their 3D transform for display.
 
 const HEX_SIZE := 11.34
-const TRACE_COLOR := Color(0.72, 0.45, 0.20)   # copper
-const MASK_COLOR := Color(0.24, 0.40, 0.28)    # solder mask (green)
-const SPAWN_COLOR := Color(0.30, 0.55, 0.32)
-const GOAL_COLOR := Color(0.66, 0.28, 0.28)
-const WALL_COLOR := Color(0.16, 0.17, 0.22)
+## Dark neon / digital-grid theme. The board is a near-black glossy reflective
+## substrate; the path "trace", spawn and goal are emissive neon so the HDR glow
+## blooms them and the dark floor mirrors them (SSR).
+const TRACE_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan data-lane (emissive)
+const MASK_COLOR := Color(0.025, 0.03, 0.05)   # near-black substrate
+const SPAWN_COLOR := Color(0.20, 1.00, 0.45)   # neon green
+const GOAL_COLOR := Color(1.00, 0.35, 0.30)    # neon red
+const WALL_COLOR := Color(0.09, 0.10, 0.15)    # dark obstacle (faint red rim)
 
 # Heights (world units). Copper is a near-flush inlay (a real PCB's copper is
 # ~flat); walls stand tall. Copper is raised only a hair so it never z-fights
@@ -70,38 +73,44 @@ func _ready() -> void:
 	add_child(_entities)
 
 func _build_materials() -> void:
-	# Back-face culling disabled on every board material: the board is a flat
-	# sheet viewed from above, so two-sided rendering is free of cost concern
-	# and removes any winding/culling fragility (a wrong-way face would simply
-	# vanish otherwise).
+	# Dark neon theme. Back-face culling disabled on every board material (flat
+	# board viewed from above — removes any winding fragility).
+	#
+	# The trace is the glowing data-lane: dark base + bright emissive neon so the
+	# HDR glow blooms it.
 	_mat_copper = StandardMaterial3D.new()
-	_mat_copper.albedo_color = TRACE_COLOR
-	# Mostly DIFFUSE so the copper shows its actual orange albedo. A fully
-	# metallic surface shows reflections, not colour — on a flat board that just
-	# mirrors the dim sky and reads dark brown. A low metallic + sheen keeps a
-	# hint of metal while letting the colour through.
-	_mat_copper.metallic = 0.25
-	_mat_copper.metallic_specular = 0.6
-	_mat_copper.roughness = 0.35
+	_mat_copper.albedo_color = TRACE_COLOR.darkened(0.6)
+	_mat_copper.emission_enabled = true
+	_mat_copper.emission = TRACE_COLOR
+	_mat_copper.emission_energy_multiplier = 2.2   # >1 blooms in the HDR glow
+	_mat_copper.roughness = 0.3
 	_mat_copper.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Substrate: a dark, glossy, semi-metallic floor so it reflects the neon
+	# traces / enemies (SSR) like wet asphalt under city lights.
 	_mat_mask = StandardMaterial3D.new()
 	_mat_mask.albedo_color = MASK_COLOR
-	_mat_mask.metallic = 0.0
-	_mat_mask.roughness = 0.45
-	# A light clear coat for a faint PCB sheen. Kept weak: a strong clearcoat
-	# reflects the bright sky as a white wash that lightens the green to mint.
-	_mat_mask.clearcoat_enabled = true
-	_mat_mask.clearcoat = 0.35
-	_mat_mask.clearcoat_roughness = 0.2
+	_mat_mask.metallic = 0.5
+	_mat_mask.roughness = 0.22
 	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_mat_wall = _flat_mat(WALL_COLOR, 0.6)
-	_mat_spawn = _flat_mat(SPAWN_COLOR, 0.5)
-	_mat_goal = _flat_mat(GOAL_COLOR, 0.5)
+	# Walls: dark obstacles with a faint red rim glow (a hazard cue), not bloomed.
+	_mat_wall = StandardMaterial3D.new()
+	_mat_wall.albedo_color = WALL_COLOR
+	_mat_wall.metallic = 0.4
+	_mat_wall.roughness = 0.4
+	_mat_wall.emission_enabled = true
+	_mat_wall.emission = Color(0.9, 0.15, 0.25)
+	_mat_wall.emission_energy_multiplier = 0.45
+	_mat_wall.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mat_spawn = _emissive_mat(SPAWN_COLOR)
+	_mat_goal = _emissive_mat(GOAL_COLOR)
 
-func _flat_mat(c: Color, rough: float) -> StandardMaterial3D:
+# A bright emissive marker material (spawn / goal), bloomed by the HDR glow.
+func _emissive_mat(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = c
-	m.roughness = rough
+	m.albedo_color = c.darkened(0.5)
+	m.emission_enabled = true
+	m.emission = c
+	m.emission_energy_multiplier = 2.0
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 

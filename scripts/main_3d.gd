@@ -94,34 +94,35 @@ func _build_environment() -> void:
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var psm := ProceduralSkyMaterial.new()
-	psm.sky_top_color = Color(0.36, 0.50, 0.78)
-	psm.sky_horizon_color = Color(0.65, 0.72, 0.82)
-	psm.ground_bottom_color = Color(0.07, 0.09, 0.11)
-	psm.ground_horizon_color = Color(0.18, 0.20, 0.24)
-	psm.sun_angle_max = 6.0
+	# A dark night sky: the neon emission and reflections are the show, not the
+	# sky. Faint cool gradient so towers/walls still pick up a little form light.
+	psm.sky_top_color = Color(0.015, 0.02, 0.04)
+	psm.sky_horizon_color = Color(0.03, 0.05, 0.09)
+	psm.ground_bottom_color = Color(0.01, 0.01, 0.02)
+	psm.ground_horizon_color = Color(0.02, 0.03, 0.05)
+	psm.sun_angle_max = 5.0
 	psm.sun_curve = 0.08
 	sky.sky_material = psm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.38
+	env.ambient_light_energy = 0.5
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	# Screen-space ambient occlusion: darkens the copper-trace edges, wall bases
-	# and contact crevices, so the board reads with depth instead of flat regions.
+	# SSAO: contact darkening at trace edges, wall bases and crevices, for depth.
 	env.ssao_enabled = true
 	env.ssao_radius = 6.0
 	env.ssao_intensity = 2.5
 	env.ssao_power = 1.5
-	# Screen-space reflections: the near-mirror copper reflects the green board,
-	# the walls and the towers around it — the main "real material" cue.
+	# SSR: the dark glossy substrate mirrors the neon traces, enemies and towers
+	# — the wet-floor-under-neon look. This is where the reflections finally read.
 	env.ssr_enabled = true
-	env.ssr_max_steps = 48
+	env.ssr_max_steps = 64
 	env.ssr_fade_in = 0.1
-	env.ssr_fade_out = 2.0
-	# Carry over the bloom feel from the 2D HDR glow: bright emissive pixels
-	# (laser beams, glowing enemies, projectiles) bloom into the scene.
+	env.ssr_fade_out = 4.0
+	# HDR glow blooms every emissive surface (traces, markers, enemies, lasers,
+	# projectiles). Stronger here since the dark scene is built around the glow.
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
-	env.glow_bloom = 0.05
+	env.glow_intensity = 1.0
+	env.glow_bloom = 0.15
 	env.glow_hdr_threshold = 1.0
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.0
@@ -131,10 +132,11 @@ func _build_environment() -> void:
 
 	directional_light = DirectionalLight3D.new()
 	directional_light.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(35.0), 0.0)
-	# Close to the original (1.1), a touch up to compensate for the flat surface
-	# catching light at one angle. Higher than this over-brightens the green into
-	# a washed-out mint, so keep it restrained.
-	directional_light.light_energy = 1.25
+	# Dim, cool key light: just enough to give the dark floor, walls and towers
+	# some form. The neon emission carries the scene; a bright sun would wash the
+	# darkness out and kill the glow/reflection read.
+	directional_light.light_energy = 0.55
+	directional_light.light_color = Color(0.7, 0.8, 1.0)
 	directional_light.shadow_enabled = true
 	add_child(directional_light)
 
