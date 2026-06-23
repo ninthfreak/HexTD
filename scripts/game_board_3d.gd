@@ -17,10 +17,13 @@ const SPAWN_COLOR := Color(0.30, 0.55, 0.32)
 const GOAL_COLOR := Color(0.66, 0.28, 0.28)
 const WALL_COLOR := Color(0.16, 0.17, 0.22)
 
-# Heights (world units). Copper sits proud of the mask; walls stand tall.
+# Heights (world units). Copper is a near-flush inlay (a real PCB's copper is
+# ~flat); walls stand tall. Copper is raised only a hair so it never z-fights
+# the mask beneath it — NOT extruded into per-cell prisms, which would turn the
+# clip-tile boundaries into dovetailed 3D tabs (the "puzzle piece" look).
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
-const COPPER_TOP := 1.6        # copper raised slightly above the mask surface
+const COPPER_TOP := 0.25        # copper inlay sits a hair above the mask surface
 const WALL_TOP := 10.0
 
 ## Copper clip tiles — identical rule to the 2D board (see that file for the full
@@ -138,12 +141,15 @@ func _build_board_meshes() -> void:
 		elif blocking_set.has(cell):
 			_add_prism(wall_st, hex, WALL_TOP, MASK_TOP); have_wall = true
 
-	# copper traces: clipped top polygon, raised, as its own prism
+	# copper traces: clipped top polygon as a FLAT cap, flush over the mask. No
+	# side walls — adjacent copper cells stay one continuous flat surface, and
+	# the clipped corners let the green mask beneath show through exactly as the
+	# 2D board does. (Raising these into prisms is what produced the puzzle tabs.)
 	for cell in trace_set.keys():
 		var c := _cell_to_pixel(cell)
 		var poly := _clipped_plane_polygon(cell, c)
 		if poly.size() >= 3:
-			_add_prism(copper_st, poly, COPPER_TOP, MASK_TOP)
+			_add_cap(copper_st, poly, COPPER_TOP)
 			have_copper = true
 
 	_commit(mask_st, _mat_mask)
@@ -160,6 +166,10 @@ func _commit(st: SurfaceTool, mat: Material) -> void:
 	_mesh_root.add_child(mi)
 
 # Top cap (single face) at height y for a plane polygon, as a triangle fan.
+# Winding note: the plane polygon is CCW in plane space, but the (x,y)->(x,0,y)
+# mapping flips handedness, so a (center, a, b) fan would face DOWN (and get
+# back-face culled when viewed from above). We emit (center, b, a) so the cap
+# normal points +Y up.
 func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 	var center := Vector2.ZERO
 	for p in poly:
@@ -171,10 +181,11 @@ func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
 		st.add_vertex(c3)
-		st.add_vertex(Vector3(a.x, y, a.y))
 		st.add_vertex(Vector3(b.x, y, b.y))
+		st.add_vertex(Vector3(a.x, y, a.y))
 
-# A prism: top cap at `top`, vertical sides down to `bottom`.
+# A prism: top cap at `top`, vertical sides down to `bottom`. Side triangles are
+# wound to face OUTWARD given the same handedness flip as the cap above.
 func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
 	_add_cap(st, poly, top)
 	var n := poly.size()
@@ -186,8 +197,8 @@ func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: f
 		var ab := Vector3(a.x, bottom, a.y)
 		var bb := Vector3(b.x, bottom, b.y)
 		# two triangles per side quad (outward winding)
-		st.add_vertex(at); st.add_vertex(ab); st.add_vertex(bb)
-		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(bt)
+		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
+		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
 
 func _hex_plane_polygon(center: Vector2) -> PackedVector2Array:
 	var pts := PackedVector2Array()

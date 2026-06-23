@@ -427,15 +427,17 @@ func _emit_prism_fan(st: SurfaceTool, poly: PackedVector2Array, top: float, bott
 	for i in range(n):
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
+		# (center, b, a): cap faces +Y up under the (x,y)->(x,0,y) handedness
+		# flip; sides wound outward. See GameBoard3D._add_cap / _add_prism.
 		st.add_vertex(Vector3(center.x, top, center.y))
-		st.add_vertex(Vector3(a.x, top, a.y))
 		st.add_vertex(Vector3(b.x, top, b.y))
+		st.add_vertex(Vector3(a.x, top, a.y))
 		var at := Vector3(a.x, top, a.y)
 		var bt := Vector3(b.x, top, b.y)
 		var ab := Vector3(a.x, bottom, a.y)
 		var bb := Vector3(b.x, bottom, b.y)
-		st.add_vertex(at); st.add_vertex(ab); st.add_vertex(bb)
-		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(bt)
+		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
+		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
 
 # ---------------------------------------------------------------- laser beam
 # Built lazily so non-laser towers stay cheap. Each frame the cylinder is
