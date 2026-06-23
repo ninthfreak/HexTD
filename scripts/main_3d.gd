@@ -103,7 +103,7 @@ func _build_environment() -> void:
 	sky.sky_material = psm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.35
+	env.ambient_light_energy = 0.6
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	# Carry over the bloom feel from the 2D HDR glow: bright emissive pixels
 	# (laser beams, glowing enemies, projectiles) bloom into the scene.
@@ -119,7 +119,7 @@ func _build_environment() -> void:
 
 	directional_light = DirectionalLight3D.new()
 	directional_light.rotation = Vector3(deg_to_rad(-55.0), deg_to_rad(35.0), 0.0)
-	directional_light.light_energy = 1.1
+	directional_light.light_energy = 1.35
 	directional_light.shadow_enabled = true
 	add_child(directional_light)
 
