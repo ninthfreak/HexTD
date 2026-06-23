@@ -6,7 +6,7 @@ range previews. Everything is drawn with basic shapes in code — no image asset
 
 ## Run it
 
-1. Open **Godot 4** (4.3 or newer).
+1. Open **Godot 4** (4.6 or newer).
 2. Import this folder (select it / its `project.godot`).
 3. Press **Play** (F5). You start on the **map menu** — pick a map. The window
    opens at 1920x1080 and is resizable.
