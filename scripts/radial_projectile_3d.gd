@@ -18,7 +18,6 @@ var can_see_encrypted := false  # tower had Cipher
 var pp := Vector2.ZERO
 
 const GLOW := 1.7
-const FLY_HEIGHT := 4.0
 const SPHERE_RADIUS := 2.4
 const HIT_PAD := 8.0           # projectile-radius slack added to enemy radius
 
@@ -58,7 +57,8 @@ func _build_mesh() -> void:
 	add_child(mi)
 
 func _sync_transform() -> void:
-	position = Vector3(pp.x, FLY_HEIGHT, pp.y)
+	# cruise at the enemies' hover height so shots meet them
+	position = Vector3(pp.x, GameBoard3D.ENEMY_Y, pp.y)
 
 func _process(delta: float) -> void:
 	var step := speed * delta
