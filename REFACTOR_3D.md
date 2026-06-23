@@ -61,15 +61,17 @@ plane coordinates (`Vector2`).
   edges; blocking walls are prisms above the plateau; spawn/goal are clipped
   markers on the sunken floor. Flat shading (`set_smooth_group(-1)` +
   `generate_normals`); cull disabled (removes winding fragility). `COPPER_TOP`
-  stays the shared placement plane (towers/picking/overlays); enemies travel on
-  the sunken floor (`PATH_TOP`).
+  stays the shared placement plane (towers/picking/overlays); enemies HOVER above
+  the board at `ENEMY_Y` (floating geometric solids, not resting on the floor).
 - **Theme = dark neon / digital grid** (chosen after the PCB palette read as
   flat mint+brown and fought the glow). The build plateau = **purple-pink with a
   very dim self-glow** (emission < 1 so it reads as faintly lit but doesn't
-  bloom), lightly glossy. The sunken path floor = near-mirror polished black so
-  enemies and the neon walls reflect in it via SSR (wet-asphalt look); the trench
-  walls + spawn/goal = **emissive neon** (cyan / green / red) bloomed by the HDR
-  glow. Blocking walls = dark with a faint red rim glow. Towers get a modest
+  bloom), lightly glossy. The sunken path floor AND trench walls = near-mirror
+  polished black (one dark mirror reflecting the enemies/neon via SSR — wet
+  asphalt). The neon path border is a **flat emissive cyan rim strip** laid along
+  the top edge (flat so it reads consistently from above on every edge, unlike
+  vertical walls which only glowed where they faced the camera); spawn/goal =
+  emissive neon green/red. Blocking walls = dark with a faint red rim glow. Towers get a modest
   emissive accent so they read on the dark board. Environment: dark night sky,
   dim cool key light, SSAO for contact depth, SSR for the reflections, strong
   HDR glow. The earlier copper/green PCB values are preserved in git history if
