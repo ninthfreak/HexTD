@@ -260,8 +260,11 @@ func _faces_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	var fill: Color = data.color
 	mat.albedo_color = fill
-	mat.metallic = 0.6
-	mat.roughness = 0.3
+	# Low metallic + medium roughness so the faces catch the (dim) key light as a
+	# solid coloured body — a high-metallic body just reflects the dark sky and
+	# reads black, leaving only the edges (which then bloom into a formless blob).
+	mat.metallic = 0.2
+	mat.roughness = 0.5
 	# Two-sided: the hull winding yields outward normals (so front faces light
 	# correctly), but for convex solids the back faces are occluded anyway, and
 	# disabling culling removes any winding-convention risk (no inside-out body).
@@ -269,11 +272,11 @@ func _faces_material() -> StandardMaterial3D:
 	if data.glow > 0.0:
 		mat.emission_enabled = true
 		mat.emission = fill
-		mat.emission_energy_multiplier = 0.25 + data.glow * 0.3
+		mat.emission_energy_multiplier = 0.3 + data.glow * 0.25
 	return mat
 
-# Edges: unshaded bright emission so the outline blooms in the HDR glow — the
-# "pop" of the faceted-plus-edge-glow look.
+# Edges: unshaded emission for a crisp glowing outline. Kept modest — too bright
+# and the bloom swallows the body into a formless blob.
 func _edge_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	var fill: Color = data.color
@@ -281,7 +284,7 @@ func _edge_material() -> StandardMaterial3D:
 	mat.albedo_color = fill.lightened(0.3)
 	mat.emission_enabled = true
 	mat.emission = fill.lightened(0.3)
-	mat.emission_energy_multiplier = 2.5 + data.glow * GLOW_HDR_BOOST
+	mat.emission_energy_multiplier = 1.2 + data.glow * 0.4
 	return mat
 
 # Extrude the 2D silhouette into a prism (legacy non-solid shapes). Winding

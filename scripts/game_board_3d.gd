@@ -242,10 +242,10 @@ func _add_path_walls(black_st: SurfaceTool, rim_st: SurfaceTool, center: Vector2
 		var bb := Vector3(b.x, PATH_TOP, b.y)
 		black_st.add_vertex(at); black_st.add_vertex(bb); black_st.add_vertex(ab)
 		black_st.add_vertex(at); black_st.add_vertex(bt); black_st.add_vertex(bb)
-		# flat neon rim strip on the plateau, just proud of the cap to avoid z-fight.
-		# Endpoints are extended along the edge by RIM_WIDTH so neighbouring strips
-		# OVERLAP at the corners (closing the wedge gaps that made the border look
-		# dashed). Overlapping coplanar same-colour quads show no artifact.
+		# flat neon rim strip on the plateau, lifted clearly proud of the cap.
+		# Strips do NOT overlap: adjacent edges share their inner vertices (a/b),
+		# so the border stays continuous along the path. (Overlapping coplanar
+		# quads z-fight and drop out in patches — that was the "dashed" look.)
 		var dir: Vector2 = b - a
 		if dir.length() < 0.0001:
 			continue
@@ -253,13 +253,11 @@ func _add_path_walls(black_st: SurfaceTool, rim_st: SurfaceTool, center: Vector2
 		var nrm := Vector2(-dir.y, dir.x)
 		if nrm.dot(outward) < 0.0:
 			nrm = -nrm
-		var a2: Vector2 = a - dir * RIM_WIDTH
-		var b2: Vector2 = b + dir * RIM_WIDTH
-		var ao: Vector2 = a2 + nrm * RIM_WIDTH
-		var bo: Vector2 = b2 + nrm * RIM_WIDTH
+		var ao: Vector2 = a + nrm * RIM_WIDTH
+		var bo: Vector2 = b + nrm * RIM_WIDTH
 		var ry := COPPER_TOP + 0.25   # clearly proud of the plateau cap (no z-fighting drop-outs)
-		rim_st.add_vertex(Vector3(a2.x, ry, a2.y)); rim_st.add_vertex(Vector3(b2.x, ry, b2.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
-		rim_st.add_vertex(Vector3(a2.x, ry, a2.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
+		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(b.x, ry, b.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
+		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
 
 # Fill the corner(s) clipped off a path cell, capped at `y` (plateau level), so
 # the plateau stays continuous up to the smooth clip edge. `omit` is a single
