@@ -82,12 +82,11 @@ func _build_materials() -> void:
 	# Dark neon theme. Back-face culling disabled on every board material (flat
 	# board viewed from above — removes any winding fragility).
 	#
-	# The path is a sunken channel of glossy polished-black floor AND walls (so the
-	# whole trench is one dark mirror that reflects the enemies/neon via SSR). The
-	# neon border is a separate FLAT emissive strip laid along the top rim (see
-	# _add_path_walls): a flat strip reads consistently from above on every edge,
-	# unlike the vertical walls (which only showed glow where they faced the
-	# camera). Floor+walls = _mat_copper (glossy black); rim strip = _mat_copper_edge.
+	# The path is a sunken channel: a glossy polished-black floor (_mat_copper,
+	# reflects enemies/neon via SSR) bordered by EMISSIVE trench walls
+	# (_mat_copper_edge). The walls ARE the neon border — being vertical they meet
+	# at a shared edge at every corner, so the outline is continuous (a flat
+	# plateau strip leaves wedge gaps at corners and dashes; see _add_path_walls).
 	_mat_copper = StandardMaterial3D.new()
 	_mat_copper.albedo_color = Color(0.01, 0.012, 0.015)
 	_mat_copper.metallic = 0.95
@@ -98,7 +97,7 @@ func _build_materials() -> void:
 	_mat_copper_edge.albedo_color = TRACE_COLOR.darkened(0.7)
 	_mat_copper_edge.emission_enabled = true
 	_mat_copper_edge.emission = TRACE_COLOR
-	_mat_copper_edge.emission_energy_multiplier = 3.4   # bright crisp neon line
+	_mat_copper_edge.emission_energy_multiplier = 2.0   # emissive trench walls (continuous border)
 	_mat_copper_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Build plateau: purple-pink with a VERY DIM self-glow (emission < 1 so it
 	# reads as faintly lit but does not bloom), lightly glossy so it still catches
@@ -192,7 +191,7 @@ func _build_board_meshes() -> void:
 					_add_cap(goal_st, poly, PATH_TOP + 0.05); have_goal = true
 				else:
 					_add_cap(path_st, poly, PATH_TOP)
-				_add_path_walls(path_st, edge_st, c, poly)
+				_add_path_walls(edge_st, c, poly)
 				have_path = true
 			# fill the clipped-off corner(s) at plateau level so the plateau stays
 			# continuous (and full-hex everywhere except this smooth path edge)
@@ -210,20 +209,21 @@ func _build_board_meshes() -> void:
 	if have_goal: _commit(goal_st, _mat_goal)
 	if have_wall: _commit(wall_st, _mat_wall, true)   # walls cast shadows (depth)
 	if have_path:
-		_commit(path_st, _mat_copper, true)              # glossy black floor + trench walls
-		_commit(edge_st, _mat_copper_edge)               # flat neon rim border
+		_commit(path_st, _mat_copper, true)              # glossy black sunken floor
+		_commit(edge_st, _mat_copper_edge)               # emissive trench walls = continuous neon border
 
 func _is_path_cell(cell: Vector2i) -> bool:
 	return trace_set.has(cell) or cell == map.spawn or cell == map.goal
 
-# For each clipped-floor edge of a path cell that borders a non-path cell, add a
-# glossy-black trench WALL (into `black_st`, PATH_TOP up to the plateau rim) and a
-# flat emissive RIM strip (into `rim_st`, on the plateau just above COPPER_TOP,
-# extending RIM_WIDTH outward from the edge). The rim is the neon border — flat,
-# so it reads consistently from above on every edge. Boundary detection probes
-# just outside the edge midpoint: a path neighbour means an internal edge (no wall
-# or rim, channel stays continuous); otherwise it gets both.
-func _add_path_walls(black_st: SurfaceTool, rim_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
+# The neon border = the trench WALL itself, emissive (into `edge_st`), for each
+# clipped-floor edge that borders a non-path cell — a vertical quad from the
+# sunken floor (PATH_TOP) up to the plateau rim (COPPER_TOP). Vertical walls meet
+# at a shared vertical edge at every corner, so the border is continuous by
+# construction (a flat plateau strip cannot do this — two flat quads leave a
+# wedge gap at each corner, which is what made the border dash). Boundary
+# detection probes just outside the edge midpoint: a path neighbour means an
+# internal edge (no wall, channel stays continuous); otherwise it's the silhouette.
+func _add_path_walls(edge_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
 	var n := poly.size()
 	for i in range(n):
 		var a := poly[i]
@@ -235,29 +235,12 @@ func _add_path_walls(black_st: SurfaceTool, rim_st: SurfaceTool, center: Vector2
 		var probe: Vector2 = mid + outward.normalized() * (HEX_SIZE * 0.5)
 		if _is_path_cell(world_cell(probe)):
 			continue   # internal edge shared with a path neighbour
-		# glossy-black trench wall (rim down to floor)
 		var at := Vector3(a.x, COPPER_TOP, a.y)
 		var bt := Vector3(b.x, COPPER_TOP, b.y)
 		var ab := Vector3(a.x, PATH_TOP, a.y)
 		var bb := Vector3(b.x, PATH_TOP, b.y)
-		black_st.add_vertex(at); black_st.add_vertex(bb); black_st.add_vertex(ab)
-		black_st.add_vertex(at); black_st.add_vertex(bt); black_st.add_vertex(bb)
-		# flat neon rim strip on the plateau, lifted clearly proud of the cap.
-		# Strips do NOT overlap: adjacent edges share their inner vertices (a/b),
-		# so the border stays continuous along the path. (Overlapping coplanar
-		# quads z-fight and drop out in patches — that was the "dashed" look.)
-		var dir: Vector2 = b - a
-		if dir.length() < 0.0001:
-			continue
-		dir = dir.normalized()
-		var nrm := Vector2(-dir.y, dir.x)
-		if nrm.dot(outward) < 0.0:
-			nrm = -nrm
-		var ao: Vector2 = a + nrm * RIM_WIDTH
-		var bo: Vector2 = b + nrm * RIM_WIDTH
-		var ry := COPPER_TOP + 0.25   # clearly proud of the plateau cap (no z-fighting drop-outs)
-		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(b.x, ry, b.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
-		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
+		edge_st.add_vertex(at); edge_st.add_vertex(bb); edge_st.add_vertex(ab)
+		edge_st.add_vertex(at); edge_st.add_vertex(bt); edge_st.add_vertex(bb)
 
 # Fill the corner(s) clipped off a path cell, capped at `y` (plateau level), so
 # the plateau stays continuous up to the smooth clip edge. `omit` is a single
