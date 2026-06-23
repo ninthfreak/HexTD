@@ -254,59 +254,117 @@ func _is_border_edge(center: Vector2, a: Vector2, b: Vector2) -> bool:
 func _vkey(v: Vector2) -> Vector2i:
 	return Vector2i(roundi(v.x * 20.0), roundi(v.y * 20.0))
 
-# The neon border, built as ONE mitered ribbon (into `rim_st`) on the plateau,
-# lifted clearly proud of the cap. Each boundary edge adds its outward normal to
-# its two endpoints. Per vertex we then offset by RIM_WIDTH / cos(half-angle)
-# along the averaged normal — a proper miter, so the ribbon keeps CONSTANT
-# perpendicular width through corners (not pinched), clamped by a miter limit to
-# avoid spikes at sharp turns. The offset point is computed per-vertex and shared
-# by both edges meeting there, so the ribbon stays continuous (no gaps/overlaps).
+# undirected edge key (sorted vertex-key pair)
+func _ekey(a: Vector2i, b: Vector2i) -> Vector4i:
+	if a.x < b.x or (a.x == b.x and a.y <= b.y):
+		return Vector4i(a.x, a.y, b.x, b.y)
+	return Vector4i(b.x, b.y, a.x, a.y)
+
+# The neon border ribbon (into `rim_st`) on the plateau, lifted clearly proud of
+# the cap. The raw boundary follows the hex facets (zigzag), so we: collect the
+# boundary edges, stitch them into ordered loops, Laplacian-smooth each loop, then
+# stroke it as a mitered ribbon that is INSET slightly inward so it covers the
+# faceted floor edge instead of leaving black nubs poking out. Validated offline.
 func _build_path_border(rim_st: SurfaceTool) -> void:
-	var vsum := {}   # vkey -> summed outward normals
-	var vnrm := {}   # vkey -> one representative incident normal (for the half-angle)
-	var vpos := {}   # vkey -> plane position
-	var segs: Array = []
+	var pos := {}      # Vector2i -> Vector2 (plane pos)
+	var nbr := {}      # Vector2i -> Array[Vector2i]
+	var enorm := {}    # Vector4i -> Vector2 (outward normal of that edge)
 	for cell in map.cells:
 		if not _is_path_cell(cell):
 			continue
 		var c := _cell_to_pixel(cell)
 		var poly := _clipped_plane_polygon(cell, c, trace_set)
-		var n := poly.size()
-		for i in range(n):
-			var a := poly[i]
-			var b := poly[(i + 1) % n]
+		var m := poly.size()
+		for i in range(m):
+			var a: Vector2 = poly[i]
+			var b: Vector2 = poly[(i + 1) % m]
 			if not _is_border_edge(c, a, b):
 				continue
-			var d: Vector2 = b - a
-			if d.length() < 0.0001:
+			var ka := _vkey(a)
+			var kb := _vkey(b)
+			pos[ka] = a
+			pos[kb] = b
+			if not nbr.has(ka): nbr[ka] = []
+			if not nbr.has(kb): nbr[kb] = []
+			if not (kb in nbr[ka]): nbr[ka].append(kb)
+			if not (ka in nbr[kb]): nbr[kb].append(ka)
+			var d: Vector2 = (b - a).normalized()
+			var nv := Vector2(-d.y, d.x)
+			if nv.dot(((a + b) * 0.5) - c) < 0.0:
+				nv = -nv
+			enorm[_ekey(ka, kb)] = nv
+	# stitch boundary edges into ordered loops
+	var used := {}
+	var loops: Array = []
+	for s in nbr.keys():
+		for first in nbr[s]:
+			var e0 := _ekey(s, first)
+			if used.has(e0):
 				continue
-			d = d.normalized()
-			var nrm := Vector2(-d.y, d.x)
-			if nrm.dot(((a + b) * 0.5) - c) < 0.0:
-				nrm = -nrm
-			segs.append([a, b])
-			for v in [a, b]:
-				var key := _vkey(v)
-				vpos[key] = v
-				vnrm[key] = nrm
-				vsum[key] = (vsum.get(key, Vector2.ZERO)) + nrm
-	# resolve each vertex's mitered offset point once (shared by its edges)
-	var voff := {}
-	for key in vsum:
-		var rep: Vector2 = vnrm[key]
-		var mdir: Vector2 = vsum[key]
-		mdir = mdir.normalized() if mdir.length() > 0.0001 else rep
-		var cosang: float = maxf(mdir.dot(rep), 0.5)   # miter limit: cap extension at 2x
-		var p: Vector2 = vpos[key]
-		voff[key] = p + mdir * (RIM_WIDTH / cosang)
+			used[e0] = true
+			var loop: Array = [s]
+			var prev: Vector2i = s
+			var cur: Vector2i = first
+			var guard := 0
+			while cur != s and guard < 100000:
+				guard += 1
+				loop.append(cur)
+				var nxt: Variant = null
+				for cand in nbr[cur]:
+					if cand == prev:
+						continue
+					var e2 := _ekey(cur, cand)
+					if used.has(e2):
+						continue
+					nxt = cand
+					used[e2] = true
+					break
+				if nxt == null:
+					break
+				prev = cur
+				cur = nxt
+			if loop.size() >= 3:
+				loops.append(loop)
 	var ry := COPPER_TOP + 0.25
-	for seg in segs:
-		var a: Vector2 = seg[0]
-		var b: Vector2 = seg[1]
-		var ao: Vector2 = voff[_vkey(a)]
-		var bo: Vector2 = voff[_vkey(b)]
-		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(b.x, ry, b.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
-		rim_st.add_vertex(Vector3(a.x, ry, a.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
+	var inset := 1.2
+	for loop in loops:
+		var nn: int = loop.size()
+		var pts := PackedVector2Array()
+		for k in loop:
+			pts.append(pos[k])
+		# Laplacian smoothing of the loop (2 iterations) to round the hex facets
+		for _it in range(2):
+			var sm := pts.duplicate()
+			for i in range(nn):
+				var p0: Vector2 = pts[(i - 1 + nn) % nn]
+				var p1: Vector2 = pts[i]
+				var p2: Vector2 = pts[(i + 1) % nn]
+				sm[i] = p1 * 0.5 + (p0 + p2) * 0.25
+			pts = sm
+		# per-vertex outward direction (from edge normals) + miter length factor
+		var outu := PackedVector2Array()
+		var mfac := PackedFloat32Array()
+		for i in range(nn):
+			var k: Vector2i = loop[i]
+			var kp: Vector2i = loop[(i - 1 + nn) % nn]
+			var kn: Vector2i = loop[(i + 1) % nn]
+			var n1: Vector2 = enorm.get(_ekey(k, kp), Vector2.ZERO)
+			var n2: Vector2 = enorm.get(_ekey(k, kn), Vector2.ZERO)
+			var rep: Vector2 = n2 if n2 != Vector2.ZERO else n1
+			var sv: Vector2 = n1 + n2
+			var mdir: Vector2 = sv.normalized() if sv.length() > 0.0001 else rep
+			outu.append(mdir)
+			mfac.append(1.0 / maxf(mdir.dot(rep), 0.6))   # miter limit
+		for i in range(nn):
+			var j := (i + 1) % nn
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[j]
+			var ai: Vector2 = a - outu[i] * inset
+			var bi: Vector2 = b - outu[j] * inset
+			var ao: Vector2 = a + outu[i] * (RIM_WIDTH * mfac[i])
+			var bo: Vector2 = b + outu[j] * (RIM_WIDTH * mfac[j])
+			rim_st.add_vertex(Vector3(ai.x, ry, ai.y)); rim_st.add_vertex(Vector3(bi.x, ry, bi.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y))
+			rim_st.add_vertex(Vector3(ai.x, ry, ai.y)); rim_st.add_vertex(Vector3(bo.x, ry, bo.y)); rim_st.add_vertex(Vector3(ao.x, ry, ao.y))
 
 # Fill the corner(s) clipped off a path cell, capped at `y` (plateau level), so
 # the plateau stays continuous up to the smooth clip edge. `omit` is a single
