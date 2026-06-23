@@ -1,0 +1,16 @@
+[gd_resource type="Environment" format=3]
+
+; 2D glow for HexTowerDefense (Forward+). Only pixels brighter than
+; glow_hdr_threshold bloom, so glow is selective: enemies draw their colour
+; over-bright (see enemy.gd) and bloom; the board, overlays and UI stay crisp.
+; Open this file in the inspector to tune glow live.
+
+[resource]
+background_mode = 3            ; BG_CANVAS — use the 2D canvas as the background
+glow_enabled = true
+glow_intensity = 1.2           ; overall brightness of the bloom
+glow_strength = 1.0            ; how far the bloom spreads per level
+glow_bloom = 0.0               ; extra screen-wide bloom (0 = none)
+glow_blend_mode = 0            ; 0 = Additive (bright halos), 1 = Screen (softer)
+glow_hdr_threshold = 1.0       ; only brightness ABOVE this blooms
+glow_hdr_scale = 2.0

@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hex TD Editor</title>
+<style>
+  :root{
+    --bg:#0e1217; --panel:#161b22; --panel2:#1c2230; --border:#2a3340;
+    --text:#d7dee8; --muted:#8b97a7; --accent:#ffd23f;
+    --grass:#3D6647; --road:#B87333; --spawn:#4D8C52; --goal:#A84747;
+    --ok:#5bd17e; --warn:#ffce5b; --bad:#ff6b6b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg); color:var(--text);
+    font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;}
+  header{display:flex; align-items:center; gap:18px; padding:10px 16px 0; border-bottom:1px solid var(--border)}
+  header h1{font-size:14px; letter-spacing:.14em; margin:0 0 10px; font-weight:700}
+  .conn{font:11px var(--mono); color:var(--muted); margin:0 0 10px auto}
+  .conn b{color:var(--ok)} .conn.bad b{color:var(--bad)}
+  .tabs{display:flex; gap:4px; margin-bottom:-1px}
+  .tabbtn{padding:8px 16px; border:1px solid var(--border); border-bottom:none;
+    background:var(--panel); color:var(--muted); border-radius:8px 8px 0 0; cursor:pointer; font-size:13px}
+  .tabbtn.active{background:var(--panel2); color:var(--text)}
+  .tabbtn.dirty::after{content:'\00a0\25CF'; color:var(--accent); font-size:10px}
+  .tab{flex:1; display:flex; min-height:0}
+  .tab[hidden]{display:none}
+  .side{width:300px; flex:none; background:var(--panel); border-right:1px solid var(--border);
+    padding:16px; overflow:auto; display:flex; flex-direction:column; gap:14px}
+  .stage{flex:1; overflow:auto; background:var(--bg)}
+  .stage.grid{background:radial-gradient(circle at 1px 1px, rgba(255,255,255,.035) 1px, transparent 0) 0 0/22px 22px, var(--bg)}
+  .stage.pad{padding:24px}
+  .stage-inner{padding:28px; min-width:max-content; min-height:max-content}
+
+  .label{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+  .group{display:flex; flex-direction:column; gap:8px}
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  input[type=text],input[type=number],select{background:var(--panel2); border:1px solid var(--border);
+    color:var(--text); border-radius:6px; padding:7px 9px; font:13px var(--mono); width:100%}
+  select{ -webkit-appearance:none; -moz-appearance:none; appearance:none;
+    color:#f2f5f9; background-color:var(--panel2); font-weight:500;
+    background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+    background-position:right 14px center,right 9px center; background-size:5px 5px,5px 5px; background-repeat:no-repeat;
+    padding-right:28px; }
+  select option{ color:#f2f5f9; background-color:var(--panel2); }
+  input[type=number]{width:84px}
+  input[type=color]{width:38px; height:30px; padding:2px; background:var(--panel2); border:1px solid var(--border); border-radius:6px}
+  button{background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; padding:8px 11px; font-size:13px; cursor:pointer}
+  button:hover{border-color:#3a4658}
+  button:disabled{opacity:.45; cursor:default}
+  button.primary{background:var(--accent); color:#1a1300; border-color:var(--accent); font-weight:600}
+  button.danger{border-color:#5a2f38; color:#ff9a9a}
+  .btns{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+  .hint{font-size:12px; color:var(--muted)}
+  .savebar{margin-top:auto; display:flex; flex-direction:column; gap:8px; border-top:1px solid var(--border); padding-top:12px}
+  .savebar .file{font:11px var(--mono); color:var(--muted)}
+  .savebar .file .pending{color:var(--accent)}
+  .listitem{display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--border);
+    border-radius:6px; background:var(--panel2); cursor:pointer; margin-bottom:6px}
+  .listitem.sel{border-color:var(--accent)}
+  .listitem .sw{width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.4);flex:none}
+  .listitem .nm{flex:1}
+  .listitem .meta{font:11px var(--mono); color:var(--muted)}
+  .listitem .reorder{display:flex; flex-direction:column; gap:1px; flex:none}
+  .listitem .reorder button{font:8px/1 var(--mono); padding:1px 5px; background:var(--panel2);
+    border:1px solid var(--border); color:var(--muted); border-radius:3px; cursor:pointer}
+  .listitem .reorder button:hover:not(:disabled){border-color:var(--accent); color:var(--text)}
+  .listitem .reorder button:disabled{opacity:.25; cursor:default}
+  .formgrid{display:grid; grid-template-columns:auto 1fr; gap:10px 12px; align-items:center; max-width:560px}
+  .formgrid .full{grid-column:1 / -1}
+  .card{border:1px solid var(--border); border-radius:8px; background:var(--panel); padding:14px; margin-bottom:14px; max-width:680px}
+  .card h3{margin:0 0 10px; font-size:13px; letter-spacing:.08em}
+  .grp{display:grid; grid-template-columns:1fr 90px 90px auto; gap:8px; align-items:center; margin-bottom:8px}
+  .grp .lbl{font:11px var(--mono); color:var(--muted)}
+  canvas{display:block; cursor:crosshair; border-radius:8px}
+  .preview{background:#0d1117; border:1px solid var(--border); border-radius:8px}
+  .status{border:1px solid var(--border); border-radius:6px; padding:10px 12px; font:12px/1.4 var(--mono); background:var(--panel2)}
+  .status .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:middle}
+  .status.ok{border-color:rgba(91,209,126,.5)} .status.ok .dot{background:var(--ok)}
+  .status.warn .dot{background:var(--warn)} .status.bad{border-color:rgba(255,107,107,.5)} .status.bad .dot{background:var(--bad)}
+  .tools{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+  .tool{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;background:var(--panel2);
+    border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px}
+  .tool.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+  .sw{width:14px;height:14px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.4)}
+  .sw.grass{background:var(--grass)} .sw.path{background:var(--road)} .sw.spawn{background:var(--spawn)} .sw.goal{background:var(--goal)}
+  .sw.block{background:#2b2f3a}
+  .sw.erase{background:repeating-linear-gradient(45deg,#333 0 4px,#222 4px 8px)}
+  input[type=range]{flex:1; accent-color:var(--accent)}
+  kbd{font:11px var(--mono);background:#0d1117;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:1px 5px}
+  .toast{position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--accent); color:#1a1300;
+    padding:8px 16px; border-radius:6px; font-weight:600; opacity:0; transition:opacity .2s; pointer-events:none}
+  .toast.show{opacity:1}
+  .banner{background:#3a2412; border-bottom:1px solid #5a3a1a; color:#ffce9b; padding:8px 16px; font:12px var(--mono)}
+</style>
+</head>
+<body>
+  <header>
+    <h1>HEX&nbsp;TD&nbsp;EDITOR</h1>
+    <div class="tabs">
+      <div class="tabbtn active" data-tab="maps">Maps</div>
+      <div class="tabbtn" data-tab="enemies">Enemies</div>
+      <div class="tabbtn" data-tab="waves">Waves</div>
+      <div class="tabbtn" data-tab="towers">Towers</div>
+    </div>
+    <div class="conn" id="conn">connecting…</div>
+  </header>
+  <div class="banner" id="banner" hidden></div>
+
+  <!-- ============ MAPS ============ -->
+  <div class="tab" id="tab-maps">
+    <aside class="side">
+      <div class="group"><div class="label">Open map</div>
+        <select id="m_select"></select>
+        <button id="m_new">+ New map</button>
+      </div>
+      <div class="group"><div class="label">Map name (= filename)</div><input id="m_name" type="text" value="My Map" spellcheck="false"></div>
+      <div class="group"><div class="label">Brush</div>
+        <div class="tools" id="m_tools">
+          <div class="tool active" data-tool="path"><span class="sw path"></span>Trace <kbd>P</kbd></div>
+          <div class="tool" data-tool="grass"><span class="sw grass"></span>Solder Mask <kbd>G</kbd></div>
+          <div class="tool" data-tool="spawn"><span class="sw spawn"></span>Spawn <kbd>S</kbd></div>
+          <div class="tool" data-tool="goal"><span class="sw goal"></span>Goal <kbd>O</kbd></div>
+          <div class="tool" data-tool="block"><span class="sw block"></span>Block <kbd>B</kbd></div>
+          <div class="tool" data-tool="erase"><span class="sw erase"></span>Erase <kbd>E</kbd></div>
+        </div>
+      </div>
+      <div class="group"><div class="label">Brush size</div>
+        <div class="tools" id="m_brush">
+          <div class="tool" data-brush="0">1 <kbd>1</kbd></div>
+          <div class="tool active" data-brush="1">7 <kbd>2</kbd></div>
+          <div class="tool" data-brush="2">19 <kbd>3</kbd></div>
+        </div>
+      </div>
+      <div class="group"><div class="label">Grid</div>
+        <div class="row"><label class="hint">cols</label><input id="m_cols" type="number" min="2" max="80" value="20">
+          <label class="hint">rows</label><input id="m_rows" type="number" min="2" max="60" value="14"><button id="m_apply">Apply</button></div>
+        <div class="row"><span class="hint">zoom</span><input id="m_zoom" type="range" min="8" max="48" value="22"></div>
+        <button id="m_clear">Clear map</button>
+      </div>
+      <div class="status warn" id="m_status"><span class="dot"></span><span id="m_statusText">Place a spawn and a goal.</span></div>
+      <div class="hint" id="m_counts"></div>
+      <div class="savebar">
+        <div class="file">→ <span id="m_file">maps/my_map.json</span> <span id="m_pending"></span></div>
+        <button class="primary" id="m_save">Save map</button>
+      </div>
+    </aside>
+    <main class="stage grid"><div class="stage-inner"><canvas id="m_cv"></canvas></div></main>
+  </div>
+
+  <!-- ============ ENEMIES ============ -->
+  <div class="tab" id="tab-enemies" hidden>
+    <aside class="side">
+      <div class="label">Enemies</div>
+      <div id="en_list"></div>
+      <button id="en_add">+ Add enemy</button>
+      <div class="savebar">
+        <div class="file">→ data/enemies.json <span id="en_pending"></span></div>
+        <button class="primary" id="en_save">Save enemies.json</button>
+        <button id="en_revert">Revert to saved</button>
+      </div>
+    </aside>
+    <main class="stage pad"><div id="en_editor"></div></main>
+  </div>
+
+  <!-- ============ WAVES ============ -->
+  <div class="tab" id="tab-waves" hidden>
+    <aside class="side">
+      <div class="group"><div class="label">Default gap (s)</div><input id="wv_default" type="number" step="0.05" min="0" value="0.7"></div>
+      <button id="wv_addwave">+ Add wave</button>
+      <div class="hint">Each wave runs its groups in order. <code>type</code> is an enemy id.</div>
+      <div class="savebar">
+        <div class="file">→ data/waves.json <span id="wv_pending"></span></div>
+        <button class="primary" id="wv_save">Save waves.json</button>
+        <button id="wv_revert">Revert to saved</button>
+      </div>
+    </aside>
+    <main class="stage pad"><div id="wv_list"></div></main>
+  </div>
+
+  <!-- ============ TOWERS ============ -->
+  <div class="tab" id="tab-towers" hidden>
+    <aside class="side">
+      <div class="label">Towers</div>
+      <div id="tw_list"></div>
+      <button id="tw_add">+ Add tower</button>
+      <div class="savebar">
+        <div class="file">→ data/towers.json <span id="tw_pending"></span></div>
+        <button class="primary" id="tw_save">Save towers.json</button>
+        <button id="tw_revert">Revert to saved</button>
+      </div>
+    </aside>
+    <main class="stage pad"><div id="tw_editor"></div></main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+// ===================== shared utils =====================
+function el(tag, props={}, ...kids){
+  const e=document.createElement(tag);
+  for(const k in props){ const v=props[k];
+    if(k==='class') e.className=v; else if(k==='style') e.style.cssText=v;
+    else if(k==='html') e.innerHTML=v;
+    else if(k.startsWith('on')&&typeof v==='function') e.addEventListener(k.slice(2).toLowerCase(),v);
+    else if(k in e) e[k]=v; else e.setAttribute(k,v); }
+  for(const c of kids){ if(c==null||c===false) continue; e.append(c.nodeType?c:document.createTextNode(c)); }
+  return e;
+}
+const clone=o=>JSON.parse(JSON.stringify(o));
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1200); }
+function uniqueId(base, taken){ let i=1, id=base; while(taken.includes(id)){ id=base+i; i++; } return id; }
+
+// ===================== transforms (DOM-free) =====================
+function enemiesToJSON(enemies, order){
+  const out={};
+  for(const id of order){ const e=enemies[id]; if(!e) continue;
+    const o={name:e.name, shape:e.shape, color:e.color};
+    if(e.shape==='rect'){ o.length=+e.length; o.width=+e.width; }
+    else if(e.shape==='octagon'){ o.radius=+e.radius; }
+    else if(e.shape==='polygon'){ o.radius=+e.radius; o.sides=+e.sides; }
+    else { o.side=+e.side; }
+    o.health=+e.health; o.speed=+e.speed; o.reward=+e.reward; o.reduces_to=e.reduces_to||'';
+    if(+e.glow!==1) o.glow=+e.glow;
+    if(o.reduces_to && +e.reduce_count>1) o.reduce_count=Math.round(+e.reduce_count);
+    if(e.ecc) o.ecc=true;
+    if(e.encrypted) o.encrypted=true;
+    if(e.death_sound) o.death_sound=e.death_sound;
+    out[id]=o; }
+  return out;
+}
+function enemiesFromJSON(obj){
+  const order=Object.keys(obj), enemies={};
+  for(const id of order){ const d=obj[id]||{};
+    enemies[id]={ name:d.name??id, shape:d.shape??'square', color:d.color??'#dd5555',
+      health:+(d.health??20), speed:+(d.speed??90), reward:+(d.reward??3),
+      side:+(d.side??16), length:+(d.length??32), width:+(d.width??16),
+      radius:+(d.radius??16), sides:+(d.sides??8),
+      reduces_to:(d.reduces_to==null?'':String(d.reduces_to)),
+      reduce_count:+(d.reduce_count??1), ecc:!!d.ecc, encrypted:!!d.encrypted, glow:+(d.glow??1), death_sound:(d.death_sound??'') }; }
+  return {enemies, order};
+}
+function towersToJSON(towers, order){
+  const out={};
+  for(const id of order){ const t=towers[id]; if(!t) continue;
+    const mode=(t.fire_mode==='radial'||t.fire_mode==='laser')?t.fire_mode:'single';
+    const o={ name:t.name, color:t.color, range:+t.range, fire_rate:+t.fire_rate,
+      damage:+t.damage, cost:+t.cost, projectile_speed:+t.projectile_speed, fire_mode:mode };
+    if(mode==='radial') o.directions=Math.max(1,Math.round(+t.directions||6));
+    if(mode==='laser') o.ramp_time=Math.max(0.05,+t.ramp_time||2);
+    if(t.bit_corruption) o.bit_corruption=true;
+    if(t.cipher) o.cipher=true;
+    if(Array.isArray(t.upgrades)&&t.upgrades.length){
+      const tierJSON=u=>{const e={cost:Math.round(+u.cost||0)};
+        for(const s of ['damage','range','fire_rate','directions','ramp_time']) if(+u[s]) e[s]=+u[s];
+        for(const f of ['cipher','bit_corruption','ignore_walls']) if(u[f]==='on'||u[f]==='off') e[f]=u[f];
+        return e;};
+      o.upgrades=t.upgrades.slice(0,3).map((slot,si)=>({
+        name:(slot.name||('Slot '+(si+1))),
+        tiers:(Array.isArray(slot.tiers)?slot.tiers:[]).slice(0,5).map(tierJSON)}));
+    }
+    out[id]=o; }
+  return out;
+}
+function towersFromJSON(obj){
+  const order=Object.keys(obj), towers={};
+  for(const id of order){ const d=obj[id]||{};
+    towers[id]={ name:d.name??id, color:d.color??'#59b2ff', range:+(d.range??3),
+      fire_rate:+(d.fire_rate??1.5), damage:+(d.damage??10), cost:+(d.cost??40),
+      projectile_speed:+(d.projectile_speed??320),
+      fire_mode:(d.fire_mode==='radial'||d.fire_mode==='laser')?d.fire_mode:'single',
+      directions:+(d.directions??6), ramp_time:+(d.ramp_time??2),
+      bit_corruption:!!d.bit_corruption, cipher:!!d.cipher,
+      upgrades:normUpgrades(d.upgrades) }; }
+  return {towers, order};
+}
+function normTier(u){u=u||{};return {
+  cost:+(u.cost??0), damage:+(u.damage??0), range:+(u.range??0), fire_rate:+(u.fire_rate??0),
+  directions:+(u.directions??0), ramp_time:+(u.ramp_time??0),
+  cipher:(u.cipher==='on'||u.cipher==='off')?u.cipher:'inherit',
+  bit_corruption:(u.bit_corruption==='on'||u.bit_corruption==='off')?u.bit_corruption:'inherit',
+  ignore_walls:(u.ignore_walls==='on'||u.ignore_walls==='off')?u.ignore_walls:'inherit'};}
+function normUpgrades(arr){
+  if(!Array.isArray(arr)) return [];
+  // tolerate the older flat tier list (array of tier objects) by wrapping it as one slot
+  const isFlat = arr.length>0 && arr.every(x=>x&&typeof x==='object'&&!Array.isArray(x.tiers));
+  const slots = isFlat ? [{name:'Slot 1', tiers:arr}] : arr;
+  return slots.slice(0,3).map((slot,si)=>({
+    name:(slot&&slot.name)?slot.name:('Slot '+(si+1)),
+    tiers:(Array.isArray(slot&&slot.tiers)?slot.tiers:[]).slice(0,5).map(normTier)}));
+}
+function wavesToJSON(w){
+  return { spawn_interval_default:+(w.spawn_interval_default??0.7),
+    waves:(w.waves||[]).map(wave=>({groups:(wave.groups||[]).map(g=>({type:g.type,count:+g.count,gap:+g.gap}))})) };
+}
+function wavesFromJSON(obj){
+  return { spawn_interval_default:+(obj.spawn_interval_default??0.7),
+    waves:(obj.waves||[]).map(wave=>({groups:(wave.groups||[]).map(g=>({type:g.type??'bit',count:+(g.count??1),gap:+(g.gap??0.7)}))})) };
+}
+
+// ===================== defaults (used only if server has no files) =====================
+const DEF_ENEMIES={
+  bit:{name:'bit',shape:'square',color:'#6ad36a',health:12,speed:100,reward:2,side:14,length:32,width:16,radius:16,sides:8,reduces_to:''},
+  '2bit':{name:'2-bit',shape:'rect',color:'#4dd0c0',health:24,speed:88,reward:3,side:16,length:28,width:14,radius:16,sides:8,reduces_to:'bit'},
+  nybble:{name:'nybble',shape:'square',color:'#4d9be8',health:52,speed:74,reward:7,side:28,length:32,width:16,radius:16,sides:8,reduces_to:'2bit'},
+  byte:{name:'byte',shape:'octagon',color:'#b06ae8',health:116,speed:60,reward:16,side:16,length:32,width:16,radius:22,sides:8,reduces_to:'nybble'},
+};
+const DEF_ENEMY_ORDER=['bit','2bit','nybble','byte'];
+const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2} };
+const DEF_TOWER_ORDER=['basic'];
+const DEF_WAVES={ spawn_interval_default:0.7, waves:[
+  {groups:[{type:'bit',count:12,gap:0.55}]},
+  {groups:[{type:'2bit',count:6,gap:0.8},{type:'bit',count:8,gap:0.45}]},
+]};
+
+const MODEL={
+  enemies:clone(DEF_ENEMIES), enemyOrder:[...DEF_ENEMY_ORDER],
+  towers:clone(DEF_TOWERS), towerOrder:[...DEF_TOWER_ORDER],
+  waves:clone(DEF_WAVES),
+};
+let MAPS={};                              // name -> map json (from disk)
+const DISK={enemies:null, towers:null, waves:null};  // last-saved snapshots for Revert
+let connected=false;
+
+// ===================== dirty tracking =====================
+const dirty={maps:false, enemies:false, waves:false, towers:false};
+function setDirty(tab){ dirty[tab]=true; updateDirtyUI(); }
+function clearDirty(tab){ dirty[tab]=false; updateDirtyUI(); }
+function anyDirty(){ return Object.values(dirty).some(Boolean); }
+function updateDirtyUI(){
+  document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('dirty', !!dirty[b.dataset.tab]));
+  const pend=t=> dirty[t] ? '· unsaved' : '';
+  document.getElementById('en_pending').textContent=pend('enemies');
+  document.getElementById('wv_pending').textContent=pend('waves');
+  document.getElementById('tw_pending').textContent=pend('towers');
+  const mp=document.getElementById('m_pending'); if(mp){ mp.textContent=dirty.maps?'· unsaved':''; mp.className='pending'; }
+}
+window.addEventListener('beforeunload', e=>{ if(anyDirty()){ e.preventDefault(); e.returnValue=''; return ''; } });
+
+// ===================== data API (pywebview bridge, or server fallback) =====================
+async function apiState(){
+  if(window.pywebview && window.pywebview.api) return await window.pywebview.api.get_state();
+  const r=await fetch('/api/state'); if(!r.ok) throw new Error('state '+r.status); return r.json();
+}
+async function apiSave(target, content, name){
+  if(window.pywebview && window.pywebview.api){
+    const j=await window.pywebview.api.save(target, name||'', content);
+    if(!j || j.error) throw new Error((j&&j.error)||'save failed');
+    return j;
+  }
+  const r=await fetch('/api/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,content,name})});
+  let j={}; try{ j=await r.json(); }catch(e){}
+  if(!r.ok||j.error) throw new Error(j.error||('save failed ('+r.status+')'));
+  return j;
+}
+function requireServer(){ if(!connected){ alert('Not connected to the editor server.\n\nRun "python editor.py" from your game folder, then reload this page.'); return false; } return true; }
+
+// ===================== tab switching =====================
+function showTab(name){
+  document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  document.querySelectorAll('.tab').forEach(t=>t.hidden = (t.id!=='tab-'+name));
+  if(name==='enemies') renderEnemies();
+  if(name==='waves') renderWaves();
+  if(name==='towers') renderTowers();
+}
+document.querySelectorAll('.tabbtn').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+
+// ===================== shape rendering =====================
+function enemyPoints(e){
+  if(e.shape==='rect'){const l=+e.length/2,w=+e.width/2;return [[l,-w],[l,w],[-l,w],[-l,-w]];}
+  if(e.shape==='octagon'){const r=+e.radius;return Array.from({length:8},(_,i)=>{const a=Math.PI/180*(22.5+45*i);return [Math.cos(a)*r,Math.sin(a)*r];});}
+  if(e.shape==='polygon'){const r=+e.radius,n=Math.max(3,+e.sides|0);return Array.from({length:n},(_,i)=>{const a=2*Math.PI*i/n;return [Math.cos(a)*r,Math.sin(a)*r];});}
+  const s=+e.side/2;return [[s,-s],[s,s],[-s,s],[-s,-s]];
+}
+function drawPoly(ctx,pts,cx,cy,scale,fill){
+  ctx.beginPath(); pts.forEach(([x,y],i)=>{const px=cx+x*scale,py=cy+y*scale;i?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+  ctx.closePath(); ctx.fillStyle=fill; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.stroke();
+}
+function drawEnemyPreview(canvas,e){
+  const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height; ctx.clearRect(0,0,W,H);
+  const pts=enemyPoints(e); const ext=Math.max(...pts.flatMap(([x,y])=>[Math.abs(x),Math.abs(y)]),1);
+  const scale=Math.min(W,H)*0.42/ext;
+  ctx.strokeStyle='rgba(255,255,255,.25)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(8,H/2);ctx.lineTo(W-8,H/2);ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.35)';ctx.beginPath();ctx.moveTo(W-8,H/2);ctx.lineTo(W-15,H/2-4);ctx.lineTo(W-15,H/2+4);ctx.fill();
+  drawPoly(ctx,pts,W/2,H/2,scale,e.color);
+}
+function drawTowerPreview(canvas,t){
+  const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height; ctx.clearRect(0,0,W,H);
+  const SQRT3=1.7320508075688772, range=Math.max(1,Math.round(+t.range||1)), n=range+1, cx=W/2, cy=H/2;
+  // range is measured from the footprint outline, so the disk is range+1 rings from centre
+  const cells=[];
+  for(let dq=-n;dq<=n;dq++){ const lo=Math.max(-n,-n-dq),hi=Math.min(n,n-dq);
+    for(let dr=lo;dr<=hi;dr++) cells.push([SQRT3*(dq+dr/2), 1.5*dr]); }
+  let ext=1; for(const[px,py]of cells) ext=Math.max(ext,Math.abs(px)+1,Math.abs(py)+1);
+  const sc=Math.min(W,H)*0.46/ext, HEX=11.34, tsc=sc/HEX, TR=HEX*SQRT3;  // px/unit-hex; TR*tsc = body reaches neighbour-hex centres
+  const corner=(x,y,k)=>{const a=Math.PI/180*(60*k-30);return [x+Math.cos(a)*sc,y+Math.sin(a)*sc];};
+  for(const[ux,uy]of cells){ const x=cx+ux*sc,y=cy+uy*sc;
+    ctx.beginPath(); for(let k=0;k<6;k++){const[px,py]=corner(x,y,k);k?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath();
+    ctx.fillStyle=t.color+'22';ctx.fill(); ctx.strokeStyle=t.color+'88';ctx.lineWidth=1;ctx.stroke(); }
+  // footprint = the 7 hexes the tower actually occupies (center + 6 neighbours), drawn bolder than range
+  const FP=[[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
+  for(const[dq,dr]of FP){ const x=cx+SQRT3*(dq+dr/2)*sc, y=cy+1.5*dr*sc;
+    ctx.beginPath(); for(let k=0;k<6;k++){const[px,py]=corner(x,y,k);k?ctx.lineTo(px,py):ctx.moveTo(px,py);} ctx.closePath();
+    ctx.fillStyle=t.color+'55';ctx.fill(); ctx.strokeStyle=t.color;ctx.lineWidth=2;ctx.stroke(); }
+  if(t.fire_mode==='radial'){
+    const d=Math.max(1,Math.round(+t.directions||6)), reach=ext*sc*0.92;
+    ctx.strokeStyle=t.color+'dd';ctx.lineWidth=2;
+    for(let i=0;i<d;i++){ const a=2*Math.PI*i/d;
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+Math.cos(a)*reach,cy+Math.sin(a)*reach);ctx.stroke(); }
+  }
+  if(t.fire_mode==='laser'){
+    const reach=ext*sc*0.9;
+    ctx.strokeStyle=t.color+'cc';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx+reach,cy);ctx.stroke();  // sample beam
+    const lr=TR*tsc;
+    ctx.beginPath();ctx.arc(cx,cy,lr,0,7);ctx.fillStyle=t.color;ctx.fill();
+    ctx.lineWidth=2;ctx.strokeStyle='rgba(0,0,0,.5)';ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,lr*0.4,0,7);ctx.fillStyle='rgba(255,255,255,.85)';ctx.fill();
+  } else if(t.fire_mode==='radial'){
+    const dirs=Math.max(1,Math.round(+t.directions||6)), sp=Math.max(3,Math.round(Math.sqrt(3*dirs))), R=TR*tsc, ri=R*0.46;
+    ctx.beginPath();
+    for(let i=0;i<2*sp;i++){ const a=2*Math.PI*i/(2*sp), rad=(i%2===0)?R:ri;
+      const px=cx+Math.cos(a)*rad, py=cy+Math.sin(a)*rad; i?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+    ctx.closePath(); ctx.fillStyle=t.color; ctx.fill();
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.stroke();
+  } else {
+    const s=TR*tsc;ctx.fillStyle=t.color;ctx.beginPath();ctx.moveTo(cx,cy-s);ctx.lineTo(cx+s,cy);ctx.lineTo(cx,cy+s);ctx.lineTo(cx-s,cy);ctx.closePath();ctx.fill();
+    ctx.lineWidth=2;ctx.strokeStyle='rgba(0,0,0,.5)';ctx.stroke();
+  }
+}
+
+// ===================== ENEMIES tab =====================
+let selEnemy=DEF_ENEMY_ORDER[0];
+function moveInOrder(order, id, dir){
+  const i=order.indexOf(id), j=i+dir;
+  if(i<0||j<0||j>=order.length) return false;
+  [order[i],order[j]]=[order[j],order[i]];
+  return true;
+}
+function moveEnemy(id, dir){ if(moveInOrder(MODEL.enemyOrder,id,dir)){ setDirty('enemies'); renderEnemies(); } }
+function moveTower(id, dir){ if(moveInOrder(MODEL.towerOrder,id,dir)){ setDirty('towers'); renderTowers(); } }
+function reorderCtl(order, id, mover){
+  const i=order.indexOf(id);
+  return el('span',{class:'reorder'},
+    el('button',{title:'move up',   disabled:i<=0,             onclick:ev=>{ev.stopPropagation(); mover(id,-1);}}, '\u25B2'),
+    el('button',{title:'move down', disabled:i>=order.length-1, onclick:ev=>{ev.stopPropagation(); mover(id, 1);}}, '\u25BC'));
+}
+function renderEnemies(){
+  const list=document.getElementById('en_list'); list.innerHTML='';
+  MODEL.enemyOrder.forEach(id=>{ const e=MODEL.enemies[id];
+    const item=el('div',{class:'listitem'+(id===selEnemy?' sel':''), onclick:()=>{selEnemy=id; renderEnemies();}},
+      el('span',{class:'sw',style:'background:'+e.color}), el('span',{class:'nm'}, e.name||id), el('span',{class:'meta'}, id),
+      reorderCtl(MODEL.enemyOrder, id, moveEnemy));
+    item._enemyId=id; list.append(item); });
+  renderEnemyEditor();
+}
+// Live-update a single list row without rebuilding the editor form (keeps input focus).
+function updateEnemyListItem(id){
+  const e=MODEL.enemies[id]; if(!e) return;
+  for(const item of document.getElementById('en_list').children){
+    if(item._enemyId===id){
+      const nm=item.querySelector('.nm'); if(nm) nm.textContent=e.name||id;
+      const sw=item.querySelector('.sw'); if(sw) sw.style.background=e.color;
+      break; } }
+}
+function field(label, input){ return [el('div',{class:'hint'},label), input]; }
+function checkbox(labelText, val, on){
+  return el('label',{class:'hint',style:'display:flex;align-items:center;gap:8px;cursor:pointer;margin:0'},
+    el('input',{type:'checkbox',checked:!!val,onchange:on}), labelText);
+}
+function renderEnemyEditor(){
+  const box=document.getElementById('en_editor'); box.innerHTML='';
+  const id=selEnemy, e=MODEL.enemies[id];
+  if(!e){ box.append(el('div',{class:'hint'},'No enemy selected.')); return; }
+  const upd=(k,v)=>{ e[k]=v; setDirty('enemies'); if(k==='name'||k==='color') updateEnemyListItem(id); if(k!=='name') drawEnemyPreview(prev,e); };
+  const num=(k,step='1')=>el('input',{type:'number',value:e[k],step,oninput:ev=>upd(k,ev.target.value)});
+  const idInput=el('input',{type:'text',value:id,onchange:ev=>renameEnemy(id,ev.target.value.trim())});
+  const nameInput=el('input',{type:'text',value:e.name,oninput:ev=>upd('name',ev.target.value)});
+  const shapeSel=el('select',{onchange:ev=>{e.shape=ev.target.value; setDirty('enemies'); renderEnemyEditor();}},
+    ...['square','rect','octagon','polygon'].map(s=>el('option',{value:s,selected:e.shape===s},s)));
+  const colorInput=el('input',{type:'color',value:e.color,oninput:ev=>upd('color',ev.target.value)});
+  const sizeRow=el('div',{class:'full row'});
+  if(e.shape==='rect'){ sizeRow.append(...field('length (front-back)',el('input',{type:'number',value:e.length,oninput:ev=>upd('length',ev.target.value)})),
+      ...field('width (across)',el('input',{type:'number',value:e.width,oninput:ev=>upd('width',ev.target.value)}))); }
+  else if(e.shape==='octagon'){ sizeRow.append(...field('radius',el('input',{type:'number',value:e.radius,oninput:ev=>upd('radius',ev.target.value)}))); }
+  else if(e.shape==='polygon'){ sizeRow.append(...field('radius',el('input',{type:'number',value:e.radius,oninput:ev=>upd('radius',ev.target.value)})),
+      ...field('sides',el('input',{type:'number',value:e.sides,min:3,oninput:ev=>upd('sides',ev.target.value)}))); }
+  else { sizeRow.append(...field('side',el('input',{type:'number',value:e.side,oninput:ev=>upd('side',ev.target.value)}))); }
+  const reduceSel=el('select',{onchange:ev=>upd('reduces_to',ev.target.value)},
+    el('option',{value:'',selected:!e.reduces_to},'(dies — none)'),
+    ...MODEL.enemyOrder.filter(o=>o!==id).map(o=>el('option',{value:o,selected:e.reduces_to===o}, MODEL.enemies[o].name+' ('+o+')')));
+  const cnt=Math.max(1,Math.round(+e.reduce_count||1));
+  const countSel=el('select',{onchange:ev=>upd('reduce_count',+ev.target.value)},
+    ...[1,2,4,10].map(n=>el('option',{value:n,selected:cnt===n}, n+'×')));
+  const prev=el('canvas',{class:'preview',width:150,height:130});
+  box.append(el('div',{class:'card',style:'max-width:720px'}, el('h3',{},'Edit enemy'),
+    el('div',{class:'row',style:'align-items:flex-start;gap:24px'},
+      el('div',{class:'formgrid',style:'flex:1'},
+        ...field('id',idInput), ...field('name',nameInput), ...field('shape',shapeSel), ...field('color',colorInput),
+        sizeRow, ...field('health',num('health')), ...field('speed',num('speed')),
+        ...field('reward',num('reward')), ...field('glow (0 = none)',num('glow','0.1')),
+        ...field('death sound',el('input',{type:'text',value:e.death_sound||'',placeholder:'blank = default',oninput:ev=>upd('death_sound',ev.target.value)})),
+        ...field('reduces to',reduceSel), ...field('decay count',countSel),
+        el('div',{class:'full',style:'display:flex;gap:22px;flex-wrap:wrap;margin-top:2px'},
+          checkbox('ECC — resists 90% damage', e.ecc, ev=>upd('ecc',ev.target.checked)),
+          checkbox('Encrypted — needs Cipher', e.encrypted, ev=>upd('encrypted',ev.target.checked)))),
+      el('div',{},el('div',{class:'hint',style:'margin-bottom:6px'},'preview (→ travel)'), prev))));
+  box.append(el('button',{class:'danger',onclick:()=>deleteEnemy(id)},'Delete '+(e.name||id)));
+  drawEnemyPreview(prev,e);
+}
+function renameEnemy(oldId,newId){
+  if(!newId||newId===oldId){ renderEnemies(); return; }
+  if(MODEL.enemies[newId]){ alert('That id is already used.'); renderEnemies(); return; }
+  MODEL.enemies[newId]=MODEL.enemies[oldId]; delete MODEL.enemies[oldId];
+  MODEL.enemyOrder=MODEL.enemyOrder.map(x=>x===oldId?newId:x);
+  for(const k in MODEL.enemies) if(MODEL.enemies[k].reduces_to===oldId) MODEL.enemies[k].reduces_to=newId;
+  MODEL.waves.waves.forEach(w=>w.groups.forEach(g=>{ if(g.type===oldId){ g.type=newId; setDirty('waves'); } }));
+  selEnemy=newId; setDirty('enemies'); renderEnemies();
+}
+function deleteEnemy(id){
+  if(!confirm('Delete enemy "'+id+'"?')) return;
+  delete MODEL.enemies[id]; MODEL.enemyOrder=MODEL.enemyOrder.filter(x=>x!==id);
+  for(const k in MODEL.enemies) if(MODEL.enemies[k].reduces_to===id) MODEL.enemies[k].reduces_to='';
+  selEnemy=MODEL.enemyOrder[0]||null; setDirty('enemies'); renderEnemies();
+}
+document.getElementById('en_add').onclick=()=>{
+  const id=uniqueId('enemy',MODEL.enemyOrder);
+  MODEL.enemies[id]={name:id,shape:'square',color:'#dd5555',health:20,speed:90,reward:3,side:16,length:32,width:16,radius:16,sides:8,reduces_to:''};
+  MODEL.enemyOrder.push(id); selEnemy=id; setDirty('enemies'); renderEnemies();
+};
+document.getElementById('en_save').onclick=async ()=>{
+  if(!requireServer()) return;
+  if(!confirm('Save data/enemies.json? This overwrites the file on disk.')) return;
+  try{ const obj=enemiesToJSON(MODEL.enemies,MODEL.enemyOrder); await apiSave('enemies',obj); DISK.enemies=clone(obj); clearDirty('enemies'); toast('Saved enemies.json'); }
+  catch(err){ alert('Save failed: '+err.message); }
+};
+document.getElementById('en_revert').onclick=()=>{
+  if(!DISK.enemies){ alert('No saved version on disk yet.'); return; }
+  if(dirty.enemies && !confirm('Discard unsaved enemy changes and reload from disk?')) return;
+  const r=enemiesFromJSON(DISK.enemies); MODEL.enemies=r.enemies; MODEL.enemyOrder=r.order; selEnemy=r.order[0]||null; clearDirty('enemies'); renderEnemies();
+};
+
+// ===================== WAVES tab =====================
+function renderWaves(){
+  document.getElementById('wv_default').value=MODEL.waves.spawn_interval_default;
+  const wrap=document.getElementById('wv_list'); wrap.innerHTML='';
+  const types=MODEL.enemyOrder;
+  MODEL.waves.waves.forEach((wave,wi)=>{
+    const card=el('div',{class:'card'}, el('div',{class:'row',style:'justify-content:space-between'},
+      el('h3',{}, 'Wave '+(wi+1)),
+      el('button',{class:'danger',onclick:()=>{MODEL.waves.waves.splice(wi,1); setDirty('waves'); renderWaves();}},'Remove wave')));
+    wave.groups.forEach((g,gi)=>{
+      const typeSel=el('select',{onchange:ev=>{g.type=ev.target.value; setDirty('waves');}},
+        ...(types.includes(g.type)?[]:[el('option',{value:g.type,selected:true}, g.type+' (missing)')]),
+        ...types.map(t=>el('option',{value:t,selected:g.type===t}, MODEL.enemies[t].name+' ('+t+')')));
+      card.append(el('div',{class:'grp'},
+        el('div',{}, el('div',{class:'lbl'},'enemy'), typeSel),
+        el('div',{}, el('div',{class:'lbl'},'count'), el('input',{type:'number',min:1,value:g.count,oninput:ev=>{g.count=+ev.target.value; setDirty('waves');}})),
+        el('div',{}, el('div',{class:'lbl'},'gap (s)'), el('input',{type:'number',step:'0.05',min:0,value:g.gap,oninput:ev=>{g.gap=+ev.target.value; setDirty('waves');}})),
+        el('button',{class:'danger',onclick:()=>{wave.groups.splice(gi,1); setDirty('waves'); renderWaves();}},'×')));
+    });
+    card.append(el('button',{onclick:()=>{wave.groups.push({type:types[0]||'bit',count:5,gap:0.6}); setDirty('waves'); renderWaves();}},'+ Add group'));
+    wrap.append(card);
+  });
+}
+document.getElementById('wv_default').oninput=ev=>{ MODEL.waves.spawn_interval_default=+ev.target.value; setDirty('waves'); };
+document.getElementById('wv_addwave').onclick=()=>{ MODEL.waves.waves.push({groups:[{type:MODEL.enemyOrder[0]||'bit',count:6,gap:0.6}]}); setDirty('waves'); renderWaves(); };
+document.getElementById('wv_save').onclick=async ()=>{
+  if(!requireServer()) return;
+  if(!confirm('Save data/waves.json? This overwrites the file on disk.')) return;
+  try{ const obj=wavesToJSON(MODEL.waves); await apiSave('waves',obj); DISK.waves=clone(obj); clearDirty('waves'); toast('Saved waves.json'); }
+  catch(err){ alert('Save failed: '+err.message); }
+};
+document.getElementById('wv_revert').onclick=()=>{
+  if(!DISK.waves){ alert('No saved version on disk yet.'); return; }
+  if(dirty.waves && !confirm('Discard unsaved wave changes and reload from disk?')) return;
+  MODEL.waves=wavesFromJSON(DISK.waves); clearDirty('waves'); renderWaves();
+};
+
+// ===================== TOWERS tab =====================
+let selTower=DEF_TOWER_ORDER[0];
+function renderTowers(){
+  const list=document.getElementById('tw_list'); list.innerHTML='';
+  MODEL.towerOrder.forEach(id=>{ const t=MODEL.towers[id];
+    const item=el('div',{class:'listitem'+(id===selTower?' sel':''), onclick:()=>{selTower=id; renderTowers();}},
+      el('span',{class:'sw',style:'background:'+t.color}), el('span',{class:'nm'}, t.name||id), el('span',{class:'meta'}, '$'+t.cost),
+      reorderCtl(MODEL.towerOrder, id, moveTower));
+    item._towerId=id; list.append(item); });
+  renderTowerEditor();
+}
+function updateTowerListItem(id){
+  const t=MODEL.towers[id]; if(!t) return;
+  for(const item of document.getElementById('tw_list').children){
+    if(item._towerId===id){
+      const nm=item.querySelector('.nm'); if(nm) nm.textContent=t.name||id;
+      const sw=item.querySelector('.sw'); if(sw) sw.style.background=t.color;
+      const meta=item.querySelector('.meta'); if(meta) meta.textContent='$'+t.cost;
+      break; } }
+}
+function renderTowerEditor(){
+  const box=document.getElementById('tw_editor'); box.innerHTML='';
+  const id=selTower, t=MODEL.towers[id];
+  if(!t){ box.append(el('div',{class:'hint'},'No tower selected.')); return; }
+  const prev=el('canvas',{class:'preview',width:150,height:150});
+  const upd=(k,v)=>{ t[k]=v; setDirty('towers'); if(k==='name'||k==='color'||k==='cost') updateTowerListItem(id); drawTowerPreview(prev,t); };
+  const num=(k,step='1')=>el('input',{type:'number',value:t[k],step,oninput:ev=>upd(k,ev.target.value)});
+  const idInput=el('input',{type:'text',value:id,onchange:ev=>renameTower(id,ev.target.value.trim())});
+  const radial=(t.fire_mode==='radial'), laser=(t.fire_mode==='laser');
+  const modeSel=el('select',{onchange:ev=>{ t.fire_mode=ev.target.value; setDirty('towers'); renderTowerEditor(); }},
+    el('option',{value:'single',selected:!radial&&!laser},'single (targets one enemy)'),
+    el('option',{value:'radial',selected:radial},'radial (burst in all directions)'),
+    el('option',{value:'laser',selected:laser},'laser (charging beam, one enemy)'));
+  const grid=[
+    ...field('id',idInput),
+    ...field('name',el('input',{type:'text',value:t.name,oninput:ev=>upd('name',ev.target.value)})),
+    ...field('color',el('input',{type:'color',value:t.color,oninput:ev=>upd('color',ev.target.value)})),
+    ...field('fire mode',modeSel),
+    ...field('range (tiles)',num('range')),
+    ...field(laser?'max damage / second':'damage',num('damage')),
+    ...field('cost ($)',num('cost')),
+  ];
+  if(!laser) grid.push(...field(radial?'fire rate (volleys/s)':'fire rate (shots/s)',num('fire_rate','0.1')));
+  if(!laser) grid.push(...field('projectile speed',num('projectile_speed')));
+  if(radial) grid.push(...field('directions (6 = hex flat sides)',
+    el('input',{type:'number',min:'1',step:'1',value:(t.directions??6),oninput:ev=>upd('directions',ev.target.value)})));
+  if(laser) grid.push(...field('ramp-up time (s to full power)',num('ramp_time','0.1')));
+  grid.push(el('div',{class:'full',style:'display:flex;gap:22px;flex-wrap:wrap;margin-top:2px'},
+    checkbox('Bit Corruption — ignores ECC resist', t.bit_corruption, ev=>upd('bit_corruption',ev.target.checked)),
+    checkbox('Cipher — can target Encrypted', t.cipher, ev=>upd('cipher',ev.target.checked))));
+  box.append(el('div',{class:'card',style:'max-width:720px'}, el('h3',{},'Edit tower'),
+    el('div',{class:'row',style:'align-items:flex-start;gap:24px'},
+      el('div',{class:'formgrid',style:'flex:1'}, ...grid),
+      el('div',{},el('div',{class:'hint',style:'margin-bottom:6px'},(radial?'range + spokes':(laser?'range + beam':'range'))+' · footprint = 7 hexes'), prev))));
+  box.append(upgradeEditor(t));
+  box.append(el('button',{class:'danger',onclick:()=>deleteTower(id)},'Delete '+(t.name||id)));
+  drawTowerPreview(prev,t);
+}
+function upgradeEditor(t){
+  if(!Array.isArray(t.upgrades)) t.upgrades=[];
+  const wrap=el('div',{class:'card',style:'max-width:760px'},
+    el('h3',{},'Upgrades (up to 3 slots, up to 5 tiers each)'),
+    el('div',{class:'hint',style:'margin-bottom:8px'},'Each slot is an independent path bought level-by-level in-game; tiers within a slot are sequential. Numbers add to the current stat (negatives subtract). Flags: leave / turn on / turn off.'));
+  const tri=(u,key)=>el('select',{onchange:ev=>{u[key]=ev.target.value;setDirty('towers');}},
+    el('option',{value:'inherit',selected:(u[key]||'inherit')==='inherit'},'no change'),
+    el('option',{value:'on',selected:u[key]==='on'},'turn on'),
+    el('option',{value:'off',selected:u[key]==='off'},'turn off'));
+  const dnum=(u,key,step='1')=>el('input',{type:'number',step,value:(u[key]??0),oninput:ev=>{u[key]=+ev.target.value;setDirty('towers');}});
+  t.upgrades.forEach((slot,si)=>{
+    if(!Array.isArray(slot.tiers)) slot.tiers=[];
+    const nameInput=el('input',{type:'text',value:(slot.name||('Slot '+(si+1))),style:'max-width:170px',oninput:ev=>{slot.name=ev.target.value;setDirty('towers');}});
+    const rmSlot=el('button',{class:'danger',style:'margin-left:auto',onclick:()=>{t.upgrades.splice(si,1);setDirty('towers');renderTowerEditor();}},'Remove slot');
+    const slotBox=el('div',{class:'card',style:'margin-top:10px;background:#171b22'},
+      el('div',{class:'row',style:'align-items:center;gap:8px'}, el('strong',{},'Slot '+(si+1)+':'), nameInput, rmSlot));
+    slot.tiers.forEach((u,ti)=>{
+      const rm=el('button',{class:'danger',style:'margin-left:auto',onclick:()=>{slot.tiers.splice(ti,1);setDirty('towers');renderTowerEditor();}},'Remove');
+      const head=el('div',{class:'row',style:'align-items:center'}, el('strong',{},'Tier '+(ti+1)), rm);
+      const g=[
+        ...field('cost ($)',dnum(u,'cost')),
+        ...field('damage (+/-)',dnum(u,'damage')),
+        ...field('range (+/-)',dnum(u,'range')),
+        ...field('fire rate (+/-)',dnum(u,'fire_rate','0.1')),
+        ...field('projectiles (+/-)',dnum(u,'directions')),
+        ...field('ramp time (+/-)',dnum(u,'ramp_time','0.1')),
+        ...field('cipher',tri(u,'cipher')),
+        ...field('bit corruption',tri(u,'bit_corruption')),
+        ...field('ignore walls',tri(u,'ignore_walls')),
+      ];
+      slotBox.append(el('div',{style:'border-top:1px solid #2a2f3a;padding-top:10px;margin-top:8px'}, head, el('div',{class:'formgrid'}, ...g)));
+    });
+    if(slot.tiers.length<5)
+      slotBox.append(el('button',{style:'margin-top:10px',onclick:()=>{
+        slot.tiers.push({cost:50,damage:0,range:0,fire_rate:0,directions:0,ramp_time:0,cipher:'inherit',bit_corruption:'inherit',ignore_walls:'inherit'});
+        setDirty('towers');renderTowerEditor();}},'+ Add tier'));
+    else slotBox.append(el('div',{class:'hint',style:'margin-top:8px'},'Maximum of 5 tiers.'));
+    wrap.append(slotBox);
+  });
+  if(t.upgrades.length<3)
+    wrap.append(el('button',{style:'margin-top:12px',onclick:()=>{
+      t.upgrades.push({name:'Slot '+(t.upgrades.length+1),tiers:[]});
+      setDirty('towers');renderTowerEditor();}},'+ Add slot'));
+  else wrap.append(el('div',{class:'hint',style:'margin-top:8px'},'Maximum of 3 slots.'));
+  return wrap;
+}
+function renameTower(oldId,newId){
+  if(!newId||newId===oldId){ renderTowers(); return; }
+  if(MODEL.towers[newId]){ alert('That id is already used.'); renderTowers(); return; }
+  MODEL.towers[newId]=MODEL.towers[oldId]; delete MODEL.towers[oldId];
+  MODEL.towerOrder=MODEL.towerOrder.map(x=>x===oldId?newId:x); selTower=newId; setDirty('towers'); renderTowers();
+}
+function deleteTower(id){
+  if(MODEL.towerOrder.length<=1){ alert('Keep at least one tower.'); return; }
+  if(!confirm('Delete tower "'+id+'"?')) return;
+  delete MODEL.towers[id]; MODEL.towerOrder=MODEL.towerOrder.filter(x=>x!==id); selTower=MODEL.towerOrder[0]; setDirty('towers'); renderTowers();
+}
+document.getElementById('tw_add').onclick=()=>{
+  const id=uniqueId('tower',MODEL.towerOrder);
+  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2};
+  MODEL.towerOrder.push(id); selTower=id; setDirty('towers'); renderTowers();
+};
+document.getElementById('tw_save').onclick=async ()=>{
+  if(!requireServer()) return;
+  if(!confirm('Save data/towers.json? This overwrites the file on disk.')) return;
+  try{ const obj=towersToJSON(MODEL.towers,MODEL.towerOrder); await apiSave('towers',obj); DISK.towers=clone(obj); clearDirty('towers'); toast('Saved towers.json'); }
+  catch(err){ alert('Save failed: '+err.message); }
+};
+document.getElementById('tw_revert').onclick=()=>{
+  if(!DISK.towers){ alert('No saved version on disk yet.'); return; }
+  if(dirty.towers && !confirm('Discard unsaved tower changes and reload from disk?')) return;
+  const r=towersFromJSON(DISK.towers); MODEL.towers=r.towers; MODEL.towerOrder=r.order; selTower=r.order[0]||null; clearDirty('towers'); renderTowers();
+};
+
+// ===================== MAPS tab (self-contained) =====================
+let MapTab=null;
+(function(){
+  const SQRT3=Math.sqrt(3);
+  const COL={grass:'#3D6647',path:'#B87333',spawn:'#4D8C52',goal:'#A84747',block:'#2b2f3a'};
+  const st={cols:20,rows:14,size:22,name:'My Map',cells:new Map(),spawn:null,goal:null,tool:'path',brush:1,hover:null};
+  const k=(c,r)=>c+','+r, parseKey=s=>s.split(',').map(Number);
+  const offToAxial=(c,r)=>[c-(r-(r&1))/2,r], axialToOff=(q,r)=>[Math.round(q+(r-(r&1))/2),r];
+  function neighbors(c,r){const [q,r0]=offToAxial(c,r);return [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]].map(([dq,dr])=>axialToOff(q+dq,r0+dr));}
+  function hexDisk(c,r,rad){const [q,r0]=offToAxial(c,r);const out=[];
+    for(let dq=-rad;dq<=rad;dq++){const lo=Math.max(-rad,-rad-dq),hi=Math.min(rad,rad-dq);
+      for(let dr=lo;dr<=hi;dr++) out.push(axialToOff(q+dq,r0+dr));}
+    return out;}
+  class MinHeap{ constructor(){this.a=[];} get size(){return this.a.length;}
+    push(p,v){const a=this.a;a.push([p,v]);let i=a.length-1;while(i>0){const j=(i-1)>>1;if(a[j][0]<=a[i][0])break;[a[i],a[j]]=[a[j],a[i]];i=j;}}
+    pop(){const a=this.a,top=a[0],last=a.pop();if(a.length){a[0]=last;let i=0;for(;;){const l=2*i+1,r=l+1;let s=i;if(l<a.length&&a[l][0]<a[s][0])s=l;if(r<a.length&&a[r][0]<a[s][0])s=r;if(s===i)break;[a[i],a[s]]=[a[s],a[i]];i=s;}}return top;}}
+  function cubeRound(q,r){let x=q,z=r,y=-x-z;let rx=Math.round(x),ry=Math.round(y),rz=Math.round(z);
+    const dx=Math.abs(rx-x),dy=Math.abs(ry-y),dz=Math.abs(rz-z); if(dx>dy&&dx>dz)rx=-ry-rz;else if(dy>dz)ry=-rx-rz;else rz=-rx-ry;return [rx,rz];}
+  const margin=()=>st.size;
+  function center(c,r){const s=st.size;return [margin()+s*SQRT3*(c+0.5*(r&1))+s*SQRT3*0.5, margin()+s*1.5*r+s];}
+  function pixelToCell(px,py){const s=st.size;const x=px-(margin()+s*SQRT3*0.5),y=py-(margin()+s);
+    const q=(SQRT3/3*x-1/3*y)/s,r=(2/3*y)/s;const [aq,ar]=cubeRound(q,r);return axialToOff(aq,ar);}
+  // Band-aware Taubin smoothing of a pixel polyline, endpoints pinned. Each pass
+  // centers points to the trace cross-section then applies lambda/mu smoothing
+  // (mu<0 cancels shrinkage so corners only round slightly). Mirrors game_board.gd.
+  function smoothPath(pts, inTrace){
+    if(pts.length<3) return pts;
+    const ITER=6, CENTER=0.6, LAM=0.5, MU=-0.53;
+    let p=pts.map(q=>[q[0],q[1]]);
+    let sp=0; for(let i=1;i<p.length;i++) sp+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);
+    sp=Math.max(1, sp/Math.max(1,p.length-1));
+    const step=sp*0.4, reach=sp*8;
+    const march=(pt,nx,ny)=>{let d=0;while(d<reach){if(!inTrace(pt[0]+nx*(d+step),pt[1]+ny*(d+step)))break;d+=step;}return d;};
+    const lap=(arr,f)=>{const o=arr.map(q=>[q[0],q[1]]);for(let i=1;i<arr.length-1;i++){const ax=(arr[i-1][0]+arr[i+1][0])/2,ay=(arr[i-1][1]+arr[i+1][1])/2;o[i]=[arr[i][0]+(ax-arr[i][0])*f,arr[i][1]+(ay-arr[i][1])*f];}return o;};
+    for(let it=0;it<ITER;it++){
+      const c=p.map(q=>[q[0],q[1]]);
+      for(let i=1;i<p.length-1;i++){
+        let dx=p[i+1][0]-p[i-1][0], dy=p[i+1][1]-p[i-1][1];
+        const len=Math.hypot(dx,dy); if(len<1e-4) continue; dx/=len; dy/=len;
+        const nx=-dy, ny=dx;
+        const a=march(p[i],nx,ny), b=march(p[i],-nx,-ny);
+        const off=(a-b)*0.5*CENTER;
+        c[i]=[p[i][0]+nx*off, p[i][1]+ny*off];
+      }
+      p=c; p=lap(p,LAM); p=lap(p,MU);
+    }
+    return p;
+  }
+  function solveRoute(){
+    if(!st.spawn||!st.goal) return null;
+    const T=new Set(); for(const [key,t] of st.cells) if(t==='path') T.add(key);
+    T.add(k(...st.spawn)); T.add(k(...st.goal));
+    const start=k(...st.spawn), end=k(...st.goal);
+    if(!T.has(start)||!T.has(end)) return null;
+    // distance from the edge of the trace band (multi-source BFS)
+    const dist=new Map(), q=[];
+    for(const key of T){ const [c,r]=parseKey(key);
+      if(neighbors(c,r).some(([nc,nr])=>!T.has(k(nc,nr)))){ dist.set(key,1); q.push(key); } }
+    for(let qi=0; qi<q.length; qi++){ const cur=q[qi], dc=dist.get(cur), [c,r]=parseKey(cur);
+      for(const [nc,nr] of neighbors(c,r)){ const nk=k(nc,nr); if(T.has(nk)&&!dist.has(nk)){ dist.set(nk,dc+1); q.push(nk);} } }
+    let maxd=1; for(const v of dist.values()) if(v>maxd) maxd=v;
+    // Dijkstra preferring the ridge (cells furthest from any edge) => centerline
+    const cost=new Map([[start,0]]), prev=new Map([[start,null]]), heap=new MinHeap(); heap.push(0,start);
+    while(heap.size){ const [cu,cur]=heap.pop(); if(cur===end) break; if(cu>(cost.has(cur)?cost.get(cur):Infinity)) continue;
+      const [c,r]=parseKey(cur);
+      for(const [nc,nr] of neighbors(c,r)){ const nk=k(nc,nr); if(!T.has(nk)) continue;
+        const nco=cu+(maxd-(dist.get(nk)||1))+0.001;
+        if(nco<(cost.has(nk)?cost.get(nk):Infinity)){ cost.set(nk,nco); prev.set(nk,cur); heap.push(nco,nk); } } }
+    if(!prev.has(end)) return null;
+    const out=[]; let cur=end; while(cur!==null){ out.push(parseKey(cur)); cur=prev.get(cur); } return out.reverse();
+  }
+  const cv=document.getElementById('m_cv'), ctx=cv.getContext('2d');
+  function hexPath(cx,cy){ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/180*(60*i-30);const x=cx+Math.cos(a)*st.size,y=cy+Math.sin(a)*st.size;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();}
+  // --- Trim preview (editor-only): shows which slice of each copper cell becomes solder
+  // mask in the live game, filled magenta. Mirrors GameBoard's tile rule so anomalies can
+  // be traced to map vs rule. Vertex order matches hexPath: 0=NE,1=SE,
+  // 2=S,3=SW,4=NW,5=N. EDGE_NB[i] = axial neighbour across edge e_i (same as the game).
+  const EDGE_NB=[[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+  const TILE_OMIT={"CORNER_N":[5],"CORNER_S":[2],"CORNER_NE":[0],"CORNER_SE":[1],"CORNER_SW":[3],"CORNER_NW":[4],
+    "HALF_E":[0,1],"HALF_W":[3,4],"HALF_NE":[0,5],"HALF_SW":[2,3],"HALF_NW":[4,5],"HALF_SE":[1,2]};
+  const HALF_TILE={0:"HALF_E",1:"HALF_SE",2:"HALF_SW",3:"HALF_W",4:"HALF_NW",5:"HALF_NE"};
+  const POINT_TILE={5:"CORNER_N",0:"CORNER_NE",1:"CORNER_SE",2:"CORNER_S",3:"CORNER_SW",4:"CORNER_NW"};
+  function isCopper(c,r){
+    if(c<0||r<0||c>=st.cols||r>=st.rows) return false;
+    if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r) return true;   // spawn/goal are copper in-game
+    if(st.goal&&st.goal[0]===c&&st.goal[1]===r) return true;
+    return st.cells.get(k(c,r))==='path';
+  }
+  function edgeRuns(exposed){
+    const s=new Set(exposed),seen=new Set(),out=[];
+    for(const e of exposed){ if(seen.has(e))continue;
+      let s0=e; while(s.has((s0-1+6)%6)){ s0=(s0-1+6)%6; if(s0===e)break; }
+      if(seen.has(s0))continue;
+      const run=[]; let x=s0;
+      while(s.has(x)&&!seen.has(x)){ run.push(x); seen.add(x); x=(x+1)%6; }
+      out.push(run); }
+    return out;
+  }
+  function copperTile(c,r){
+    const ax=offToAxial(c,r), copper=[], offmap=[];
+    for(let i=0;i<6;i++){
+      const o=axialToOff(ax[0]+EDGE_NB[i][0], ax[1]+EDGE_NB[i][1]);
+      copper[i]=isCopper(o[0],o[1]);
+      offmap[i]=(o[0]<0||o[1]<0||o[0]>=st.cols||o[1]>=st.rows);
+    }
+    // Map-edge rule (mirrors GameBoard): a trace cell on the boundary clips toward its
+    // in-map mask side so the trace runs off the edge cleanly. Interior cells fall through.
+    const on_lr=offmap[0]||offmap[3], on_tb=offmap[1]||offmap[2]||offmap[4]||offmap[5];
+    if(on_lr||on_tb){
+      if(on_lr){
+        if(!copper[4]&&!copper[5]) return "CORNER_N";
+        if(!copper[1]&&!copper[2]) return "CORNER_S";
+        return null;
+      }
+      if(!copper[3]) return "HALF_W";
+      if(!copper[0]) return "HALF_E";
+      return null;
+    }
+    const ex=[]; for(let i=0;i<6;i++) if(!copper[i]) ex.push(i);
+    if(ex.length===0) return null;
+    const runs=edgeRuns(ex); if(runs.length!==1) return null;
+    const run=runs[0];
+    if(run.length===2) return POINT_TILE[run[1]];   // shared vertex of the adjacent pair
+    if(run.length===3) return HALF_TILE[run[1]];     // half-cut facing the middle edge
+    return null;   // 1 = already-straight single edge; 4+ = cap -> full hex, no trim
+  }
+  function trimPoly(tile){
+    const o=TILE_OMIT[tile];
+    const run = o.length===1 ? [o[0]] : (o[1]===(o[0]+1)%6 ? [o[0],o[1]] : [o[1],o[0]]);
+    return [(run[0]+5)%6, ...run, (run[run.length-1]+1)%6];   // omitted verts + the two chord ends
+  }
+  const TRIM_COLOR='#e000d6';   // editor-only marker: the slice that becomes solder mask in-game
+  function drawTrim(c,r,tile){
+    const verts=trimPoly(tile), ctr=center(c,r), s=st.size, cx=ctr[0], cy=ctr[1];
+    ctx.beginPath();
+    verts.forEach((vi,i)=>{ const a=Math.PI/180*(60*vi-30), x=cx+Math.cos(a)*s, y=cy+Math.sin(a)*s; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.closePath();
+    ctx.fillStyle=TRIM_COLOR; ctx.fill();
+  }
+  function drawTrimPreview(){
+    for(let r=0;r<st.rows;r++)for(let c=0;c<st.cols;c++){
+      if(st.cells.get(k(c,r))!=='path') continue;   // stripe the traces; spawn/goal stay clean
+      const tile=copperTile(c,r); if(tile) drawTrim(c,r,tile);
+    }
+  }
+  function render(){
+    const s=st.size,w=margin()*2+s*SQRT3*st.cols,h=margin()*2+s*1.5*st.rows+s*0.5,dpr=window.devicePixelRatio||1;
+    cv.style.width=w+'px';cv.style.height=h+'px';cv.width=Math.ceil(w*dpr);cv.height=Math.ceil(h*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+    for(let r=0;r<st.rows;r++)for(let c=0;c<st.cols;c++){
+      const [cx,cy]=center(c,r);hexPath(cx,cy);let fill=null;
+      if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)fill=COL.spawn;
+      else if(st.goal&&st.goal[0]===c&&st.goal[1]===r)fill=COL.goal;
+      else{const t=st.cells.get(k(c,r));if(t)fill=COL[t];}
+      if(fill){ctx.fillStyle=fill;ctx.fill();ctx.lineWidth=1;ctx.strokeStyle='rgba(0,0,0,.35)';ctx.stroke();}
+      else{ctx.lineWidth=1;ctx.strokeStyle='rgba(255,255,255,.07)';ctx.stroke();}
+    }
+    drawTrimPreview();
+    const route=solveRoute();
+    if(route&&route.length>1){ctx.lineWidth=Math.max(3,s*0.42);ctx.lineJoin='round';ctx.lineCap='round';ctx.strokeStyle='rgba(255,210,63,.85)';
+      const inTrace=(x,y)=>{const [c,r]=pixelToCell(x,y);const key=k(c,r);
+        return st.cells.get(key)==='path' || (st.spawn&&st.spawn[0]===c&&st.spawn[1]===r) || (st.goal&&st.goal[0]===c&&st.goal[1]===r);};
+      const rpts=smoothPath(route.map(([c,r])=>center(c,r)), inTrace);
+      ctx.beginPath();rpts.forEach(([x,y],i)=>{i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
+    mark(st.spawn,'#bfffd0','S');mark(st.goal,'#ffd0d0','G');drawBrushPreview();ui(route);
+  }
+  function drawBrushPreview(){ if(!st.hover) return; const [hc,hr]=st.hover;
+    const cells=(st.tool==='spawn'||st.tool==='goal')?[[hc,hr]]:hexDisk(hc,hr,st.brush);
+    ctx.lineWidth=2; ctx.strokeStyle='rgba(255,255,255,.9)';
+    for(const [c,r] of cells){ if(c<0||r<0||c>=st.cols||r>=st.rows) continue; const [cx,cy]=center(c,r); hexPath(cx,cy); ctx.stroke(); } }
+  function mark(cell,ring,letter){if(!cell)return;const [x,y]=center(cell[0],cell[1]);
+    ctx.lineWidth=2.5;ctx.strokeStyle=ring;ctx.beginPath();ctx.arc(x,y,st.size*0.55,0,7);ctx.stroke();
+    ctx.fillStyle='#0d1117';ctx.font='700 '+(st.size*0.7)+'px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(letter,x,y);}
+  function ui(route){
+    let grass=0,path=0,block=0;for(const t of st.cells.values()){if(t==='grass')grass++;else if(t==='path')path++;else if(t==='block')block++;}
+    document.getElementById('m_counts').textContent='solder mask '+grass+'  ·  trace '+path+'  ·  block '+block+'  ·  '+st.cols+'×'+st.rows;
+    const sEl=document.getElementById('m_status'),tx=document.getElementById('m_statusText');sEl.className='status';
+    if(!st.spawn||!st.goal){sEl.classList.add('warn');tx.textContent='Place a spawn and a goal.';}
+    else if(!route){sEl.classList.add('bad');tx.textContent='No connected path from spawn to goal.';}
+    else{sEl.classList.add('ok');tx.textContent='Route OK — '+route.length+' tiles.';}
+    document.getElementById('m_file').textContent='maps/'+sanitizeName(st.name)+'.json';
+  }
+  function sanitizeName(n){return (String(n||'map').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''))||'map';}
+  function buildExport(route){ route=route===undefined?solveRoute():route; if(!route) return null;
+    const cells=[]; const blocking=[]; const trace=[];
+    for(const [key,t] of st.cells){ cells.push(parseKey(key)); if(t==='block') blocking.push(parseKey(key)); if(t==='path') trace.push(parseKey(key)); }
+    if(st.spawn){cells.push(st.spawn.slice()); trace.push(st.spawn.slice());}
+    if(st.goal){cells.push(st.goal.slice()); trace.push(st.goal.slice());}
+    return {name:st.name||'Map',format:'hex-oddr-pointy-v1',cols:st.cols,rows:st.rows,spawn:st.spawn,goal:st.goal,path:route,trace,blocking,cells};}
+  function applyOne(c,r){
+    if(c<0||r<0||c>=st.cols||r>=st.rows) return; const key=k(c,r);
+    const clr=()=>{if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)st.spawn=null; if(st.goal&&st.goal[0]===c&&st.goal[1]===r)st.goal=null;};
+    switch(st.tool){
+      case 'grass': clr(); st.cells.set(key,'grass'); break;
+      case 'path': clr(); st.cells.set(key,'path'); break;
+      case 'block': clr(); st.cells.set(key,'block'); break;
+      case 'erase': clr(); st.cells.delete(key); break;
+      case 'spawn': st.cells.delete(key); if(st.goal&&st.goal[0]===c&&st.goal[1]===r)st.goal=null; st.spawn=[c,r]; break;
+      case 'goal': st.cells.delete(key); if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)st.spawn=null; st.goal=[c,r]; break;
+    }
+  }
+  function applyTool(c,r){
+    // spawn/goal are single cells; paint tools cover the chosen brush disk.
+    if(st.tool==='spawn'||st.tool==='goal') applyOne(c,r);
+    else for(const [cc,rr] of hexDisk(c,r,st.brush)) applyOne(cc,rr);
+    markDirty();
+  }
+  function markDirty(){ if(window.__mapReady) setDirty('maps'); }
+  let painting=false,lastKey=null;
+  function paintAt(ev){const rect=cv.getBoundingClientRect();const [c,r]=pixelToCell(ev.clientX-rect.left,ev.clientY-rect.top);
+    if(k(c,r)===lastKey&&st.tool!=='spawn'&&st.tool!=='goal')return; lastKey=k(c,r); applyTool(c,r); render();}
+  cv.addEventListener('pointerdown',e=>{ if(st.tool==='spawn'||st.tool==='goal'){const rect=cv.getBoundingClientRect();const [c,r]=pixelToCell(e.clientX-rect.left,e.clientY-rect.top);applyTool(c,r);render();return;}
+    painting=true;lastKey=null;cv.setPointerCapture(e.pointerId);paintAt(e);});
+  cv.addEventListener('pointermove',e=>{const rect=cv.getBoundingClientRect();st.hover=pixelToCell(e.clientX-rect.left,e.clientY-rect.top); if(painting)paintAt(e); else render();});
+  cv.addEventListener('pointerup',()=>painting=false);
+  cv.addEventListener('pointerleave',()=>{st.hover=null;render();});
+  cv.addEventListener('wheel',e=>{ e.preventDefault();
+    const stage=cv.closest('.stage'), cvRect=cv.getBoundingClientRect();
+    const cvx=e.clientX-cvRect.left, cvy=e.clientY-cvRect.top, s0=st.size;
+    const s1=Math.max(8,Math.min(48, Math.round(s0*(e.deltaY<0?1.1:1/1.1))));
+    if(s1===s0) return; const kf=s1/s0; st.size=s1; document.getElementById('m_zoom').value=s1; render();
+    stage.scrollLeft+=cvx*(kf-1); stage.scrollTop+=cvy*(kf-1); }, {passive:false});
+  cv.addEventListener('contextmenu',e=>e.preventDefault());
+  document.getElementById('m_tools').addEventListener('click',e=>{const t=e.target.closest('.tool');if(!t)return;selectTool(t.dataset.tool);});
+  function selectTool(tool){st.tool=tool;document.querySelectorAll('#m_tools .tool').forEach(el=>el.classList.toggle('active',el.dataset.tool===tool));}
+  document.getElementById('m_brush').addEventListener('click',e=>{const t=e.target.closest('.tool');if(!t)return;selectBrush(+t.dataset.brush);});
+  function selectBrush(b){st.brush=b;document.querySelectorAll('#m_brush .tool').forEach(el=>el.classList.toggle('active',+el.dataset.brush===b));}
+  document.addEventListener('keydown',e=>{ if(document.getElementById('tab-maps').hidden)return; if(document.activeElement.tagName==='INPUT')return;
+    const bs={'1':0,'2':1,'3':2}; if(bs[e.key]!==undefined){selectBrush(bs[e.key]);return;}
+    const m={g:'grass',p:'path',s:'spawn',o:'goal',b:'block',e:'erase'}; if(m[e.key.toLowerCase()])selectTool(m[e.key.toLowerCase()]);});
+  document.getElementById('m_name').addEventListener('input',e=>{st.name=e.target.value; markDirty(); render();});
+  document.getElementById('m_zoom').addEventListener('input',e=>{st.size=+e.target.value;render();});
+  document.getElementById('m_apply').addEventListener('click',()=>{
+    st.cols=Math.max(2,Math.min(80,+document.getElementById('m_cols').value|0));
+    st.rows=Math.max(2,Math.min(60,+document.getElementById('m_rows').value|0));
+    for(const key of [...st.cells.keys()]){const [c,r]=parseKey(key); if(c>=st.cols||r>=st.rows)st.cells.delete(key);}
+    if(st.spawn&&(st.spawn[0]>=st.cols||st.spawn[1]>=st.rows))st.spawn=null;
+    if(st.goal&&(st.goal[0]>=st.cols||st.goal[1]>=st.rows))st.goal=null; markDirty(); render();});
+  document.getElementById('m_clear').addEventListener('click',()=>{if(!confirm('Clear the whole map?'))return;st.cells.clear();st.spawn=null;st.goal=null;markDirty();render();});
+  function loadData(d){
+    st.cols=d.cols|0; st.rows=d.rows|0; st.name=d.name||'Map'; st.cells.clear(); st.spawn=d.spawn||null; st.goal=d.goal||null;
+    const traceSrc=(d.trace&&d.trace.length)?d.trace:(d.path||[]);
+    const traceSet=new Set(traceSrc.map(([c,r])=>k(c,r)));
+    const blockSet=new Set((d.blocking||[]).map(([c,r])=>k(c,r)));
+    for(const [c,r] of (d.cells||[])){ if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)continue; if(st.goal&&st.goal[0]===c&&st.goal[1]===r)continue;
+      var key=k(c,r); st.cells.set(key, traceSet.has(key)?'path':(blockSet.has(key)?'block':'grass')); }
+    document.getElementById('m_name').value=st.name; document.getElementById('m_cols').value=st.cols; document.getElementById('m_rows').value=st.rows; render();
+  }
+  function blank(){ st.cols=20;st.rows=14;document.getElementById('m_cols').value=20;document.getElementById('m_rows').value=14;
+    st.cells.clear();st.spawn=null;st.goal=null;st.name='New Map';document.getElementById('m_name').value='New Map'; render(); }
+  selectTool('path');
+  MapTab={ load:loadData, getExport:()=>buildExport(), blank, render, sanitizeName:n=>sanitizeName(n), curName:()=>st.name };
+})();
+
+// map open dropdown + new + save
+function populateMapSelect(){
+  const sel=document.getElementById('m_select'); sel.innerHTML='';
+  const names=Object.keys(MAPS).sort();
+  if(names.length===0){ sel.append(el('option',{value:''},'(no saved maps)')); }
+  names.forEach(n=>sel.append(el('option',{value:n}, n)));
+}
+document.getElementById('m_select').onchange=ev=>{
+  const n=ev.target.value; if(!n||!MAPS[n]) return;
+  if(dirty.maps && !confirm('Discard unsaved map changes and open "'+n+'"?')){ populateMapSelect(); return; }
+  MapTab.load(MAPS[n]); clearDirty('maps');
+};
+document.getElementById('m_new').onclick=()=>{
+  if(dirty.maps && !confirm('Discard unsaved map changes and start a new map?')) return;
+  MapTab.blank(); clearDirty('maps');
+};
+document.getElementById('m_save').onclick=async ()=>{
+  if(!requireServer()) return;
+  const obj=MapTab.getExport();
+  if(!obj){ alert("This map has no connected route from spawn to goal yet, so it can't be saved."); return; }
+  const fname='maps/'+MapTab.sanitizeName(MapTab.curName())+'.json';
+  if(!confirm('Save '+fname+'? This overwrites that file if it exists.')) return;
+  try{ const res=await apiSave('map',obj,MapTab.curName());
+    var base=res.path.split('/').pop().split('\\').pop();
+    var stem=base.endsWith('.json')?base.slice(0,-5):base;
+    MAPS[stem]=obj; populateMapSelect(); document.getElementById('m_select').value=stem; clearDirty('maps'); toast('Saved '+fname); }
+  catch(err){ alert('Save failed: '+err.message); }
+};
+
+// ===================== boot =====================
+async function boot(){
+  const conn=document.getElementById('conn'), banner=document.getElementById('banner');
+  try{
+    const st=await apiState(); connected=true;
+    conn.classList.remove('bad'); conn.innerHTML='connected · <b>'+st.root+'</b>';
+    if(st.data.enemies){ const r=enemiesFromJSON(st.data.enemies); MODEL.enemies=r.enemies; MODEL.enemyOrder=r.order; DISK.enemies=clone(enemiesToJSON(r.enemies,r.order)); }
+    else DISK.enemies=clone(enemiesToJSON(MODEL.enemies,MODEL.enemyOrder));
+    if(st.data.towers){ const r=towersFromJSON(st.data.towers); MODEL.towers=r.towers; MODEL.towerOrder=r.order; DISK.towers=clone(towersToJSON(r.towers,r.order)); }
+    else DISK.towers=clone(towersToJSON(MODEL.towers,MODEL.towerOrder));
+    if(st.data.waves){ MODEL.waves=wavesFromJSON(st.data.waves); DISK.waves=clone(wavesToJSON(MODEL.waves)); }
+    else DISK.waves=clone(wavesToJSON(MODEL.waves));
+    MAPS=st.maps||{};
+    selEnemy=MODEL.enemyOrder[0]||null; selTower=MODEL.towerOrder[0]||null;
+    populateMapSelect();
+    const names=Object.keys(MAPS).sort();
+    if(names.length){ MapTab.load(MAPS[names[0]]); document.getElementById('m_select').value=names[0]; }
+    else { MapTab.blank(); }
+    if(!st.hasData) showBanner('No data/ folder was found in '+st.root+'. Saving enemies/waves/towers will create it.');
+  }catch(err){
+    connected=false; conn.classList.add('bad');
+    if(window.__HOST__==='pywebview'){
+      conn.innerHTML='<b>offline</b>';
+      showBanner('Could not reach the editor file layer. You can still edit, but Save is disabled. ('+err.message+')');
+    } else {
+      conn.innerHTML='<b>offline</b> — run editor.py';
+      showBanner('Not connected to the editor server. Run "python editor.py" from your game folder, then reload. You can still edit, but Save is disabled.');
+    }
+    MapTab.blank();
+  }
+  window.__mapReady=true;       // edits from here on mark the map dirty
+  clearDirty('maps'); clearDirty('enemies'); clearDirty('waves'); clearDirty('towers');
+  renderEnemies();
+  function showBanner(msg){ banner.hidden=false; banner.textContent=msg; }
+}
+if(window.__HOST__==='pywebview'){
+  if(window.pywebview && window.pywebview.api){ boot(); }
+  else { window.addEventListener('pywebviewready', boot, {once:true}); }
+} else {
+  boot();
+}
+</script>
+</body>
+</html>
