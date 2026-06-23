@@ -23,7 +23,7 @@ const WALL_COLOR := Color(0.16, 0.17, 0.22)
 # clip-tile boundaries into dovetailed 3D tabs (the "puzzle piece" look).
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
-const COPPER_TOP := 0.1         # copper inlay sits a hair above the mask (flush look, no z-fight)
+const COPPER_TOP := 1.2         # copper traces stand proud of the mask (depth + contact shadow)
 const WALL_TOP := 4.0           # blocking walls stand modestly proud (LOS blockers), not towering
 
 ## Copper clip tiles — identical rule to the 2D board (see that file for the full
@@ -78,10 +78,10 @@ func _build_materials() -> void:
 	_mat_copper.albedo_color = TRACE_COLOR
 	_mat_copper.metallic = 1.0
 	_mat_copper.metallic_specular = 0.9
-	# Low roughness keeps the warm sun GLINT sharp so the copper reads as bright
-	# metal. A fully metallic surface has no diffuse, so at high roughness it just
-	# averages the dim blue sky and goes dark/grey — keep this near-mirror.
-	_mat_copper.roughness = 0.18
+	# Near-mirror so the copper catches a sharp sun glint and reflects the board
+	# (with SSR), reading as real metal. A fully metallic surface has no diffuse,
+	# so high roughness would just average the dim sky and go flat grey.
+	_mat_copper.roughness = 0.12
 	_mat_copper.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat_mask = StandardMaterial3D.new()
 	_mat_mask.albedo_color = MASK_COLOR
@@ -161,33 +161,57 @@ func _build_board_meshes() -> void:
 		elif blocking_set.has(cell):
 			_add_prism(wall_st, hex, WALL_TOP, MASK_TOP); have_wall = true
 
-	# copper traces: clipped top polygon as a FLAT cap, flush over the mask. No
-	# side walls — adjacent copper cells stay one continuous flat surface, and
-	# the clipped corners let the green mask beneath show through exactly as the
-	# 2D board does. (Raising these into prisms is what produced the puzzle tabs.)
+	# copper traces: clipped top polygon raised proud of the mask, with side walls
+	# only on the region's OUTER boundary — so the trace is one continuous raised
+	# surface (no internal dividing lines) that reads with real depth and casts a
+	# contact shadow onto the board. Internal copper-copper edges get no wall.
 	for cell in trace_set.keys():
 		var c := _cell_to_pixel(cell)
 		var poly := _clipped_plane_polygon(cell, c)
 		if poly.size() >= 3:
-			_add_cap(copper_st, poly, COPPER_TOP)
+			_add_copper_cell(copper_st, c, poly)
 			have_copper = true
 
 	_commit(mask_st, _mat_mask)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
 	if have_goal: _commit(goal_st, _mat_goal)
-	if have_wall: _commit(wall_st, _mat_wall)
-	if have_copper: _commit(copper_st, _mat_copper)
+	if have_wall: _commit(wall_st, _mat_wall, true)   # walls cast shadows (depth)
+	if have_copper: _commit(copper_st, _mat_copper, true)   # raised trace casts a contact shadow
+
+# A copper cell: a raised top cap plus a wall on each edge that borders a
+# non-copper cell. Boundary detection probes just outside the edge midpoint:
+# if that lands on another copper cell the edge is internal (no wall), keeping
+# the trace continuous; otherwise it's the trace's silhouette and gets a wall.
+func _add_copper_cell(st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
+	_add_cap(st, poly, COPPER_TOP)
+	var n := poly.size()
+	for i in range(n):
+		var a := poly[i]
+		var b := poly[(i + 1) % n]
+		var mid: Vector2 = (a + b) * 0.5
+		var outward: Vector2 = mid - center
+		if outward.length() < 0.0001:
+			continue
+		var probe: Vector2 = mid + outward.normalized() * (HEX_SIZE * 0.5)
+		if trace_set.has(world_cell(probe)):
+			continue   # internal edge shared with a copper neighbour
+		var at := Vector3(a.x, COPPER_TOP, a.y)
+		var bt := Vector3(b.x, COPPER_TOP, b.y)
+		var ab := Vector3(a.x, MASK_TOP, a.y)
+		var bb := Vector3(b.x, MASK_TOP, b.y)
+		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
+		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
 
 # generate_normals respects the flat smooth group set by the callers, so each
-# face gets its own normal (no averaging) — caps up, walls out. The board mesh
-# does not cast shadows: it's the flat ground (towers/enemies/walls cast onto
-# it), and two-sided (cull-disabled) ground self-shadowing would darken it.
-func _commit(st: SurfaceTool, mat: Material) -> void:
+# face gets its own normal (no averaging) — caps up, walls out. Flat ground
+# (mask/spawn/goal) does not cast shadows: two-sided (cull-disabled) ground
+# self-shadowing would darken it. Raised copper and walls DO cast, for depth.
+func _commit(st: SurfaceTool, mat: Material, cast_shadows := false) -> void:
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	mi.material_override = mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if cast_shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh_root.add_child(mi)
 
 # Top cap (single face) at height y for a plane polygon, as a triangle fan.
