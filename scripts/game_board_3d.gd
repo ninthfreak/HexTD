@@ -80,12 +80,10 @@ func _build_materials() -> void:
 	# Dark neon theme. Back-face culling disabled on every board material (flat
 	# board viewed from above — removes any winding fragility).
 	#
-	# The trace is a data-lane channel: a very glossy near-black TOP (so it reads
-	# as polished black, mirroring the scene), with the glow confined to the
-	# raised EDGE walls — a neon outline that traces the path. Two materials, two
-	# surfaces (see _add_copper_cell): top = glossy black, edge = emissive neon.
-	# Sunken path floor: a near-mirror polished black so the enemies (and the
-	# neon walls) reflect in it via SSR — wet-asphalt-under-neon.
+	# The path is a sunken channel: a near-mirror polished-black floor (so it
+	# mirrors the enemies and neon walls via SSR — wet-asphalt-under-neon) with
+	# the glow confined to the trench EDGE walls. Two materials, two surfaces:
+	# floor = glossy black (_mat_copper), edge = emissive neon (_mat_copper_edge).
 	_mat_copper = StandardMaterial3D.new()
 	_mat_copper.albedo_color = Color(0.01, 0.012, 0.015)
 	_mat_copper.metallic = 0.95
@@ -156,66 +154,60 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# The build plateau is a sheet of hex caps (caps only, no per-cell side walls
-	# — adjacent caps share edge vertices, so it's one continuous surface with no
-	# per-hex lines; the hex grid is functional, never drawn). The only vertical
-	# faces are the path's trench walls, the plateau's perimeter skirt, and the
-	# sparse blocking-wall prisms. Flat shading (smooth group -1) + generate_normals
-	# gives each face its own normal (caps +Y up, walls outward) without averaging.
-	var mask_st := SurfaceTool.new(); mask_st.begin(Mesh.PRIMITIVE_TRIANGLES); mask_st.set_smooth_group(-1)
+	# Two levels. The BUILD PLATEAU (every non-path cell) is a FULL-HEX cap at
+	# COPPER_TOP — full hexes so buildable cells stay unambiguous. The PATH is a
+	# sunken, SMOOTH ribbon: each path cell's floor is the clipped polygon (the
+	# 2D copper clip rule, smoothing the trace silhouette) dropped to PATH_TOP,
+	# and the corners clipped OFF each path cell are filled back in at COPPER_TOP
+	# as plateau slivers — so the plateau reads as one continuous surface with a
+	# smooth inner edge along the path, without rounding the build hexes. Trench
+	# walls (clipped boundary, PATH_TOP up to the rim) carry the neon glow.
+	# Flat shading (smooth group -1) + generate_normals gives each face its own
+	# normal without averaging.
+	var plateau_st := SurfaceTool.new(); plateau_st.begin(Mesh.PRIMITIVE_TRIANGLES); plateau_st.set_smooth_group(-1)
 	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES); spawn_st.set_smooth_group(-1)
 	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES); goal_st.set_smooth_group(-1)
 	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES); wall_st.set_smooth_group(-1)
-	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES); copper_st.set_smooth_group(-1)
-	var copper_edge_st := SurfaceTool.new(); copper_edge_st.begin(Mesh.PRIMITIVE_TRIANGLES); copper_edge_st.set_smooth_group(-1)
+	var path_st := SurfaceTool.new(); path_st.begin(Mesh.PRIMITIVE_TRIANGLES); path_st.set_smooth_group(-1)
+	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES); edge_st.set_smooth_group(-1)
 	var have_spawn := false
 	var have_goal := false
 	var have_wall := false
-	var have_copper := false
+	var have_path := false
 
-	# Build plateau: a flat cap at COPPER_TOP for every NON-path cell (one
-	# continuous raised surface). Path cells are left open here — their sunken
-	# floor and the glowing trench walls are added in the path pass below.
-	# spawn/goal sit on the sunken floor as emissive markers.
 	for cell in map.cells:
 		var c := _cell_to_pixel(cell)
 		var hex := _hex_plane_polygon(c)
-		if cell == map.spawn:
-			_add_cap(spawn_st, hex, PATH_TOP + 0.05); have_spawn = true
-		elif cell == map.goal:
-			_add_cap(goal_st, hex, PATH_TOP + 0.05); have_goal = true
-		elif trace_set.has(cell):
-			pass   # sunken path floor drawn in the path pass
+		if _is_path_cell(cell):
+			# smooth sunken ribbon floor (clip the TRACE region, as in 2D)
+			var poly := _clipped_plane_polygon(cell, c, trace_set)
+			if poly.size() >= 3:
+				if cell == map.spawn:
+					_add_cap(spawn_st, poly, PATH_TOP + 0.05); have_spawn = true
+				elif cell == map.goal:
+					_add_cap(goal_st, poly, PATH_TOP + 0.05); have_goal = true
+				else:
+					_add_cap(path_st, poly, PATH_TOP)
+				_add_path_walls(edge_st, c, poly)
+				have_path = true
+			# fill the clipped-off corner(s) at plateau level so the plateau stays
+			# continuous (and full-hex everywhere except this smooth path edge)
+			var omit: Array = TILE_OMIT.get(_clip_tile(cell, trace_set), [])
+			if not omit.is_empty():
+				_add_clip_slivers(plateau_st, hex, omit, COPPER_TOP)
 		elif blocking_set.has(cell):
 			_add_prism(wall_st, hex, WALL_TOP, PATH_TOP); have_wall = true
 		else:
-			_add_cap(mask_st, hex, COPPER_TOP)   # build plateau
-			_add_plateau_skirt(mask_st, c, hex)  # solid sides at the board's outer rim
+			_add_cap(plateau_st, hex, COPPER_TOP)   # full-hex build plateau
+			_add_plateau_skirt(plateau_st, c, hex)  # solid sides at the board's outer rim
 
-	# Sunken path: clipped floor polygon at PATH_TOP, with trench side walls only
-	# on the region's OUTER boundary (rising to the plateau rim at COPPER_TOP) —
-	# one continuous channel (no internal dividing walls) outlined in neon. Always
-	# includes spawn/goal so the markers sit in a proper floor even if an explicit
-	# trace list omits the endpoints.
-	var path_cells := {}
-	for cell in trace_set.keys():
-		path_cells[cell] = true
-	path_cells[map.spawn] = true
-	path_cells[map.goal] = true
-	for cell in path_cells.keys():
-		var c := _cell_to_pixel(cell)
-		var poly := _clipped_plane_polygon(cell, c)
-		if poly.size() >= 3:
-			_add_copper_cell(copper_st, copper_edge_st, c, poly)
-			have_copper = true
-
-	_commit(mask_st, _mat_mask)
+	_commit(plateau_st, _mat_mask)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
 	if have_goal: _commit(goal_st, _mat_goal)
 	if have_wall: _commit(wall_st, _mat_wall, true)   # walls cast shadows (depth)
-	if have_copper:
-		_commit(copper_st, _mat_copper, true)            # glossy black top, casts a contact shadow
-		_commit(copper_edge_st, _mat_copper_edge)        # neon edge outline
+	if have_path:
+		_commit(path_st, _mat_copper, true)              # glossy black sunken floor
+		_commit(edge_st, _mat_copper_edge)               # neon trench-wall glow
 
 # A path cell: a glossy-black sunken FLOOR cap (into `top_st`, at PATH_TOP) plus
 # a glowing trench WALL (into `edge_st`) on each edge that borders a non-path
@@ -228,8 +220,14 @@ func _build_board_meshes() -> void:
 func _is_path_cell(cell: Vector2i) -> bool:
 	return trace_set.has(cell) or cell == map.spawn or cell == map.goal
 
-func _add_copper_cell(top_st: SurfaceTool, edge_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
-	_add_cap(top_st, poly, PATH_TOP)
+# Trench walls for a path cell: a glowing wall (into `edge_st`) on each clipped-
+# floor edge that borders a non-path cell — rising from the sunken floor (PATH_TOP)
+# up to the plateau rim (COPPER_TOP). Boundary detection probes just outside the
+# edge midpoint: a path neighbour means an internal edge (no wall, channel stays
+# continuous); otherwise it's the channel silhouette and gets the glowing wall.
+# (The wall material has culling disabled, so the glow reads from inside the
+# trench regardless of winding.)
+func _add_path_walls(edge_st: SurfaceTool, center: Vector2, poly: PackedVector2Array) -> void:
 	var n := poly.size()
 	for i in range(n):
 		var a := poly[i]
@@ -247,6 +245,41 @@ func _add_copper_cell(top_st: SurfaceTool, edge_st: SurfaceTool, center: Vector2
 		var bb := Vector3(b.x, PATH_TOP, b.y)
 		edge_st.add_vertex(at); edge_st.add_vertex(bb); edge_st.add_vertex(ab)
 		edge_st.add_vertex(at); edge_st.add_vertex(bt); edge_st.add_vertex(bb)
+
+# Fill the corner(s) clipped off a path cell, capped at `y` (plateau level), so
+# the plateau stays continuous up to the smooth clip edge. `omit` is a single
+# consecutive run of hex-vertex indices (per TILE_OMIT); the filled sliver is the
+# small polygon [kept-before, omitted..., kept-after].
+func _add_clip_slivers(st: SurfaceTool, hex: PackedVector2Array, omit: Array, y: float) -> void:
+	var run := _omit_run(omit)
+	if run.is_empty():
+		return
+	var before: int = (int(run[0]) - 1 + 6) % 6
+	var after: int = (int(run[run.size() - 1]) + 1) % 6
+	var poly := PackedVector2Array()
+	poly.append(hex[before])
+	for r in run:
+		poly.append(hex[int(r)])
+	poly.append(hex[after])
+	_add_cap(st, poly, y)
+
+# Order a consecutive (mod 6) set of omitted vertex indices into a run, starting
+# at the index whose predecessor is NOT omitted (handles the wrap case, e.g. [0,5]).
+func _omit_run(omit: Array) -> Array:
+	var present := {}
+	for o in omit:
+		present[int(o)] = true
+	var start := int(omit[0])
+	for o in omit:
+		if not present.has((int(o) - 1 + 6) % 6):
+			start = int(o)
+			break
+	var run: Array = []
+	var x := start
+	while present.has(x) and run.size() < 6:
+		run.append(x)
+		x = (x + 1) % 6
+	return run
 
 # Plateau skirt: a vertical wall dropping from the plateau rim to the path floor
 # on edges that border OFF-MAP (no neighbour cell) — so the board reads as a
@@ -325,10 +358,12 @@ func _hex_plane_polygon(center: Vector2) -> PackedVector2Array:
 		pts.append(center + Vector2(cos(ang), sin(ang)) * HEX_SIZE)
 	return pts
 
-# Copper cell's top polygon = full hex minus the clipped vertices (straight edges).
-func _clipped_plane_polygon(cell: Vector2i, center: Vector2) -> PackedVector2Array:
+# Clipped top polygon = full hex minus the clipped vertices (straight edges),
+# computed against `region` (the set of cells forming the raised area whose
+# silhouette is being smoothed — the build plateau here, the trace in 2D).
+func _clipped_plane_polygon(cell: Vector2i, center: Vector2, region: Dictionary) -> PackedVector2Array:
 	var hp := _hex_plane_polygon(center)
-	var tile := _copper_tile(cell)
+	var tile := _clip_tile(cell, region)
 	var omit: Array = TILE_OMIT.get(tile, [])
 	if omit.is_empty():
 		return hp
@@ -338,13 +373,16 @@ func _clipped_plane_polygon(cell: Vector2i, center: Vector2) -> PackedVector2Arr
 			poly.append(hp[i])
 	return poly
 
-# ---------------------------------------------------------------- copper clip rule (ported)
-func _copper_tile(cell: Vector2i) -> String:
+# ---------------------------------------------------------------- clip rule (ported)
+# Smooths the boundary of `region` by cutting a cell's protruding corners. Ported
+# verbatim from the 2D copper rule, generalised from the fixed trace set to any
+# region set (so it can smooth the build plateau's silhouette along the path).
+func _clip_tile(cell: Vector2i, region: Dictionary) -> String:
 	var copper: Array = []
 	var offmap: Array = []
 	for i in range(6):
 		var n: Vector2i = cell + EDGE_NB[i]
-		copper.append(trace_set.has(n))
+		copper.append(region.has(n))
 		offmap.append(not has_cell(n))
 	var on_lr: bool = offmap[0] or offmap[3]
 	var on_tb: bool = offmap[1] or offmap[2] or offmap[4] or offmap[5]
