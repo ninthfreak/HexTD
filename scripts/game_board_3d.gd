@@ -135,11 +135,15 @@ func _build_board_meshes() -> void:
 	# lines. (Per-cell prisms exposed their side walls as a green honeycomb grid;
 	# the hex grid is functional, never meant to be drawn.) Blocking walls DO get
 	# raised prisms — they're meant to stand proud — but they're sparse.
-	var mask_st := SurfaceTool.new(); mask_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# Flat shading (smooth group -1) + generate_normals gives each face a correct
+	# per-face normal (caps face +Y up, walls outward) with no averaging across
+	# shared edges. Caps-only mask => no walls to expose, so the surface is both
+	# continuous AND properly up-lit.
+	var mask_st := SurfaceTool.new(); mask_st.begin(Mesh.PRIMITIVE_TRIANGLES); mask_st.set_smooth_group(-1)
+	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES); spawn_st.set_smooth_group(-1)
+	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES); goal_st.set_smooth_group(-1)
+	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES); wall_st.set_smooth_group(-1)
+	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES); copper_st.set_smooth_group(-1)
 	var have_spawn := false
 	var have_goal := false
 	var have_wall := false
@@ -174,21 +178,22 @@ func _build_board_meshes() -> void:
 	if have_wall: _commit(wall_st, _mat_wall)
 	if have_copper: _commit(copper_st, _mat_copper)
 
-# Normals are set EXPLICITLY per face (UP for caps, outward for walls) and we
-# do NOT call generate_normals — generate_normals averages across shared
-# vertices, which bent the surface into per-hex buttons. Explicit normals keep
-# a continuous region perfectly flat and uniformly lit.
+# generate_normals respects the flat smooth group set by the callers, so each
+# face gets its own normal (no averaging) — caps up, walls out. The board mesh
+# does not cast shadows: it's the flat ground (towers/enemies/walls cast onto
+# it), and two-sided (cull-disabled) ground self-shadowing would darken it.
 func _commit(st: SurfaceTool, mat: Material) -> void:
+	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh_root.add_child(mi)
 
 # Top cap (single face) at height y for a plane polygon, as a triangle fan.
 # Winding note: the plane polygon is CCW in plane space, but the (x,y)->(x,0,y)
-# mapping flips handedness, so a (center, a, b) fan would face DOWN (and get
-# back-face culled when viewed from above). We emit (center, b, a) so the cap
-# faces +Y up, and set the normal to UP explicitly.
+# mapping flips handedness, so a (center, a, b) fan would face DOWN. We emit
+# (center, b, a) so generate_normals computes a +Y up normal.
 func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 	var center := Vector2.ZERO
 	for p in poly:
@@ -196,7 +201,6 @@ func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 	center /= float(poly.size())
 	var c3 := Vector3(center.x, y, center.y)
 	var n := poly.size()
-	st.set_normal(Vector3.UP)
 	for i in range(n):
 		var a := poly[i]
 		var b := poly[(i + 1) % n]
@@ -204,8 +208,8 @@ func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 		st.add_vertex(Vector3(b.x, y, b.y))
 		st.add_vertex(Vector3(a.x, y, a.y))
 
-# A prism: top cap at `top`, vertical sides down to `bottom`. Each side quad
-# gets an explicit outward normal.
+# A prism: top cap at `top`, vertical sides down to `bottom`. Side triangles are
+# wound to face OUTWARD under the same handedness flip.
 func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
 	_add_cap(st, poly, top)
 	var n := poly.size()
@@ -216,9 +220,6 @@ func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: f
 		var bt := Vector3(b.x, top, b.y)
 		var ab := Vector3(a.x, bottom, a.y)
 		var bb := Vector3(b.x, bottom, b.y)
-		var e := b - a
-		var nrm := Vector3(e.y, 0.0, -e.x).normalized()   # outward (plane perpendicular)
-		st.set_normal(nrm)
 		# two triangles per side quad (outward winding)
 		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
 		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
