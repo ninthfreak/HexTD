@@ -70,4 +70,8 @@ static func from_json(text: String) -> HexMapData:
 
 	m.spawn = HexUtils.offset_to_axial(int(data["spawn"][0]), int(data["spawn"][1]))
 	m.goal = HexUtils.offset_to_axial(int(data["goal"][0]), int(data["goal"][1]))
+
+	# Optional per-map build-area tint ("#rrggbb"); absent -> the model's default.
+	if data.has("build_color") and data["build_color"] is String and data["build_color"] != "":
+		m.build_color = Color(str(data["build_color"]))
 	return m

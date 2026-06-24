@@ -11,3 +11,6 @@ extends Resource
 @export var blocking: Array[Vector2i] = []    # walls that block tower line of sight
 @export var spawn: Vector2i = Vector2i.ZERO
 @export var goal: Vector2i = Vector2i.ZERO
+# Tint of the frosted "frozen smoke" build area, per map. Defaults to the
+# original purple so maps that predate this field look unchanged.
+@export var build_color: Color = Color(0.46, 0.28, 0.60)

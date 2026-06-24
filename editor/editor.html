@@ -143,6 +143,7 @@
         <div class="row"><label class="hint">cols</label><input id="m_cols" type="number" min="2" max="80" value="20">
           <label class="hint">rows</label><input id="m_rows" type="number" min="2" max="60" value="14"><button id="m_apply">Apply</button></div>
         <div class="row"><span class="hint">zoom</span><input id="m_zoom" type="range" min="8" max="48" value="22"></div>
+        <div class="row"><label class="hint">build area color</label><input id="m_build_color" type="color" value="#754799"></div>
         <button id="m_clear">Clear map</button>
       </div>
       <div class="status warn" id="m_status"><span class="dot"></span><span id="m_statusText">Place a spawn and a goal.</span></div>
@@ -827,7 +828,7 @@ let MapTab=null;
 (function(){
   const SQRT3=Math.sqrt(3);
   const COL={grass:'#141a24',path:'#22c8ee',spawn:'#2bd968',goal:'#ff5a4d',block:'#3a2630'};
-  const st={cols:20,rows:14,size:22,name:'My Map',cells:new Map(),spawn:null,goal:null,tool:'path',brush:1,hover:null};
+  const st={cols:20,rows:14,size:22,name:'My Map',buildColor:'#754799',cells:new Map(),spawn:null,goal:null,tool:'path',brush:1,hover:null};
   const k=(c,r)=>c+','+r, parseKey=s=>s.split(',').map(Number);
   const offToAxial=(c,r)=>[c-(r-(r&1))/2,r], axialToOff=(q,r)=>[Math.round(q+(r-(r&1))/2),r];
   function neighbors(c,r){const [q,r0]=offToAxial(c,r);return [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]].map(([dq,dr])=>axialToOff(q+dq,r0+dr));}
@@ -1010,7 +1011,7 @@ let MapTab=null;
     for(const [key,t] of st.cells){ cells.push(parseKey(key)); if(t==='block') blocking.push(parseKey(key)); if(t==='path') trace.push(parseKey(key)); }
     if(st.spawn){cells.push(st.spawn.slice()); trace.push(st.spawn.slice());}
     if(st.goal){cells.push(st.goal.slice()); trace.push(st.goal.slice());}
-    return {name:st.name||'Map',format:'hex-oddr-pointy-v1',cols:st.cols,rows:st.rows,spawn:st.spawn,goal:st.goal,path:route,trace,blocking,cells};}
+    return {name:st.name||'Map',format:'hex-oddr-pointy-v1',cols:st.cols,rows:st.rows,build_color:st.buildColor||'#754799',spawn:st.spawn,goal:st.goal,path:route,trace,blocking,cells};}
   function applyOne(c,r){
     if(c<0||r<0||c>=st.cols||r>=st.rows) return; const key=k(c,r);
     const clr=()=>{if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)st.spawn=null; if(st.goal&&st.goal[0]===c&&st.goal[1]===r)st.goal=null;};
@@ -1062,16 +1063,19 @@ let MapTab=null;
     if(st.goal&&(st.goal[0]>=st.cols||st.goal[1]>=st.rows))st.goal=null; markDirty(); render();});
   document.getElementById('m_clear').addEventListener('click',()=>{if(!confirm('Clear the whole map?'))return;st.cells.clear();st.spawn=null;st.goal=null;markDirty();render();});
   function loadData(d){
-    st.cols=d.cols|0; st.rows=d.rows|0; st.name=d.name||'Map'; st.cells.clear(); st.spawn=d.spawn||null; st.goal=d.goal||null;
+    st.cols=d.cols|0; st.rows=d.rows|0; st.name=d.name||'Map'; st.buildColor=d.build_color||'#754799'; st.cells.clear(); st.spawn=d.spawn||null; st.goal=d.goal||null;
     const traceSrc=(d.trace&&d.trace.length)?d.trace:(d.path||[]);
     const traceSet=new Set(traceSrc.map(([c,r])=>k(c,r)));
     const blockSet=new Set((d.blocking||[]).map(([c,r])=>k(c,r)));
     for(const [c,r] of (d.cells||[])){ if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)continue; if(st.goal&&st.goal[0]===c&&st.goal[1]===r)continue;
       var key=k(c,r); st.cells.set(key, traceSet.has(key)?'path':(blockSet.has(key)?'block':'grass')); }
-    document.getElementById('m_name').value=st.name; document.getElementById('m_cols').value=st.cols; document.getElementById('m_rows').value=st.rows; render();
+    document.getElementById('m_name').value=st.name; document.getElementById('m_cols').value=st.cols; document.getElementById('m_rows').value=st.rows;
+    document.getElementById('m_build_color').value=st.buildColor; render();
   }
   function blank(){ st.cols=20;st.rows=14;document.getElementById('m_cols').value=20;document.getElementById('m_rows').value=14;
-    st.cells.clear();st.spawn=null;st.goal=null;st.name='New Map';document.getElementById('m_name').value='New Map'; render(); }
+    st.cells.clear();st.spawn=null;st.goal=null;st.name='New Map';document.getElementById('m_name').value='New Map';
+    st.buildColor='#754799';document.getElementById('m_build_color').value='#754799'; render(); }
+  document.getElementById('m_build_color').addEventListener('input',ev=>{ st.buildColor=ev.target.value; markDirty(); });
   selectTool('path');
   MapTab={ load:loadData, getExport:()=>buildExport(), blank, render, sanitizeName:n=>sanitizeName(n), curName:()=>st.name };
 })();
