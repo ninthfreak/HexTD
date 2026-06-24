@@ -53,6 +53,9 @@ func _tower_from_dict(d: Dictionary) -> TowerData:
 	t.ramp_time = maxf(0.05, float(d.get("ramp_time", 2.0)))
 	t.bit_corruption = bool(d.get("bit_corruption", false))
 	t.cipher = bool(d.get("cipher", false))
+	t.buffer_overflow = bool(d.get("buffer_overflow", false))
+	t.height_scale = maxf(0.05, float(d.get("height_scale", 1.0)))
+	t.width_scale = maxf(0.05, float(d.get("width_scale", 1.0)))
 	t.upgrades = _parse_upgrades(d.get("upgrades", []))
 	return t
 
@@ -75,12 +78,14 @@ func _parse_upgrades(arr) -> Array:
 				if typeof(u) != TYPE_DICTIONARY:
 					continue
 				var tier := {"cost": int(u.get("cost", 0))}
-				for stat in ["damage", "range", "fire_rate", "directions", "ramp_time"]:
+				for stat in ["damage", "range", "fire_rate", "directions", "ramp_time", "height", "width"]:
 					if u.has(stat):
 						tier[stat] = float(u[stat])
-				for flag in ["cipher", "bit_corruption", "ignore_walls"]:
+				for flag in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow"]:
 					if u.has(flag):
 						tier[flag] = str(u[flag])
+				if u.has("color") and str(u["color"]) != "":
+					tier["color"] = str(u["color"])
 				tiers.append(tier)
 				if tiers.size() >= 5:
 					break

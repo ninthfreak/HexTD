@@ -15,9 +15,13 @@ extends Resource
 @export var ramp_time: float = 2.0            # laser only: seconds of sustained fire to reach full power (damage = max dmg/sec)
 @export var bit_corruption := false           # ignores enemy ECC damage resistance
 @export var cipher := false                   # can see and target Encrypted enemies
+@export var buffer_overflow := false          # single-hit surplus damage spills into the target's decay children
+@export var height_scale: float = 1.0         # body height multiplier (3D view)
+@export var width_scale: float = 1.0          # body width / footprint multiplier
 ## Up to 3 upgrade slots (independent paths), authored in the editor. Each slot is a
 ## Dictionary {"name": String, "tiers": Array}. Each tier (up to 5 per slot) is a
-## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate": additive deltas
-## (may be negative), optional "cipher"/"bit_corruption"/"ignore_walls": "on"|"off"}.
+## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate"/"directions"/"ramp_time"/
+## "height"/"width": additive deltas (may be negative), optional "color": "#rrggbb" override,
+## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow": "on"|"off"}.
 ## Slots are bought independently, level by level; tiers within a slot are sequential.
 @export var upgrades: Array = []

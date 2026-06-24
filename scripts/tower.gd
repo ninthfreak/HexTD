@@ -105,12 +105,14 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "ramp_time": "Ramp time"}
-	for key in ["damage", "range", "fire_rate", "directions", "ramp_time"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "ramp_time": "Ramp time", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "ramp_time", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls"}
-	for key in ["cipher", "bit_corruption", "ignore_walls"]:
+	if str(tier.get("color", "")) != "":
+		lines.append("Color change")
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow"}
+	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":
 			lines.append("%s: enabled" % flag_labels[key])
@@ -156,9 +158,15 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.fire_rate += float(tier.get("fire_rate", 0.0))
 	data.directions += int(round(float(tier.get("directions", 0.0))))
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
+	data.height_scale = maxf(0.05, data.height_scale + float(tier.get("height", 0.0)))
+	data.width_scale = maxf(0.05, data.width_scale + float(tier.get("width", 0.0)))
+	var col := str(tier.get("color", ""))
+	if col != "":
+		data.color = Color(col)
 	_apply_flag("cipher", tier)
 	_apply_flag("bit_corruption", tier)
 	_apply_flag("ignore_walls", tier)
+	_apply_flag("buffer_overflow", tier)
 
 func _apply_flag(key: String, tier: Dictionary) -> void:
 	var v := str(tier.get(key, ""))
@@ -340,7 +348,7 @@ func cycle_target_priority() -> String:
 
 func _shoot(t) -> void:
 	var p := Projectile.new()
-	p.setup(position, t, data.damage, data.projectile_speed, data.color, data.bit_corruption)
+	p.setup(position, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow)
 	board.add_projectile(p)
 
 func _draw() -> void:
@@ -366,13 +374,13 @@ func _draw_laser() -> void:
 		var beam := Color(bc.r * BEAM_GLOW, bc.g * BEAM_GLOW, bc.b * BEAM_GLOW, lerpf(0.35, 0.9, frac))
 		draw_line(Vector2.ZERO, to, beam, lerpf(4.0, 12.0, frac))
 		draw_circle(to, lerpf(4.0, 10.0, frac), Color(BEAM_GLOW, BEAM_GLOW, BEAM_GLOW, 0.8))
-	var r: float = GameBoard.TOWER_RADIUS
+	var r: float = GameBoard.TOWER_RADIUS * maxf(0.05, data.width_scale)
 	draw_circle(Vector2.ZERO, r, data.color)
 	draw_arc(Vector2.ZERO, r, 0.0, TAU, 32, Color(0, 0, 0, 0.5), 2.0, true)
 	draw_circle(Vector2.ZERO, r * 0.4, Color(1, 1, 1, 0.85))
 
 func _draw_diamond() -> void:
-	var s: float = GameBoard.TOWER_RADIUS
+	var s: float = GameBoard.TOWER_RADIUS * maxf(0.05, data.width_scale)
 	var pts := PackedVector2Array([
 		Vector2(0, -s), Vector2(s, 0), Vector2(0, s), Vector2(-s, 0)
 	])
@@ -387,7 +395,7 @@ func _draw_star() -> void:
 	# don't become unreadable spiky blobs: round(sqrt(3 * dirs)), e.g. 3->3, 12->6, 24->8.
 	var dirs: int = maxi(1, data.directions)
 	var n: int = maxi(3, int(round(sqrt(3.0 * float(dirs)))))
-	var outer: float = GameBoard.TOWER_RADIUS
+	var outer: float = GameBoard.TOWER_RADIUS * maxf(0.05, data.width_scale)
 	var inner := outer * 0.46
 	var perim := PackedVector2Array()
 	for i in range(2 * n):

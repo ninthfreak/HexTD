@@ -421,6 +421,10 @@ func _on_enemy_split(lesser, placements: Array) -> void:
 		e.setup(lesser, board.get_path_points())
 		e.place_on_path(int(pl["index"]), pl["pos"])
 		board.add_enemy(e)
+		# Buffer Overflow: a freshly spawned child takes its share of the surplus.
+		var carry: float = float(pl.get("carry", 0.0))
+		if carry > 0.0:
+			e.take_damage(carry, bool(pl.get("pierce", false)))
 
 func _on_start_pressed() -> void:
 	if waves.is_empty():

@@ -264,10 +264,14 @@ function towersToJSON(towers, order){
     if(mode==='laser') o.ramp_time=Math.max(0.05,+t.ramp_time||2);
     if(t.bit_corruption) o.bit_corruption=true;
     if(t.cipher) o.cipher=true;
+    if(t.buffer_overflow) o.buffer_overflow=true;
+    if(+t.height_scale && +t.height_scale!==1) o.height_scale=+t.height_scale;
+    if(+t.width_scale && +t.width_scale!==1) o.width_scale=+t.width_scale;
     if(Array.isArray(t.upgrades)&&t.upgrades.length){
       const tierJSON=u=>{const e={cost:Math.round(+u.cost||0)};
-        for(const s of ['damage','range','fire_rate','directions','ramp_time']) if(+u[s]) e[s]=+u[s];
-        for(const f of ['cipher','bit_corruption','ignore_walls']) if(u[f]==='on'||u[f]==='off') e[f]=u[f];
+        for(const s of ['damage','range','fire_rate','directions','ramp_time','height','width']) if(+u[s]) e[s]=+u[s];
+        for(const f of ['cipher','bit_corruption','ignore_walls','buffer_overflow']) if(u[f]==='on'||u[f]==='off') e[f]=u[f];
+        if(u.color) e.color=u.color;
         return e;};
       o.upgrades=t.upgrades.slice(0,3).map((slot,si)=>({
         name:(slot.name||('Slot '+(si+1))),
@@ -284,16 +288,19 @@ function towersFromJSON(obj){
       projectile_speed:+(d.projectile_speed??320),
       fire_mode:(d.fire_mode==='radial'||d.fire_mode==='laser')?d.fire_mode:'single',
       directions:+(d.directions??6), ramp_time:+(d.ramp_time??2),
-      bit_corruption:!!d.bit_corruption, cipher:!!d.cipher,
+      bit_corruption:!!d.bit_corruption, cipher:!!d.cipher, buffer_overflow:!!d.buffer_overflow,
+      height_scale:+(d.height_scale??1), width_scale:+(d.width_scale??1),
       upgrades:normUpgrades(d.upgrades) }; }
   return {towers, order};
 }
 function normTier(u){u=u||{};return {
   cost:+(u.cost??0), damage:+(u.damage??0), range:+(u.range??0), fire_rate:+(u.fire_rate??0),
   directions:+(u.directions??0), ramp_time:+(u.ramp_time??0),
+  height:+(u.height??0), width:+(u.width??0), color:(u.color||''),
   cipher:(u.cipher==='on'||u.cipher==='off')?u.cipher:'inherit',
   bit_corruption:(u.bit_corruption==='on'||u.bit_corruption==='off')?u.bit_corruption:'inherit',
-  ignore_walls:(u.ignore_walls==='on'||u.ignore_walls==='off')?u.ignore_walls:'inherit'};}
+  ignore_walls:(u.ignore_walls==='on'||u.ignore_walls==='off')?u.ignore_walls:'inherit',
+  buffer_overflow:(u.buffer_overflow==='on'||u.buffer_overflow==='off')?u.buffer_overflow:'inherit'};}
 function normUpgrades(arr){
   if(!Array.isArray(arr)) return [];
   // tolerate the older flat tier list (array of tier objects) by wrapping it as one slot
@@ -332,7 +339,7 @@ const DEF_ENEMIES={
   byte:{name:'byte',shape:'octagon',color:'#b06ae8',health:116,speed:60,reward:16,side:16,length:32,width:16,radius:22,sides:8,reduces_to:'nybble'},
 };
 const DEF_ENEMY_ORDER=['bit','2bit','nybble','byte'];
-const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2} };
+const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2,buffer_overflow:false,height_scale:1,width_scale:1} };
 const DEF_TOWER_ORDER=['basic'];
 const DEF_WAVES={ spawn_interval_default:0.7, waves:[
   {groups:[{type:'bit',count:12,gap:0.55}]},
@@ -754,9 +761,12 @@ function renderTowerEditor(){
   if(radial) grid.push(...field('directions (6 = hex flat sides)',
     el('input',{type:'number',min:'1',step:'1',value:(t.directions??6),oninput:ev=>upd('directions',ev.target.value)})));
   if(laser) grid.push(...field('ramp-up time (s to full power)',num('ramp_time','0.1')));
+  grid.push(...field('height scale (3D)',num('height_scale','0.1')));
+  grid.push(...field('width scale',num('width_scale','0.1')));
   grid.push(el('div',{class:'full',style:'display:flex;gap:22px;flex-wrap:wrap;margin-top:2px'},
     checkbox('Bit Corruption — ignores ECC resist', t.bit_corruption, ev=>upd('bit_corruption',ev.target.checked)),
-    checkbox('Cipher — can target Encrypted', t.cipher, ev=>upd('cipher',ev.target.checked))));
+    checkbox('Cipher — can target Encrypted', t.cipher, ev=>upd('cipher',ev.target.checked)),
+    checkbox('Buffer Overflow — surplus spills into decay children', t.buffer_overflow, ev=>upd('buffer_overflow',ev.target.checked))));
   box.append(el('div',{class:'card',style:'max-width:720px'}, el('h3',{},'Edit tower'),
     el('div',{class:'row',style:'align-items:flex-start;gap:24px'},
       el('div',{class:'formgrid',style:'flex:1'}, ...grid),
@@ -791,15 +801,19 @@ function upgradeEditor(t){
         ...field('fire rate (+/-)',dnum(u,'fire_rate','0.1')),
         ...field('projectiles (+/-)',dnum(u,'directions')),
         ...field('ramp time (+/-)',dnum(u,'ramp_time','0.1')),
+        ...field('height (+/-)',dnum(u,'height','0.1')),
+        ...field('width (+/-)',dnum(u,'width','0.1')),
+        ...field('color (override)',el('input',{type:'text',value:(u.color||''),placeholder:'no change',oninput:ev=>{u.color=ev.target.value.trim();setDirty('towers');}})),
         ...field('cipher',tri(u,'cipher')),
         ...field('bit corruption',tri(u,'bit_corruption')),
         ...field('ignore walls',tri(u,'ignore_walls')),
+        ...field('buffer overflow',tri(u,'buffer_overflow')),
       ];
       slotBox.append(el('div',{style:'border-top:1px solid #2a2f3a;padding-top:10px;margin-top:8px'}, head, el('div',{class:'formgrid'}, ...g)));
     });
     if(slot.tiers.length<5)
       slotBox.append(el('button',{style:'margin-top:10px',onclick:()=>{
-        slot.tiers.push({cost:50,damage:0,range:0,fire_rate:0,directions:0,ramp_time:0,cipher:'inherit',bit_corruption:'inherit',ignore_walls:'inherit'});
+        slot.tiers.push({cost:50,damage:0,range:0,fire_rate:0,directions:0,ramp_time:0,height:0,width:0,color:'',cipher:'inherit',bit_corruption:'inherit',ignore_walls:'inherit',buffer_overflow:'inherit'});
         setDirty('towers');renderTowerEditor();}},'+ Add tier'));
     else slotBox.append(el('div',{class:'hint',style:'margin-top:8px'},'Maximum of 5 tiers.'));
     wrap.append(slotBox);
@@ -824,7 +838,7 @@ function deleteTower(id){
 }
 document.getElementById('tw_add').onclick=()=>{
   const id=uniqueId('tower',MODEL.towerOrder);
-  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2};
+  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2,buffer_overflow:false,height_scale:1,width_scale:1};
   MODEL.towerOrder.push(id); selTower=id; setDirty('towers'); renderTowers();
 };
 document.getElementById('tw_save').onclick=async ()=>{

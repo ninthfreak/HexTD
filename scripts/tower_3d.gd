@@ -127,12 +127,14 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "ramp_time": "Ramp time"}
-	for key in ["damage", "range", "fire_rate", "directions", "ramp_time"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "ramp_time": "Ramp time", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "ramp_time", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls"}
-	for key in ["cipher", "bit_corruption", "ignore_walls"]:
+	if str(tier.get("color", "")) != "":
+		lines.append("Color change")
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow"}
+	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":
 			lines.append("%s: enabled" % flag_labels[key])
@@ -175,9 +177,15 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.fire_rate += float(tier.get("fire_rate", 0.0))
 	data.directions += int(round(float(tier.get("directions", 0.0))))
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
+	data.height_scale = maxf(0.05, data.height_scale + float(tier.get("height", 0.0)))
+	data.width_scale = maxf(0.05, data.width_scale + float(tier.get("width", 0.0)))
+	var col := str(tier.get("color", ""))
+	if col != "":
+		data.color = Color(col)
 	_apply_flag("cipher", tier)
 	_apply_flag("bit_corruption", tier)
 	_apply_flag("ignore_walls", tier)
+	_apply_flag("buffer_overflow", tier)
 
 func _apply_flag(key: String, tier: Dictionary) -> void:
 	var v := str(tier.get(key, ""))
@@ -352,7 +360,7 @@ func cycle_target_priority() -> String:
 
 func _shoot(t) -> void:
 	var p := Projectile3D.new()
-	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption)
+	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow)
 	board.add_projectile(p)
 
 # ---------------------------------------------------------------- body (3D)
@@ -384,6 +392,9 @@ func _rebuild_body() -> void:
 			_part(_low_poly_cone(r * 0.9, 60.0, 6), mat, 0.0)
 		_:
 			_part(_low_poly_cylinder(r * 0.9, 40.0, 8), mat, 0.0)
+	# Upgrades can reshape the body: scale width in the plane (X/Z) and height in Y.
+	# Scaling the whole container keeps every fire mode (and its part offsets) correct.
+	_body.scale = Vector3(maxf(0.05, data.width_scale), maxf(0.05, data.height_scale), maxf(0.05, data.width_scale))
 
 func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
