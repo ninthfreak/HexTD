@@ -174,18 +174,16 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# Two smoothed outline polygons drive everything: the PATH region and the whole
-	# BOARD. Layers (bottom to top):
-	#   - black reflective FLOOR over the whole board at PATH_TOP (also the path
-	#     channel bottom; mirrors the hovering enemies via SSR);
-	#   - black path CHANNEL WALLS (path outline extruded up to the rim);
-	#   - the build area as a thick GLASS SLAB: a merged top (board minus path) at
-	#     COPPER_TOP + an outer-rim wall down to the floor — one continuous sheet,
-	#     so no per-cell hex facets show through the glass;
+	# Layers (bottom to top):
+	#   - black glossy path FLOOR + CHANNEL WALLS, from the smoothed path outline;
+	#   - the build area as a thick FROSTED slab: per-cell top caps at COPPER_TOP
+	#     (the path cut out of each touched cell — PER-CELL, because a single merged
+	#     "board minus path" polygon has a hole the triangulator can't handle and
+	#     fills, which hid the path), plus an outer-rim wall down to the floor for
+	#     real thickness;
 	#   - the neon border ribbon along the path edge.
-	# Everything aligns because it's all built from the same two smooth polygons.
 	var path_polys := _build_path_polys()
-	var board_polys := _build_region_outline(Callable(self, "has_cell"), 3)
+	var board_polys := _build_region_outline(Callable(self, "has_cell"), 0)
 
 	var floor_st := SurfaceTool.new(); floor_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var glass_st := SurfaceTool.new(); glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -197,38 +195,41 @@ func _build_board_meshes() -> void:
 	var have_spawn := false
 	var have_goal := false
 
-	# black reflective floor (whole board) + black path channel walls
-	for bpoly in board_polys:
-		_emit_cap_tris(floor_st, bpoly, PATH_TOP)
+	# black path channel: smooth sunken floor + walls + neon border
 	for ppoly in path_polys:
-		_emit_wall_loop(floor_st, ppoly, COPPER_TOP, PATH_TOP)   # channel walls (black)
+		_emit_cap_tris(floor_st, ppoly, PATH_TOP)
+		_emit_wall_loop(floor_st, ppoly, COPPER_TOP, PATH_TOP)
 		_stroke_border(edge_st, ppoly)
 
-	# glass build slab: merged top (board minus path) + outer-rim wall
-	for bpoly in board_polys:
-		var parts: Array = [bpoly]
-		for ppoly in path_polys:
-			var np: Array = []
-			for part in parts:
-				for r in Geometry2D.clip_polygons(part, ppoly):
-					np.append(r)
-			parts = np
-		for part in parts:
-			_emit_cap_tris(glass_st, part, COPPER_TOP)
-		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, PATH_TOP)   # outer rim (glass)
-
-	# blocking prisms + spawn/goal markers on the channel floor
+	# frosted build slab: per-cell top (board minus path), blocking prisms, markers
 	for cell in map.cells:
 		var hex := _hex_plane_polygon(_cell_to_pixel(cell))
 		if blocking_set.has(cell):
 			_add_prism(wall_st, hex, WALL_TOP, PATH_TOP); have_wall = true
-		elif cell == map.spawn:
+			continue
+		if cell == map.spawn:
 			_emit_cap_tris(spawn_st, hex, PATH_TOP + 0.06); have_spawn = true
 		elif cell == map.goal:
 			_emit_cap_tris(goal_st, hex, PATH_TOP + 0.06); have_goal = true
+		if _near_path(cell):
+			var parts: Array = [hex]
+			for ppoly in path_polys:
+				var np: Array = []
+				for part in parts:
+					for r in Geometry2D.clip_polygons(part, ppoly):
+						np.append(r)
+				parts = np
+			for part in parts:
+				_emit_cap_tris(glass_st, part, COPPER_TOP)
+		elif not _is_path_cell(cell):
+			_add_cap(glass_st, hex, COPPER_TOP)   # whole hex, away from the path
 
-	_commit(floor_st, _mat_copper, true)                 # glossy black floor + channel walls
-	_commit(glass_st, _mat_glass)                        # translucent build slab
+	# outer-rim wall gives the frosted slab visible thickness at the board edge
+	for bpoly in board_polys:
+		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, PATH_TOP)
+
+	_commit(floor_st, _mat_copper, true)                 # glossy black path floor + walls
+	_commit(glass_st, _mat_glass)                        # frosted build slab
 	if path_polys.size() > 0: _commit(edge_st, _mat_copper_edge)   # neon border ribbon
 	if have_wall: _commit(wall_st, _mat_wall, true)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
