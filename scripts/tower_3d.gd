@@ -355,10 +355,9 @@ func _shoot(t) -> void:
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption)
 	board.add_projectile(p)
 
-# ---------------------------------------------------------------- body (composite 3D)
-# A gunmetal base + glowing accent band, topped by a single clean primitive that
-# identifies the fire mode: a CYLINDER (single), a TOROID (radial) or a low-poly
-# CONE (laser). Colour-coded by the tower's own colour. Rebuilt on upgrade.
+# ---------------------------------------------------------------- body (3D)
+# One colour-coded primitive per fire mode — nothing else (no base, no caps):
+#   single -> tall thin cylinder; radial -> low-poly toroid; laser -> low-poly cone.
 func _rebuild_body() -> void:
 	if _body != null and is_instance_valid(_body):
 		_body.queue_free()
@@ -368,39 +367,23 @@ func _rebuild_body() -> void:
 	_body = Node3D.new()
 	add_child(_body)
 	var r: float = GameBoard3D.TOWER_RADIUS
-	var steel := _steel_mat()
-	var core := _core_mat()
-	var glow := _glow_mat()
-	_part(_frustum(r * 0.85, r * 0.70, 1.4, 6), steel, 0.7)    # short base
-	_part(_frustum(r * 0.72, r * 0.72, 0.35, 6), glow, 1.55)   # glowing accent band
+	var mat := _core_mat()
 	match data.fire_mode:
 		"radial":
-			_build_radial_top(r, steel, core, glow)
+			# polyhedral (low-poly) torus: a net of quad faces approximating the
+			# torus surface — low ring/segment counts keep it faceted.
+			var torus := TorusMesh.new()
+			torus.inner_radius = r * 0.30
+			torus.outer_radius = r * 0.62
+			torus.rings = 12             # faces around the main ring
+			torus.ring_segments = 6      # quad faces around the tube cross-section
+			_part(torus, mat, r * 0.16)  # lies flat, resting on the board
 		"laser":
-			_build_laser_top(r, core, glow)
+			# tall low-poly cone (hexagonal pyramid), apex up = beam origin
+			_part(_frustum(r * 0.50, 0.0, 10.0, 6), mat, 5.0)
 		_:
-			_build_single_top(r, core, glow)
-
-# Single-target: a clean upright cylinder with a glowing top node.
-func _build_single_top(r: float, core: StandardMaterial3D, glow: StandardMaterial3D) -> void:
-	_part(_frustum(r * 0.55, r * 0.55, 5.0, 16), core, 4.25)   # cylinder, 1.75..6.75
-	_part(_sphere(r * 0.16), glow, 6.9)
-
-# Laser: a low-poly cone (apex up), glowing tip = the beam origin.
-func _build_laser_top(r: float, core: StandardMaterial3D, glow: StandardMaterial3D) -> void:
-	_part(_frustum(r * 0.60, 0.0, 6.0, 5), core, 4.75)         # low-poly cone, 1.75..7.75
-	_part(_sphere(r * 0.14), glow, 7.75)                       # tip / beam origin
-
-# Radial: a glowing toroid ring on a short post, with a colour-coded core.
-func _build_radial_top(r: float, steel: StandardMaterial3D, core: StandardMaterial3D, glow: StandardMaterial3D) -> void:
-	_part(_frustum(r * 0.16, r * 0.14, 2.4, 6), steel, 3.0)    # post, 1.8..4.2
-	var torus := TorusMesh.new()
-	torus.inner_radius = r * 0.30
-	torus.outer_radius = r * 0.62
-	torus.rings = 18
-	torus.ring_segments = 8
-	_part(torus, glow, 3.8)                                    # the toroid
-	_part(_sphere(r * 0.22), core, 3.8)                        # central core
+			# tall, thin cylinder
+			_part(_frustum(r * 0.34, r * 0.34, 9.0, 16), mat, 4.5)
 
 # --- primitive + material helpers ---
 func _frustum(bottom_r: float, top_r: float, h: float, seg: int) -> CylinderMesh:
@@ -412,14 +395,6 @@ func _frustum(bottom_r: float, top_r: float, h: float, seg: int) -> CylinderMesh
 	m.rings = 1
 	return m
 
-func _sphere(rad: float) -> SphereMesh:
-	var m := SphereMesh.new()
-	m.radius = rad
-	m.height = rad * 2.0
-	m.radial_segments = 12
-	m.rings = 6
-	return m
-
 func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
@@ -428,30 +403,16 @@ func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
 	_body.add_child(mi)
 	return mi
 
-func _steel_mat() -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.32, 0.34, 0.39)
-	m.metallic = 0.85
-	m.roughness = 0.3
-	return m
-
+# Colour-coded body material: the tower's own colour, lit + a soft self-glow.
+# Low metallic so it reads as colour, not a dark mirror in the dim scene.
 func _core_mat() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = data.color
-	m.metallic = 0.5
-	m.roughness = 0.3
+	m.metallic = 0.25
+	m.roughness = 0.35
 	m.emission_enabled = true
 	m.emission = data.color
 	m.emission_energy_multiplier = 0.5
-	return m
-
-func _glow_mat() -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = data.color
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.emission_enabled = true
-	m.emission = data.color
-	m.emission_energy_multiplier = 2.0
 	return m
 
 # ---------------------------------------------------------------- laser beam
