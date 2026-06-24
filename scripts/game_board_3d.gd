@@ -183,18 +183,30 @@ func _build_materials() -> void:
 	# this dark scene and just reads as a black hole.
 	_mat_wall = StandardMaterial3D.new()
 	# Very slight transparency so the walls read as a solid-but-glassy blocker
-	# rather than an opaque slab. A DEPTH PRE-PASS makes the transparent surface
-	# write depth, so the prism's near face occludes its far face (and anything
-	# behind) — without it, at grazing angles you see through both wall faces at
-	# once and the block looks nearly invisible.
-	_mat_wall.albedo_color = Color(WALL_COLOR.r, WALL_COLOR.g, WALL_COLOR.b, 0.85)
+	# rather than an opaque slab.
+	#
+	# Three things conspire to make naive ALPHA walls look like ghosts at certain
+	# angles, and we fix each one:
+	#   1) Without a depth pre-pass, transparent surfaces don't write depth, so
+	#      the prism's far face blends through its near face. -> DEPTH_PRE_PASS.
+	#   2) The huge frozen-smoke slab is ALSO transparent. In the transparent
+	#      queue, objects sort by bounding-box centre distance — at some camera
+	#      angles the smoke sorts AFTER the (smaller) wall and is drawn over it,
+	#      washing the wall out to nearly nothing. -> render_priority lifts the
+	#      wall above the smoke in the sort so it always wins.
+	#   3) With CULL_DISABLED both prism faces blend at the same fragment at
+	#      grazing angles. -> CULL_BACK so only the outward-facing face draws.
+	_mat_wall.albedo_color = Color(WALL_COLOR.r, WALL_COLOR.g, WALL_COLOR.b, 0.9)
 	_mat_wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	_mat_wall.render_priority = 5
 	_mat_wall.metallic = 0.25
 	_mat_wall.roughness = 0.55
 	_mat_wall.emission_enabled = true
 	_mat_wall.emission = WALL_COLOR
 	_mat_wall.emission_energy_multiplier = 0.15
-	_mat_wall.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Back-face cull (see comment above) — _add_prism uses standard outward
+	# winding so back-face is the safe choice.
+	_mat_wall.cull_mode = BaseMaterial3D.CULL_BACK
 	_mat_spawn = _emissive_mat(SPAWN_COLOR)
 	_mat_goal = _emissive_mat(GOAL_COLOR)
 
