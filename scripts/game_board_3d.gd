@@ -183,9 +183,12 @@ func _build_materials() -> void:
 	# this dark scene and just reads as a black hole.
 	_mat_wall = StandardMaterial3D.new()
 	# Very slight transparency so the walls read as a solid-but-glassy blocker
-	# rather than an opaque slab. Kept high-alpha so they still clearly occlude.
-	_mat_wall.albedo_color = Color(WALL_COLOR.r, WALL_COLOR.g, WALL_COLOR.b, 0.82)
-	_mat_wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# rather than an opaque slab. A DEPTH PRE-PASS makes the transparent surface
+	# write depth, so the prism's near face occludes its far face (and anything
+	# behind) — without it, at grazing angles you see through both wall faces at
+	# once and the block looks nearly invisible.
+	_mat_wall.albedo_color = Color(WALL_COLOR.r, WALL_COLOR.g, WALL_COLOR.b, 0.85)
+	_mat_wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
 	_mat_wall.metallic = 0.25
 	_mat_wall.roughness = 0.55
 	_mat_wall.emission_enabled = true
