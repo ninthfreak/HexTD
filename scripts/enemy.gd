@@ -55,18 +55,22 @@ func _process(delta: float) -> void:
 		position += to_target / dist * step
 	queue_redraw()
 
-func take_damage(amount: float, pierces_ecc := false) -> void:
+func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> void:
 	if not _alive:
 		return
 	if data.ecc and not pierces_ecc:
 		amount *= (1.0 - ECC_RESIST)
+	# Buffer Overflow: remember surplus past the target's remaining HP (post-resist).
+	var carry := 0.0
+	if buffer_overflow and amount > health:
+		carry = amount - health
 	health -= amount
 	if health <= 0.0:
-		_on_depleted()
+		_on_depleted(carry, pierces_ecc)
 	else:
 		queue_redraw()
 
-func _on_depleted() -> void:
+func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.play_sfx(data.death_sound)   # blank -> shared default in the manager
@@ -77,6 +81,11 @@ func _on_depleted() -> void:
 		queue_free()
 		return
 	var count: int = maxi(1, data.reduce_count)
+	# Buffer Overflow: split the carried surplus evenly across the decay children
+	# (floor; remainder discarded). per_child == 0 when there is no overflow.
+	var per_child := 0.0
+	if carry > 0.0:
+		per_child = floor(carry / float(count))
 	# remember the dying enemy's spot on the path before morphing
 	var parent_index := _index
 	var parent_pos := position
@@ -84,15 +93,18 @@ func _on_depleted() -> void:
 	data = lesser
 	health = data.health
 	queue_redraw()
-	if count <= 1:
-		return
-	# the rest spawn behind, along the path toward spawn, evenly spaced
-	var spacing: float = _radius_estimate() * 2.0 + 6.0
-	var placements := []
-	for k in range(1, count):
-		var res := _walk_back(parent_index, parent_pos, spacing * float(k))
-		placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z)})
-	split.emit(lesser, placements)
+	# the rest spawn behind, along the path toward spawn, evenly spaced, each carrying overflow
+	if count > 1:
+		var spacing: float = _radius_estimate() * 2.0 + 6.0
+		var placements := []
+		for k in range(1, count):
+			var res := _walk_back(parent_index, parent_pos, spacing * float(k))
+			placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z), "carry": per_child, "pierce": pierces_ecc})
+		split.emit(lesser, placements)
+	# Spill into this first child too. One-hop: the carried hit does not itself
+	# overflow (buffer_overflow arg left false), but a child it kills decays normally.
+	if per_child > 0.0:
+		take_damage(per_child, pierces_ecc)
 
 # Walk backward (toward spawn) from a point on the path by `back` pixels.
 # Returns Vector3(index, pos.x, pos.y) — the segment index and world position.

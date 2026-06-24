@@ -587,18 +587,22 @@ func _process(delta: float) -> void:
 	_sync_transform()
 
 # --------------------------------------------------------------- damage / reduction
-func take_damage(amount: float, pierces_ecc := false) -> void:
+func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> void:
 	if not _alive:
 		return
 	if data.ecc and not pierces_ecc:
 		amount *= (1.0 - ECC_RESIST)
+	# Buffer Overflow: remember surplus past the target's remaining HP (post-resist).
+	var carry := 0.0
+	if buffer_overflow and amount > health:
+		carry = amount - health
 	health -= amount
 	if health <= 0.0:
-		_on_depleted()
+		_on_depleted(carry, pierces_ecc)
 	else:
 		_refresh_bar_texture(health / data.health)
 
-func _on_depleted() -> void:
+func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.play_sfx(data.death_sound)
@@ -609,23 +613,31 @@ func _on_depleted() -> void:
 		queue_free()
 		return
 	var count: int = maxi(1, data.reduce_count)
+	# Buffer Overflow: split the carried surplus evenly across the decay children
+	# (floor; remainder discarded). per_child == 0 when there is no overflow.
+	var per_child := 0.0
+	if carry > 0.0:
+		per_child = floor(carry / float(count))
 	var parent_index := _index
 	var parent_pos := pp
-	# morph this node into the lesser form
+	# morph this node into the lesser form (it is the first decay child)
 	data = lesser
 	health = data.health
 	_build_body()
 	_place_bar()
 	_refresh_bar_texture(1.0)
-	if count <= 1:
-		return
-	# the rest spawn along the path behind us, evenly spaced
-	var spacing: float = _radius_estimate() * 2.0 + 6.0
-	var placements := []
-	for k in range(1, count):
-		var res := _walk_back(parent_index, parent_pos, spacing * float(k))
-		placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z)})
-	split.emit(lesser, placements)
+	# the rest spawn along the path behind us, evenly spaced, each carrying overflow
+	if count > 1:
+		var spacing: float = _radius_estimate() * 2.0 + 6.0
+		var placements := []
+		for k in range(1, count):
+			var res := _walk_back(parent_index, parent_pos, spacing * float(k))
+			placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z), "carry": per_child, "pierce": pierces_ecc})
+		split.emit(lesser, placements)
+	# Spill into this first child too. One-hop: the carried hit does not itself
+	# overflow (buffer_overflow arg left false), but a child it kills decays normally.
+	if per_child > 0.0:
+		take_damage(per_child, pierces_ecc)
 
 func _walk_back(seg: int, p: Vector2, back: float) -> Vector3:
 	while back > 0.0:

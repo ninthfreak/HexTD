@@ -10,18 +10,20 @@ var speed: float
 var damage: float
 var col: Color
 var pierces_ecc := false
+var buffer_overflow := false   # tower had Buffer Overflow: surplus spills into decay children
 var pp := Vector2.ZERO
 
 const GLOW := 1.7              # over-bright factor that the env's bloom picks up
 const SPHERE_RADIUS := 1.4
 
-func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := false) -> void:
+func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := false, overflow := false) -> void:
 	pp = start_plane
 	target = t
 	damage = dmg
 	speed = spd
 	col = c
 	pierces_ecc = pierce
+	buffer_overflow = overflow
 	_build_mesh()
 	_sync_transform()
 
@@ -58,7 +60,7 @@ func _process(delta: float) -> void:
 	var dist := to_target.length()
 	var step := speed * delta
 	if step >= dist:
-		target.take_damage(damage, pierces_ecc)
+		target.take_damage(damage, pierces_ecc, buffer_overflow)
 		var am = get_node_or_null("/root/AudioManager")
 		if am:
 			am.play_sfx("projectile_hit")
