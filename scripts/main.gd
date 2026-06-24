@@ -569,10 +569,11 @@ func _build_ui() -> void:
 	vbox.add_child(wave_header)
 
 	wave_select = OptionButton.new()
+	wave_select.clip_text = true
 	for i in range(waves.size()):
 		var w: Dictionary = waves[i]
 		var wname: String = WaveLoader.wave_name(w, i)
-		wave_select.add_item("Wave %d: %s" % [i + 1, wname])
+		wave_select.add_item(wname)
 	if waves.size() > 0:
 		wave_select.selected = 0
 	vbox.add_child(wave_select)
