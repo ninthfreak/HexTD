@@ -375,14 +375,15 @@ func _rebuild_body() -> void:
 	match data.fire_mode:
 		"radial":
 			# polyhedral torus: thick tube (small middle opening), low-poly quad net.
-			# Inner/outer scaled together to keep the dialed-in opening ratio.
-			var inner := r * 0.316
-			var outer := r * 0.9
+			# Midway between the footprint-filling size and the 20%-larger size;
+			# inner/outer scaled together to keep the dialed-in opening ratio.
+			var inner := r * 0.3475
+			var outer := r * 0.99
 			_part(_low_poly_torus(inner, outer, 8, 6), mat, (outer - inner) * 0.5)
 		"laser":
-			_part(_low_poly_cone(r * 0.9, 30.0, 6), mat, 0.0)
+			_part(_low_poly_cone(r * 0.9, 60.0, 6), mat, 0.0)
 		_:
-			_part(_low_poly_cylinder(r * 0.9, 27.0, 8), mat, 0.0)
+			_part(_low_poly_cylinder(r * 0.9, 40.0, 8), mat, 0.0)
 
 func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
