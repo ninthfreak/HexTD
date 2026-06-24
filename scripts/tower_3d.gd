@@ -24,7 +24,7 @@ var _hum_phase := 0.0
 var _hum_freq := 40.0
 
 # 3D scene
-var _body: MeshInstance3D
+var _body: Node3D                    # container for the composite tower parts
 var _beam: MeshInstance3D            # laser beam (null until first needed)
 var _beam_cyl: CylinderMesh
 var _beam_mat: StandardMaterial3D
@@ -39,8 +39,8 @@ const HUM_MIX_RATE := 44100.0
 const HUM_TABLE := 2048
 const HUM_VOL_DB := -3.0
 
-const BODY_HEIGHT := 8.0             # extruded body height (world units)
-const BEAM_ORIGIN_LIFT := 8.0        # beam fires from the top of the body
+const BODY_HEIGHT := 8.0             # nominal body height (world units)
+const BEAM_ORIGIN_LIFT := 9.3        # beam fires from the laser emitter lens
 const BEAM_TARGET_LIFT := 2.0        # mid-height of an enemy body (Enemy3D.BODY_HEIGHT * 0.5)
 const BEAM_BASE_THICK := 0.6
 const BEAM_FULL_THICK := 1.6
@@ -355,96 +355,111 @@ func _shoot(t) -> void:
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption)
 	board.add_projectile(p)
 
-# ---------------------------------------------------------------- body mesh
-# Rebuilt on upgrade because radial star geometry depends on `directions`.
+# ---------------------------------------------------------------- body (composite 3D)
+# A proper tower built from primitive parts: a tiered gunmetal base, a glowing
+# accent band, a colour-coded core, and a mode-specific top (spire / radial
+# turret / laser emitter). Rebuilt on upgrade since the radial top depends on
+# `directions`. Parts are local to _body (the node sits at COPPER_TOP).
 func _rebuild_body() -> void:
 	if _body != null and is_instance_valid(_body):
 		_body.queue_free()
 		_body = null
 	if data == null:
 		return
-	_body = MeshInstance3D.new()
-	_body.mesh = _build_body_mesh()
-	_body.material_override = _body_material()
+	_body = Node3D.new()
 	add_child(_body)
-
-func _body_material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = data.color
-	mat.metallic = 0.6
-	mat.roughness = 0.25
-	# A modest emissive accent in the tower's own colour so it reads as a glowing
-	# tech construct on the dark board (and the floor reflects it) without
-	# blooming as hard as the path/enemies.
-	mat.emission_enabled = true
-	mat.emission = data.color
-	mat.emission_energy_multiplier = 0.5
-	return mat
-
-func _build_body_mesh() -> ArrayMesh:
-	var pts: PackedVector2Array
+	var r: float = GameBoard3D.TOWER_RADIUS
+	var steel := _steel_mat()
+	var core := _core_mat()
+	var glow := _glow_mat()
+	_part(_frustum(r * 0.92, r * 0.66, 3.0, 6), steel, 1.5)    # tiered base
+	_part(_frustum(r * 0.70, r * 0.70, 0.5, 6), glow, 3.25)    # glowing accent band
+	_part(_frustum(r * 0.48, r * 0.44, 2.8, 6), core, 4.9)     # colour-coded core
 	match data.fire_mode:
 		"radial":
-			pts = _star_points()
+			_build_radial_top(r, steel, core, glow)
 		"laser":
-			pts = _circle_points(28)
+			_build_laser_top(r, steel, glow)
 		_:
-			pts = _diamond_points()
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.set_smooth_group(-1)   # flat facets, so the body's edges stay crisp
-	_emit_prism_fan(st, pts, BODY_HEIGHT, 0.0)
-	st.generate_normals()
-	return st.commit()
+			_build_single_top(r, steel, glow)
 
-func _diamond_points() -> PackedVector2Array:
-	var s: float = GameBoard3D.TOWER_RADIUS
-	return PackedVector2Array([
-		Vector2(0, -s), Vector2(s, 0), Vector2(0, s), Vector2(-s, 0)
-	])
+# Single-target: a tapered spire with a glowing tip.
+func _build_single_top(r: float, steel: StandardMaterial3D, glow: StandardMaterial3D) -> void:
+	_part(_frustum(r * 0.42, 0.4, 3.6, 6), steel, 8.1)
+	_part(_sphere(r * 0.13), glow, 9.9)
 
-# Star with one point per firing direction (matches the 2D rule).
-func _star_points() -> PackedVector2Array:
-	var dirs: int = maxi(1, data.directions)
-	var n: int = maxi(3, int(round(sqrt(3.0 * float(dirs)))))
-	var outer: float = GameBoard3D.TOWER_RADIUS
-	var inner := outer * 0.46
-	var perim := PackedVector2Array()
-	for i in range(2 * n):
-		var ang := TAU * float(i) / float(2 * n)
-		var rad: float = outer if i % 2 == 0 else inner
-		perim.append(Vector2(cos(ang), sin(ang)) * rad)
-	return perim
+# Laser: a slim emitter barrel with a bright lens at the muzzle (the beam origin).
+func _build_laser_top(r: float, steel: StandardMaterial3D, glow: StandardMaterial3D) -> void:
+	_part(_frustum(r * 0.26, r * 0.26, 3.0, 8), steel, 7.8)
+	_part(_sphere(r * 0.22), glow, 9.3)
 
-func _circle_points(n: int) -> PackedVector2Array:
-	var r: float = GameBoard3D.TOWER_RADIUS
-	var pts := PackedVector2Array()
-	for i in range(n):
-		var ang := TAU * float(i) / float(n)
-		pts.append(Vector2(cos(ang), sin(ang)) * r)
-	return pts
+# Radial: a squashed dome turret with glowing barrels radiating outward.
+func _build_radial_top(r: float, steel: StandardMaterial3D, core: StandardMaterial3D, glow: StandardMaterial3D) -> void:
+	var dome := _part(_sphere(r * 0.5), core, 6.3)
+	dome.scale = Vector3(1.0, 0.6, 1.0)
+	var spikes: int = clampi(data.directions, 3, 8)
+	for i in range(spikes):
+		var ang := TAU * float(i) / float(spikes)
+		var outward := Vector3(cos(ang), 0.0, sin(ang))
+		var mi := _part(_frustum(r * 0.13, 0.04, r * 0.55, 5), glow, 0.0)
+		# orient the barrel (local +Y) along `outward`, then push it out from centre
+		var xx := outward.cross(Vector3.UP).normalized()
+		if xx.length() < 0.01:
+			xx = Vector3.RIGHT
+		var zz := xx.cross(outward).normalized()
+		mi.transform = Transform3D(Basis(xx, outward, zz), Vector3(outward.x * r * 0.5, 6.6, outward.z * r * 0.5))
 
-# Fan-from-center prism: top cap + side walls. Mirrors GameBoard3D._add_prism.
-func _emit_prism_fan(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
-	var center := Vector2.ZERO
-	for p in poly:
-		center += p
-	center /= float(poly.size())
-	var n := poly.size()
-	for i in range(n):
-		var a := poly[i]
-		var b := poly[(i + 1) % n]
-		# (center, b, a): cap faces +Y up under the (x,y)->(x,0,y) handedness
-		# flip; sides wound outward. See GameBoard3D._add_cap / _add_prism.
-		st.add_vertex(Vector3(center.x, top, center.y))
-		st.add_vertex(Vector3(b.x, top, b.y))
-		st.add_vertex(Vector3(a.x, top, a.y))
-		var at := Vector3(a.x, top, a.y)
-		var bt := Vector3(b.x, top, b.y)
-		var ab := Vector3(a.x, bottom, a.y)
-		var bb := Vector3(b.x, bottom, b.y)
-		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
-		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
+# --- primitive + material helpers ---
+func _frustum(bottom_r: float, top_r: float, h: float, seg: int) -> CylinderMesh:
+	var m := CylinderMesh.new()
+	m.bottom_radius = bottom_r
+	m.top_radius = top_r
+	m.height = h
+	m.radial_segments = seg
+	m.rings = 1
+	return m
+
+func _sphere(rad: float) -> SphereMesh:
+	var m := SphereMesh.new()
+	m.radius = rad
+	m.height = rad * 2.0
+	m.radial_segments = 12
+	m.rings = 6
+	return m
+
+func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position.y = y
+	_body.add_child(mi)
+	return mi
+
+func _steel_mat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.32, 0.34, 0.39)
+	m.metallic = 0.85
+	m.roughness = 0.3
+	return m
+
+func _core_mat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = data.color
+	m.metallic = 0.5
+	m.roughness = 0.3
+	m.emission_enabled = true
+	m.emission = data.color
+	m.emission_energy_multiplier = 0.5
+	return m
+
+func _glow_mat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = data.color
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.emission_enabled = true
+	m.emission = data.color
+	m.emission_energy_multiplier = 2.0
+	return m
 
 # ---------------------------------------------------------------- laser beam
 # Built lazily so non-laser towers stay cheap. Each frame the cylinder is

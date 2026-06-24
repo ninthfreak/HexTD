@@ -18,7 +18,7 @@ const TRACE_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan path edge (emissive)
 const MASK_COLOR := Color(0.42, 0.16, 0.40)    # purple-pink build plateau (dim glow)
 const SPAWN_COLOR := Color(0.20, 1.00, 0.45)   # neon green
 const GOAL_COLOR := Color(1.00, 0.35, 0.30)    # neon red
-const WALL_COLOR := Color(0.09, 0.10, 0.15)    # dark obstacle (faint red rim)
+const WALL_COLOR := Color(0.27, 0.29, 0.33)    # gunmetal grey blocking walls
 
 # Heights (world units). The build area is a raised plateau at COPPER_TOP (the
 # shared placement plane — towers, ray-picking and overlays all anchor here, so
@@ -31,7 +31,7 @@ const MASK_THICK := 6.0
 const COPPER_TOP := 1.2         # build-slab top = placement plane (towers/picking/overlays)
 const PATH_TOP := -1.0          # path channel floor (glossy black) — shallow, so it's near the enemies
 const BUILD_BOTTOM := -3.2      # bottom of the frosted slab / rim (gives the build area its thickness)
-const WALL_TOP := 4.2           # blocking walls stand above the slab
+const WALL_TOP := 12.0          # blocking walls stand tall (taller than towers) so they read as blockers
 const ENEMY_Y := COPPER_TOP + 1.0   # enemies hover just above the board (close enough to reflect in the path)
 const RIM_WIDTH := 2.4          # width of the flat neon border strip along the path rim
 
@@ -129,14 +129,11 @@ func _build_materials() -> void:
 	_mat_glass.emission = Color(0.62, 0.40, 0.86)
 	_mat_glass.emission_energy_multiplier = 0.5
 	_mat_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Walls: dark obstacles with a faint red rim glow (a hazard cue), not bloomed.
+	# Blocking walls: tall gunmetal-grey obstacles — solid brushed metal, no glow.
 	_mat_wall = StandardMaterial3D.new()
 	_mat_wall.albedo_color = WALL_COLOR
-	_mat_wall.metallic = 0.4
-	_mat_wall.roughness = 0.4
-	_mat_wall.emission_enabled = true
-	_mat_wall.emission = Color(0.9, 0.15, 0.25)
-	_mat_wall.emission_energy_multiplier = 0.45
+	_mat_wall.metallic = 0.8
+	_mat_wall.roughness = 0.45
 	_mat_wall.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat_spawn = _emissive_mat(SPAWN_COLOR)
 	_mat_goal = _emissive_mat(GOAL_COLOR)
