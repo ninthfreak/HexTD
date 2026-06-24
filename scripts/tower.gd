@@ -13,6 +13,7 @@ var target_priority := "first"   # "first" | "last" | "strongest" — toggled in
 var _cooldown := 0.0
 var _laser_target = null
 var _charge := 0.0               # laser ramp progress in seconds
+var _focus_cd := 0.0             # post-kill blind/idle timer (focus_time)
 var _hum: AudioStreamPlayer = null
 var _hum_pb: AudioStreamGeneratorPlayback = null
 var _hum_phase := 0.0
@@ -105,8 +106,8 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "ramp_time": "Ramp time", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "ramp_time", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "ramp_time": "Ramp time", "focus_time": "Focus delay", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "ramp_time", "focus_time", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
@@ -129,7 +130,7 @@ func _delta_str(key: String, v: float) -> String:
 			return "%s%d" % [sgn, int(round(v))]
 		"fire_rate":
 			return "%s%s/s" % [sgn, _trim(v)]
-		"ramp_time":
+		"ramp_time", "focus_time":
 			return "%s%ss" % [sgn, _trim(v)]
 		_:
 			return "%s%s" % [sgn, _trim(v)]
@@ -158,6 +159,8 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.fire_rate += float(tier.get("fire_rate", 0.0))
 	data.directions += int(round(float(tier.get("directions", 0.0))))
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
+	if tier.has("focus_time"):
+		data.focus_time = maxf(0.1, data.focus_time + float(tier["focus_time"]))
 	data.height_scale = maxf(0.05, data.height_scale + float(tier.get("height", 0.0)))
 	data.width_scale = maxf(0.05, data.width_scale + float(tier.get("width", 0.0)))
 	var col := str(tier.get("color", ""))
@@ -231,17 +234,34 @@ func _fire_volley() -> void:
 # Laser: lock one target, ramp damage from low to full while it stays locked,
 # and deal continuous damage until the target dies or leaves range/sight.
 func _process_laser(delta: float) -> void:
-	if not _target_still_valid(_laser_target):
+	# focus_time: after a kill the beam is blind/idle for this long, capping
+	# kills/sec (swarm tax) while barely touching single-target DPS.
+	if _focus_cd > 0.0:
+		_focus_cd -= delta
 		_laser_target = null
 		_charge = 0.0
+		_set_hum(false, 0.0)
+		queue_redraw()
+		return
+	if not _target_still_valid(_laser_target):
+		_laser_target = null
+		_charge = 0.0          # reset ramp when the target is lost (per-target ramp)
 	if _laser_target == null:
 		_laser_target = _acquire_target()
-		_charge = 0.0
+		_charge = 0.0          # fresh target starts at the weak end of the curve
 	if _laser_target != null:
 		_charge = minf(_charge + delta, data.ramp_time)
 		var cr := 1.0 if data.ramp_time <= 0.0 else clampf(_charge / data.ramp_time, 0.0, 1.0)
-		var frac := lerpf(LASER_START_FRAC, 1.0, cr)
-		_laser_target.take_damage(data.damage * frac * delta, data.bit_corruption)
+		# Convex (quadratic ease-in) ramp: ~0 early, full at ramp_time.
+		var factor := cr * cr
+		var killed: bool = _laser_target.take_damage(data.damage * factor * delta, data.bit_corruption)
+		if killed:
+			_laser_target = null
+			_charge = 0.0
+			_focus_cd = data.focus_time
+			_set_hum(false, 0.0)
+			queue_redraw()
+			return
 		_set_hum(true, cr)
 	else:
 		_set_hum(false, 0.0)
@@ -367,7 +387,7 @@ func _draw() -> void:
 func _draw_laser() -> void:
 	if _laser_target != null and is_instance_valid(_laser_target):
 		var cr := 1.0 if data.ramp_time <= 0.0 else clampf(_charge / data.ramp_time, 0.0, 1.0)
-		var frac := lerpf(LASER_START_FRAC, 1.0, cr)
+		var frac := cr * cr
 		var to: Vector2 = _laser_target.position - position
 		# over-bright the beam + impact so the HDR glow blooms them (it's light, after all)
 		var bc := data.color

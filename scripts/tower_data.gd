@@ -13,6 +13,7 @@ extends Resource
 @export var directions: int = 6               # radial only: number of equally-spaced spokes (6 = hex flat sides)
 @export var ignore_walls: bool = false        # radial only: when true, spokes pass through block walls
 @export var ramp_time: float = 2.0            # laser only: seconds of sustained fire to reach full power (damage = max dmg/sec)
+@export var focus_time: float = 0.0           # seconds a tower is blind/idle after killing its target (Beam swarm tax)
 @export var bit_corruption := false           # ignores enemy ECC damage resistance
 @export var cipher := false                   # can see and target Encrypted enemies
 @export var buffer_overflow := false          # single-hit surplus damage spills into the target's decay children
@@ -21,7 +22,7 @@ extends Resource
 ## Up to 3 upgrade slots (independent paths), authored in the editor. Each slot is a
 ## Dictionary {"name": String, "tiers": Array}. Each tier (up to 5 per slot) is a
 ## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate"/"directions"/"ramp_time"/
-## "height"/"width": additive deltas (may be negative), optional "color": "#rrggbb" override,
+## "focus_time"/"height"/"width": additive deltas (may be negative), optional "color": "#rrggbb" override,
 ## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow": "on"|"off"}.
 ## Slots are bought independently, level by level; tiers within a slot are sequential.
 @export var upgrades: Array = []
