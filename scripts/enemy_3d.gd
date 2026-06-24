@@ -43,7 +43,6 @@ const SOLID_VERTS := {
 }
 const BAR_PIX_W := 40
 const BAR_PIX_H := 6
-const BAR_PIXEL_SIZE := 0.18    # world units per bar texel
 const BAR_HEIGHT_PAD := 3.0     # bar sits above the body's top by this many units
 
 var data: EnemyData
@@ -84,7 +83,10 @@ func _build_visuals() -> void:
 	_bar = Sprite3D.new()
 	_bar.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_bar.shaded = false
-	_bar.pixel_size = BAR_PIXEL_SIZE / float(BAR_PIX_H)
+	# Draw the bar on top of everything (body, walls) so it reads as a HUD element
+	# regardless of camera angle, the way the 2D bar always sat above the sprite.
+	_bar.no_depth_test = true
+	_bar.render_priority = 8
 	add_child(_bar)
 	_place_bar()
 
@@ -105,6 +107,11 @@ func _build_body() -> void:
 
 func _place_bar() -> void:
 	if _bar != null:
+		# Size the bar to roughly the enemy's width so it's clearly readable
+		# (a fixed tiny bar got lost against the larger 3D bodies). pixel_size is
+		# chosen so the 40-texel-wide texture spans ~2.4 * the body radius.
+		var bar_w: float = maxf(9.0, _radius_estimate() * 2.4)
+		_bar.pixel_size = bar_w / float(BAR_PIX_W)
 		_bar.position = Vector3(0, _body_top + BAR_HEIGHT_PAD, 0)
 
 # A true 3D platonic solid (or dual compound) as the body. Each member is

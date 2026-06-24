@@ -31,7 +31,7 @@ const MASK_THICK := 6.0
 const COPPER_TOP := 1.2         # build-slab top = placement plane (towers/picking/overlays)
 const PATH_TOP := -1.0          # path channel floor (glossy black) — shallow, so it's near the enemies
 const BUILD_BOTTOM := -3.2      # bottom of the frosted slab / rim (gives the build area its thickness)
-const WALL_TOP := 22.8          # blocking walls stand tall (taller than towers) so they read as blockers; height = WALL_TOP - COPPER_TOP
+const WALL_TOP := 44.4          # blocking walls stand tall (taller than towers) so they read as blockers; height = WALL_TOP - COPPER_TOP
 const ENEMY_Y := COPPER_TOP + 1.0   # enemies hover just above the board (close enough to reflect in the path)
 const RIM_WIDTH := 2.4          # width of the flat neon border strip along the path rim
 
@@ -133,7 +133,10 @@ func _build_materials() -> void:
 	# so they read as solid grey — a high-metallic surface has nothing to reflect in
 	# this dark scene and just reads as a black hole.
 	_mat_wall = StandardMaterial3D.new()
-	_mat_wall.albedo_color = WALL_COLOR
+	# Very slight transparency so the walls read as a solid-but-glassy blocker
+	# rather than an opaque slab. Kept high-alpha so they still clearly occlude.
+	_mat_wall.albedo_color = Color(WALL_COLOR.r, WALL_COLOR.g, WALL_COLOR.b, 0.82)
+	_mat_wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_mat_wall.metallic = 0.25
 	_mat_wall.roughness = 0.55
 	_mat_wall.emission_enabled = true

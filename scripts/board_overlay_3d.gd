@@ -2,8 +2,9 @@ class_name BoardOverlay3D
 extends Node3D
 ## Simplified 3D placement overlay. Per REFACTOR_3D.md it's the minimum useful
 ## set: range tiles (visible / shadowed / blocked), footprint, and a
-## translucent ghost of the tower being placed. Badges and tooltips are
-## deferred. Main3D pushes state in and calls refresh().
+## translucent ghost of the tower being placed. Ability badges + their tooltip
+## are drawn separately by Main3D as screen-space UI. Main3D pushes state in and
+## calls refresh().
 
 var board                          # GameBoard3D (untyped)
 
