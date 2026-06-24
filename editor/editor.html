@@ -222,7 +222,8 @@ function uniqueId(base, taken){ let i=1, id=base; while(taken.includes(id)){ id=
 // 3D platonic-solid + dual-compound enemy shapes (sized by `radius`). Legacy
 // extruded shapes (square/rect/octagon/polygon) still load and save unchanged.
 const SOLIDS=['tetrahedron','cube','octahedron','dodecahedron','icosahedron',
-  'stella_octangula','cube_octahedron','dodeca_icosahedron'];
+  'stella_octangula','cube_octahedron','dodeca_icosahedron',
+  'great_dodecahedron','great_stellated_dodecahedron','great_icosahedron'];
 function enemiesToJSON(enemies, order){
   const out={};
   for(const id of order){ const e=enemies[id]; if(!e) continue;
@@ -422,21 +423,78 @@ function solidMembers(shape){
 function minEdges(v){ const n=v.length,d=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]); let mind=1e9;
   for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)mind=Math.min(mind,d(v[i],v[j]));
   const out=[]; for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)if(Math.abs(d(v[i],v[j])-mind)<mind*0.05)out.push([i,j]); return out; }
+// Kepler–Poinsot star polyhedra: surface models built as a base solid with a
+// spike (k>1) or inward dimple (k<1) on each face. Mirrors enemy_3d.gd.
+const STAR_SOLIDS={
+  great_dodecahedron:{core:'icosahedron',k:0.45},
+  great_stellated_dodecahedron:{core:'dodecahedron',k:1.95},
+  great_icosahedron:{core:'icosahedron',k:2.0},
+};
+function hullTris(v){ const n=v.length,tris=[];
+  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)for(let k=j+1;k<n;k++){
+    const a=v[i],b=v[j],c=v[k];
+    let nx=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]);
+    let ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);
+    let nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+    const L=Math.hypot(nx,ny,nz); if(L<1e-9)continue; nx/=L;ny/=L;nz/=L;
+    const dd=nx*a[0]+ny*a[1]+nz*a[2]; let pos=false,neg=false;
+    for(let m=0;m<n;m++){ if(m===i||m===j||m===k)continue;
+      const s=nx*v[m][0]+ny*v[m][1]+nz*v[m][2]-dd;
+      if(s>1e-4)pos=true; else if(s<-1e-4)neg=true; }
+    if(pos&&neg)continue; tris.push(dd>=0?[i,j,k]:[i,k,j]); }
+  return tris; }
+function facesOf(v){ const groups={};
+  for(const[i,j,k]of hullTris(v)){ const a=v[i],b=v[j],c=v[k];
+    let nx=(b[1]-a[1])*(c[2]-a[2])-(b[2]-a[2])*(c[1]-a[1]);
+    let ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]);
+    let nz=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+    const L=Math.hypot(nx,ny,nz); nx/=L;ny/=L;nz/=L;
+    let dd=nx*a[0]+ny*a[1]+nz*a[2]; if(dd<0){nx=-nx;ny=-ny;nz=-nz;}
+    const key=[Math.round(nx*1000),Math.round(ny*1000),Math.round(nz*1000)].join(',');
+    (groups[key]=groups[key]||new Set()).add(i).add(j).add(k); }
+  const faces=[];
+  for(const key in groups){ const idx=[...groups[key]];
+    const ctr=[0,0,0]; for(const p of idx){ctr[0]+=v[p][0];ctr[1]+=v[p][1];ctr[2]+=v[p][2];}
+    ctr[0]/=idx.length;ctr[1]/=idx.length;ctr[2]/=idx.length;
+    const nl=Math.hypot(...ctr)||1, n=[ctr[0]/nl,ctr[1]/nl,ctr[2]/nl];
+    const u0=[v[idx[0]][0]-ctr[0],v[idx[0]][1]-ctr[1],v[idx[0]][2]-ctr[2]];
+    const ul=Math.hypot(...u0)||1, u=[u0[0]/ul,u0[1]/ul,u0[2]/ul];
+    const w=[n[1]*u[2]-n[2]*u[1],n[2]*u[0]-n[0]*u[2],n[0]*u[1]-n[1]*u[0]];
+    const ang=p=>{const d=[v[p][0]-ctr[0],v[p][1]-ctr[1],v[p][2]-ctr[2]];
+      return Math.atan2(d[0]*w[0]+d[1]*w[1]+d[2]*w[2], d[0]*u[0]+d[1]*u[1]+d[2]*u[2]);};
+    idx.sort((p,q)=>ang(p)-ang(q)); faces.push({idx,ctr}); }
+  return faces; }
+function starGeometry(shape){ const sp=STAR_SOLIDS[shape], v=normV(SOLID_V[sp.core]);
+  const edges=[], pts=v.slice();
+  for(const f of facesOf(v)){ const apex=[f.ctr[0]*sp.k,f.ctr[1]*sp.k,f.ctr[2]*sp.k]; pts.push(apex);
+    const m=f.idx.length;
+    for(let t=0;t<m;t++){ const a=v[f.idx[t]], b=v[f.idx[(t+1)%m]];
+      edges.push([a,b]); edges.push([a,apex]); } }
+  return {edges,pts}; }
 function rot3(p,ax,ay){ const[x,y,z]=p;
   const x1=x*Math.cos(ay)+z*Math.sin(ay), z1=-x*Math.sin(ay)+z*Math.cos(ay);
   const y2=y*Math.cos(ax)-z1*Math.sin(ax); return [x1,y2]; }
 function drawSolidPreview(canvas,e){
   const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height; ctx.clearRect(0,0,W,H);
-  const members=solidMembers(e.shape), ax=-0.42, ay=0.7;
-  const proj=members.map(v=>v.map(p=>rot3(p,ax,ay)));
-  let ext=0.0001; for(const p of proj) for(const[x,y]of p) ext=Math.max(ext,Math.abs(x),Math.abs(y));
+  const ax=-0.42, ay=0.7;
+  // Unified edge/point lists (projected to 2D), from star geometry or convex members.
+  let segs=[], pts=[];
+  if(STAR_SOLIDS[e.shape]){
+    const g=starGeometry(e.shape);
+    segs=g.edges.map(([a,b])=>[rot3(a,ax,ay),rot3(b,ax,ay)]);
+    pts=g.pts.map(p=>rot3(p,ax,ay));
+  } else {
+    for(const v of solidMembers(e.shape)){ const p=v.map(q=>rot3(q,ax,ay));
+      for(const[i,j]of minEdges(v)) segs.push([p[i],p[j]]);
+      pts.push(...p); }
+  }
+  let ext=0.0001; for(const[a,b]of segs) ext=Math.max(ext,Math.abs(a[0]),Math.abs(a[1]),Math.abs(b[0]),Math.abs(b[1]));
   const scale=Math.min(W,H)*0.40/ext, cx=W/2, cy=H/2;
   ctx.save(); ctx.shadowColor=e.color; ctx.shadowBlur=8; ctx.strokeStyle=e.color; ctx.lineWidth=2;
-  for(let m=0;m<members.length;m++){ const p=proj[m]; ctx.beginPath();
-    for(const[i,j]of minEdges(members[m])){ ctx.moveTo(cx+p[i][0]*scale,cy-p[i][1]*scale); ctx.lineTo(cx+p[j][0]*scale,cy-p[j][1]*scale); }
-    ctx.stroke(); }
-  ctx.restore();
-  ctx.fillStyle=e.color; for(const p of proj) for(const[x,y]of p){ ctx.beginPath(); ctx.arc(cx+x*scale,cy-y*scale,2,0,7); ctx.fill(); }
+  ctx.beginPath();
+  for(const[a,b]of segs){ ctx.moveTo(cx+a[0]*scale,cy-a[1]*scale); ctx.lineTo(cx+b[0]*scale,cy-b[1]*scale); }
+  ctx.stroke(); ctx.restore();
+  ctx.fillStyle=e.color; for(const[x,y]of pts){ ctx.beginPath(); ctx.arc(cx+x*scale,cy-y*scale,2,0,7); ctx.fill(); }
 }
 function drawTowerPreview(canvas,t){
   const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height; ctx.clearRect(0,0,W,H);

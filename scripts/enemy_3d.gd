@@ -23,7 +23,18 @@ const BODY_HEIGHT := 4.0
 # hand-maintained — and it extends to the compounds member-by-member.
 const PHI := 1.618033988749895
 const SOLIDS := ["tetrahedron", "cube", "octahedron", "dodecahedron", "icosahedron",
-	"stella_octangula", "cube_octahedron", "dodeca_icosahedron"]
+	"stella_octangula", "cube_octahedron", "dodeca_icosahedron",
+	"great_dodecahedron", "great_stellated_dodecahedron", "great_icosahedron"]
+# Kepler–Poinsot star polyhedra. The flat-shaded renderer can't draw their true
+# self-intersecting faces, so each is built as a recognisable surface model: a
+# base solid with a pyramidal spike (k>1) or inward dimple (k<1) erected on every
+# face. core = which base solid, k = apex distance as a fraction of the face
+# centroid distance. (Validated offline; see scratchpad/stars.py.)
+const STAR_SOLIDS := {
+	"great_dodecahedron": {"core": "icosahedron", "k": 0.45},          # dimpled icosa (concave, 12 points)
+	"great_stellated_dodecahedron": {"core": "dodecahedron", "k": 1.95}, # 12 pentagonal spikes
+	"great_icosahedron": {"core": "icosahedron", "k": 2.0},            # 20 triangular spikes
+}
 const SOLID_VERTS := {
 	"tetrahedron": [Vector3(1,1,1), Vector3(1,-1,-1), Vector3(-1,1,-1), Vector3(-1,-1,1)],
 	"cube": [Vector3(-1,-1,-1), Vector3(1,-1,-1), Vector3(1,1,-1), Vector3(-1,1,-1),
@@ -104,6 +115,8 @@ func _build_body() -> void:
 		_body.material_override = _faces_material()
 		_body_root.add_child(_body)
 		_body_top = BODY_HEIGHT
+	# ECC scan band sweeps the body's full height, so tune it once the height is known.
+	_tune_scan(_body)
 
 func _place_bar() -> void:
 	if _bar != null:
@@ -120,50 +133,141 @@ func _place_bar() -> void:
 # (form from the key light) + a modest self-glow; edges are bright emissive
 # lines that bloom — the "faceted + edge glow" style.
 func _build_solid_body() -> void:
-	var members := _solid_members(data.shape)
 	var r: float = maxf(2.0, data.radius)
-	# Scale each member to circumradius r into FRESH arrays (packed arrays are
-	# copy-on-write, so mutating the members in place wouldn't persist) and find
-	# the lowest point so the body can be lifted to rest on the board.
-	var scaled: Array = []
+	# Gather geometry in unit (circumradius ~1) coords as flat triangles + edges,
+	# then scale by r, lift so the lowest point rests on the board, and emit.
+	var faces: Array = []        # each: PackedVector3Array of 3 verts
+	var edges: Array = []        # each: [Vector3, Vector3]
+	_collect_solid_geometry(data.shape, faces, edges)
 	var min_y := INF
 	var max_y := -INF
-	for verts in members:
-		var sv := PackedVector3Array()
-		for v in verts:
+	var sfaces: Array = []
+	for f in faces:
+		var sf := PackedVector3Array()
+		for v in f:
 			var p: Vector3 = v * r
-			sv.append(p)
+			sf.append(p)
 			min_y = minf(min_y, p.y)
 			max_y = maxf(max_y, p.y)
-		scaled.append(sv)
+		sfaces.append(sf)
+	var sedges: Array = []
+	for e in edges:
+		var a: Vector3 = e[0] * r
+		var b: Vector3 = e[1] * r
+		min_y = minf(min_y, minf(a.y, b.y))
+		max_y = maxf(max_y, maxf(a.y, b.y))
+		sedges.append([a, b])
 	var lift := -min_y
+	var up := Vector3(0, lift, 0)
+	# Faces: flat-shaded, one explicit normal per triangle pointing away from the
+	# (origin-centred, pre-lift) body — robust for convex hulls and spikes alike.
 	var face_st := SurfaceTool.new()
 	face_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	face_st.set_smooth_group(-1)            # flat facets
+	for sf in sfaces:
+		var a: Vector3 = sf[0]
+		var b: Vector3 = sf[1]
+		var c: Vector3 = sf[2]
+		var nrm := (b - a).cross(c - a)
+		if nrm.length() < 0.000001:
+			continue
+		nrm = nrm.normalized()
+		if nrm.dot((a + b + c) / 3.0) < 0.0:
+			nrm = -nrm
+		face_st.set_normal(nrm); face_st.add_vertex(a + up)
+		face_st.set_normal(nrm); face_st.add_vertex(b + up)
+		face_st.set_normal(nrm); face_st.add_vertex(c + up)
+	var faces_mi := MeshInstance3D.new()
+	faces_mi.mesh = face_st.commit()
+	faces_mi.material_override = _faces_material()
+	_body_root.add_child(faces_mi)
+	_body = faces_mi
 	var edge_st := SurfaceTool.new()
 	edge_st.begin(Mesh.PRIMITIVE_LINES)
-	for verts in scaled:
-		var lifted := PackedVector3Array()
-		for v in verts:
-			lifted.append(v + Vector3(0, lift, 0))
-		for tri in _hull_triangles(lifted):
-			face_st.add_vertex(lifted[tri[0]])
-			face_st.add_vertex(lifted[tri[1]])
-			face_st.add_vertex(lifted[tri[2]])
-		for e in _min_edges(lifted):
-			edge_st.add_vertex(lifted[e[0]])
-			edge_st.add_vertex(lifted[e[1]])
-	face_st.generate_normals()
-	var faces := MeshInstance3D.new()
-	faces.mesh = face_st.commit()
-	faces.material_override = _faces_material()
-	_body_root.add_child(faces)
-	_body = faces
-	var edges := MeshInstance3D.new()
-	edges.mesh = edge_st.commit()
-	edges.material_override = _edge_material()
-	_body_root.add_child(edges)
+	for se in sedges:
+		edge_st.add_vertex(se[0] + up)
+		edge_st.add_vertex(se[1] + up)
+	var edges_mi := MeshInstance3D.new()
+	edges_mi.mesh = edge_st.commit()
+	edges_mi.material_override = _edge_material()
+	_body_root.add_child(edges_mi)
 	_body_top = max_y + lift
+
+# Fill `faces` (triangles) and `edges` (segments) in unit coords for the shape.
+# Convex solids & compounds come from per-member hull triangulation + min edges;
+# the Kepler–Poinsot stars get explicit spike/dimple geometry.
+func _collect_solid_geometry(shape: String, faces: Array, edges: Array) -> void:
+	if STAR_SOLIDS.has(shape):
+		_collect_star_geometry(shape, faces, edges)
+		return
+	for verts in _solid_members(shape):
+		for tri in _hull_triangles(verts):
+			faces.append(PackedVector3Array([verts[tri[0]], verts[tri[1]], verts[tri[2]]]))
+		for e in _min_edges(verts):
+			edges.append([verts[e[0]], verts[e[1]]])
+
+# A star polyhedron's surface model: erect an apex over every face of the base
+# solid (apex = face_centroid * k) and fan-triangulate the face to it. k>1 makes
+# outward spikes; k<1 makes inward dimples (concave). Edges = the base-face edges
+# (outer ridges) plus each apex ridge, so the faceted form glows crisply.
+func _collect_star_geometry(shape: String, faces: Array, edges: Array) -> void:
+	var spec: Dictionary = STAR_SOLIDS[shape]
+	var core := _normalize(_verts(str(spec["core"])))
+	var k := float(spec["k"])
+	for f in _faces_of(core):
+		var ctr := Vector3.ZERO
+		for idx in f:
+			ctr += core[idx]
+		ctr /= float(f.size())
+		var apex: Vector3 = ctr * k
+		var m := f.size()
+		for t in range(m):
+			var a: Vector3 = core[f[t]]
+			var b: Vector3 = core[f[(t + 1) % m]]
+			faces.append(PackedVector3Array([a, b, apex]))
+			edges.append([a, b])       # outer ridge (base-face edge)
+			edges.append([a, apex])    # ridge from this vertex up/in to the apex
+
+# Detect a convex solid's flat faces: group hull triangles by their (outward)
+# plane normal, then order each face's vertices CCW around the face centroid so
+# the caller can fan-triangulate or erect a spike on a clean polygon.
+func _faces_of(verts: PackedVector3Array) -> Array:
+	var groups := {}
+	for tri in _hull_triangles(verts):
+		var a: Vector3 = verts[tri[0]]
+		var b: Vector3 = verts[tri[1]]
+		var c: Vector3 = verts[tri[2]]
+		var nrm := (b - a).cross(c - a)
+		if nrm.length() < 0.000001:
+			continue
+		nrm = nrm.normalized()
+		if nrm.dot(a) < 0.0:
+			nrm = -nrm
+		var key := "%d,%d,%d" % [roundi(nrm.x * 1000.0), roundi(nrm.y * 1000.0), roundi(nrm.z * 1000.0)]
+		var arr: Array = groups.get(key, [])
+		for idx in tri:
+			if not (idx in arr):
+				arr.append(idx)
+		groups[key] = arr
+	var faces := []
+	for key in groups:
+		var idx: Array = groups[key]
+		var ctr := Vector3.ZERO
+		for i in idx:
+			ctr += verts[i]
+		ctr /= float(idx.size())
+		var n := ctr.normalized()
+		var u := (verts[idx[0]] - ctr).normalized()
+		var w := n.cross(u)
+		var pairs := []
+		for i in idx:
+			var d: Vector3 = verts[i] - ctr
+			pairs.append([atan2(d.dot(w), d.dot(u)), i])
+		pairs.sort_custom(func(x, y): return x[0] < y[0])
+		var ordered := []
+		for p in pairs:
+			ordered.append(p[1])
+		faces.append(ordered)
+	return faces
 
 # The members of a solid/compound, as arrays of vertices normalised so the
 # largest member has a circumradius of 1. A compound is two interpenetrating
@@ -262,25 +366,101 @@ func _min_edges(verts: PackedVector3Array) -> Array:
 	return out
 
 # Faces: lit metallic (form from the key light) + a modest self-glow so the body
-# reads on the dark board without washing out the edge outline.
-func _faces_material() -> StandardMaterial3D:
+# reads on the dark board without washing out the edge outline. Enemies carrying
+# a special property (ECC / Encrypted / both = "TLS") get a ShaderMaterial that
+# adds the property visuals instead; plain enemies keep the cheap StandardMaterial.
+func _faces_material() -> Material:
+	if data.ecc or data.encrypted:
+		return _property_material()
 	var mat := StandardMaterial3D.new()
 	var fill: Color = data.color
 	mat.albedo_color = fill
-	# Low metallic + medium roughness so the faces catch the (dim) key light as a
-	# solid coloured body — a high-metallic body just reflects the dark sky and
-	# reads black, leaving only the edges (which then bloom into a formless blob).
 	mat.metallic = 0.2
 	mat.roughness = 0.5
-	# Two-sided: the hull winding yields outward normals (so front faces light
-	# correctly), but for convex solids the back faces are occluded anyway, and
-	# disabling culling removes any winding-convention risk (no inside-out body).
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	if data.glow > 0.0:
 		mat.emission_enabled = true
 		mat.emission = fill
 		mat.emission_energy_multiplier = 0.3 + data.glow * 0.25
 	return mat
+
+# Shader for the special-property body. Replicates the plain look (lit metallic +
+# self-glow) and adds, per uniform flags:
+#  - ECC: a thick horizontal emission band sweeping up/down the body height.
+#  - Encrypted: partial face transparency, so the opaque wireframe edges show
+#    through as a "revealed wireframe".
+#  - both (TLS): both — and the scan band is forced opaque so the sweeping line
+#    is never see-through.
+const _PROPERTY_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, depth_draw_opaque;
+
+uniform vec4 body_color : source_color = vec4(1.0);
+uniform float emission_energy = 0.4;
+uniform float base_alpha = 1.0;
+uniform float scan_enabled = 0.0;
+uniform float scan_center = 0.0;
+uniform float scan_amp = 1.0;
+uniform float scan_half_width = 1.0;
+uniform float scan_speed = 1.6;
+uniform float scan_boost = 2.4;
+uniform float scan_phase = 0.0;
+
+varying float v_y;
+
+void vertex() {
+	v_y = VERTEX.y;
+}
+
+void fragment() {
+	ALBEDO = body_color.rgb;
+	METALLIC = 0.2;
+	ROUGHNESS = 0.5;
+	vec3 emis = body_color.rgb * emission_energy;
+	float alpha = base_alpha;
+	if (scan_enabled > 0.5) {
+		float pos = scan_center + scan_amp * sin(TIME * scan_speed + scan_phase);
+		float band = 1.0 - smoothstep(scan_half_width * 0.55, scan_half_width, abs(v_y - pos));
+		emis += body_color.rgb * band * scan_boost;
+		alpha = max(alpha, band);   // scan band stays opaque (TLS: never transparent)
+	}
+	EMISSION = emis;
+	ALPHA = clamp(alpha, 0.0, 1.0);
+}
+"""
+
+static var _property_shader: Shader
+
+func _property_material() -> ShaderMaterial:
+	if _property_shader == null:
+		_property_shader = Shader.new()
+		_property_shader.code = _PROPERTY_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = _property_shader
+	var fill: Color = data.color
+	var energy := 0.0
+	if data.glow > 0.0:
+		energy = 0.3 + data.glow * 0.25
+	m.set_shader_parameter("body_color", fill)
+	m.set_shader_parameter("emission_energy", energy)
+	# Encrypted: ghost the faces (the opaque edge wireframe then reads through them).
+	m.set_shader_parameter("base_alpha", 0.4 if data.encrypted else 1.0)
+	# ECC: enable the sweeping band (extents are set in _tune_scan once the height is known).
+	m.set_shader_parameter("scan_enabled", 1.0 if data.ecc else 0.0)
+	m.set_shader_parameter("scan_phase", randf() * TAU)   # de-sync the sweep across enemies
+	return m
+
+# Set the ECC scan band's vertical extents from the finished body height. The
+# band sweeps the full [0, _body_top] span and is kept thick (~0.44 * height).
+func _tune_scan(mi: MeshInstance3D) -> void:
+	if mi == null:
+		return
+	var m = mi.material_override
+	if m is ShaderMaterial:
+		var top: float = maxf(_body_top, 0.001)
+		m.set_shader_parameter("scan_center", top * 0.5)
+		m.set_shader_parameter("scan_amp", top * 0.5)
+		m.set_shader_parameter("scan_half_width", top * 0.22)
 
 # Edges: unshaded emission for a crisp glowing outline. Kept modest — too bright
 # and the bloom swallows the body into a formless blob.
