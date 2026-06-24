@@ -266,6 +266,7 @@ function towersToJSON(towers, order){
     if(t.bit_corruption) o.bit_corruption=true;
     if(t.cipher) o.cipher=true;
     if(t.buffer_overflow) o.buffer_overflow=true;
+    if(t.ignore_walls) o.ignore_walls=true;
     if(+t.height_scale && +t.height_scale!==1) o.height_scale=+t.height_scale;
     if(+t.width_scale && +t.width_scale!==1) o.width_scale=+t.width_scale;
     if(Array.isArray(t.upgrades)&&t.upgrades.length){
@@ -290,6 +291,7 @@ function towersFromJSON(obj){
       fire_mode:(d.fire_mode==='radial'||d.fire_mode==='laser')?d.fire_mode:'single',
       directions:+(d.directions??6), ramp_time:+(d.ramp_time??2), focus_time:+(d.focus_time??0),
       bit_corruption:!!d.bit_corruption, cipher:!!d.cipher, buffer_overflow:!!d.buffer_overflow,
+      ignore_walls:!!d.ignore_walls,
       height_scale:+(d.height_scale??1), width_scale:+(d.width_scale??1),
       upgrades:normUpgrades(d.upgrades) }; }
   return {towers, order};
@@ -340,7 +342,7 @@ const DEF_ENEMIES={
   byte:{name:'byte',shape:'octagon',color:'#b06ae8',health:116,speed:60,reward:16,side:16,length:32,width:16,radius:22,sides:8,reduces_to:'nybble'},
 };
 const DEF_ENEMY_ORDER=['bit','2bit','nybble','byte'];
-const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,height_scale:1,width_scale:1} };
+const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,height_scale:1,width_scale:1} };
 const DEF_TOWER_ORDER=['basic'];
 const DEF_WAVES={ spawn_interval_default:0.7, waves:[
   {groups:[{type:'bit',count:12,gap:0.55}]},
@@ -768,7 +770,8 @@ function renderTowerEditor(){
   grid.push(el('div',{class:'full',style:'display:flex;gap:22px;flex-wrap:wrap;margin-top:2px'},
     checkbox('Bit Corruption — ignores ECC resist', t.bit_corruption, ev=>upd('bit_corruption',ev.target.checked)),
     checkbox('Cipher — can target Encrypted', t.cipher, ev=>upd('cipher',ev.target.checked)),
-    checkbox('Buffer Overflow — surplus spills into decay children', t.buffer_overflow, ev=>upd('buffer_overflow',ev.target.checked))));
+    checkbox('Buffer Overflow — surplus spills into decay children', t.buffer_overflow, ev=>upd('buffer_overflow',ev.target.checked)),
+    checkbox('Tunneling — attack through blocking tiles', t.ignore_walls, ev=>upd('ignore_walls',ev.target.checked))));
   box.append(el('div',{class:'card',style:'max-width:720px'}, el('h3',{},'Edit tower'),
     el('div',{class:'row',style:'align-items:flex-start;gap:24px'},
       el('div',{class:'formgrid',style:'flex:1'}, ...grid),
@@ -841,7 +844,7 @@ function deleteTower(id){
 }
 document.getElementById('tw_add').onclick=()=>{
   const id=uniqueId('tower',MODEL.towerOrder);
-  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,height_scale:1,width_scale:1};
+  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,height_scale:1,width_scale:1};
   MODEL.towerOrder.push(id); selTower=id; setDirty('towers'); renderTowers();
 };
 document.getElementById('tw_save').onclick=async ()=>{

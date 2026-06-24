@@ -268,6 +268,7 @@ func _update_preview() -> void:
 			overlay.preview_color = td.color
 			overlay.preview_mode = td.fire_mode
 			overlay.preview_dirs = td.directions
+			overlay.preview_ignore_walls = td.ignore_walls
 		else:
 			overlay.preview_active = false
 	overlay.selected_active = has_selected
@@ -276,6 +277,7 @@ func _update_preview() -> void:
 	var sel_t = board.tower_at(selected_cell) if has_selected else null
 	if sel_t != null:
 		overlay.selected_color = sel_t.data.color
+		overlay.selected_ignore_walls = sel_t.data.ignore_walls
 	overlay.refresh()
 	_update_badges(sel_t)
 	_update_target_button()

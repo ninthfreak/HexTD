@@ -11,7 +11,7 @@ extends Resource
 @export var projectile_speed: float = 320.0   # pixels per second
 @export var fire_mode: String = "single"      # "single" = homing shot; "radial" = burst; "laser" = charging beam
 @export var directions: int = 6               # radial only: number of equally-spaced spokes (6 = hex flat sides)
-@export var ignore_walls: bool = false        # radial only: when true, spokes pass through block walls
+@export var ignore_walls: bool = false        # "Tunneling": attack through blocking tiles (targeting ignores LOS; radial spokes pass through walls)
 @export var ramp_time: float = 2.0            # laser only: seconds of sustained fire to reach full power (damage = max dmg/sec)
 @export var focus_time: float = 0.0           # seconds a tower is blind/idle after killing its target (Beam swarm tax)
 @export var bit_corruption := false           # ignores enemy ECC damage resistance
