@@ -43,9 +43,10 @@ var pan_speed := 600.0
 var speed_steps := [1.0, 2.0, 3.0]
 var speed_index := 0
 
-# --- wave runtime ---
-var _spawn_queue: Array = []
-var _spawn_timer := 0.0
+# --- wave runtime (absolute-timeline) ---
+var _spawn_timeline: Array = []   # sorted {time, type} from WaveLoader.build_timeline
+var _wave_clock := 0.0
+var _wave_running := false
 
 # --- UI ---
 var money_label: Label
@@ -206,12 +207,16 @@ func _frame_camera() -> void:
 
 # ---------------------------------------------------------------- per-frame
 func _process(delta: float) -> void:
-	if not _spawn_queue.is_empty():
-		_spawn_timer -= delta
-		if _spawn_timer <= 0.0:
-			var entry: Dictionary = _spawn_queue.pop_front()
+	if _wave_running:
+		_wave_clock += delta
+		while not _spawn_timeline.is_empty():
+			var entry: Dictionary = _spawn_timeline[0]
+			if entry["time"] > _wave_clock:
+				break
+			_spawn_timeline.pop_front()
 			_spawn_enemy(entry["type"])
-			_spawn_timer = float(entry["gap"])
+		if _spawn_timeline.is_empty():
+			_wave_running = false
 	_camera_keys(delta)
 	_update_preview()
 
@@ -529,26 +534,27 @@ func _on_enemy_split(lesser, placements: Array) -> void:
 		e.place_on_path(int(pl["index"]), pl["pos"])
 		board.add_enemy(e)
 
-func _build_queue(wave) -> Array:
-	var q: Array = []
-	for g in wave.get("groups", []):
-		var t := str(g.get("type", "bit"))
-		var c := int(g.get("count", 1))
-		var gap := float(g.get("gap", default_gap))
-		for i in range(c):
-			q.append({"type": t, "gap": gap})
-	return q
-
 func _on_start_pressed() -> void:
 	if waves.is_empty():
 		return
 	var wi: int = clampi(wave_select.selected, 0, waves.size() - 1)
-	var was_empty := _spawn_queue.is_empty()
-	_spawn_queue.append_array(_build_queue(waves[wi]))
-	if was_empty:
-		_spawn_timer = 0.0
+	var wave: Dictionary = waves[wi]
+	var timeline: Array = WaveLoader.build_timeline(wave, default_gap)
+	if timeline.is_empty():
+		return
+	if _wave_running:
+		var offset := _wave_clock
+		for ev in timeline:
+			ev["time"] = ev["time"] + offset
+		_spawn_timeline.append_array(timeline)
+		_spawn_timeline.sort_custom(func(a, b): return a["time"] < b["time"])
+	else:
+		_spawn_timeline = timeline
+		_wave_clock = 0.0
+		_wave_running = true
+	var wname: String = WaveLoader.wave_name(wave, wi)
 	wave_select.selected = (wi + 1) % waves.size()
-	_set_info("Started wave %d." % (wi + 1))
+	_set_info("Started wave %s." % wname)
 
 func _on_enemy_bounty(amount: int) -> void:
 	money += amount
@@ -783,7 +789,9 @@ func _build_ui() -> void:
 
 	wave_select = OptionButton.new()
 	for i in range(waves.size()):
-		wave_select.add_item("Wave %d" % (i + 1))
+		var w: Dictionary = waves[i]
+		var wname: String = WaveLoader.wave_name(w, i)
+		wave_select.add_item("Wave %d: %s" % [i + 1, wname])
 	if waves.size() > 0:
 		wave_select.selected = 0
 	vbox.add_child(wave_select)
