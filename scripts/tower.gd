@@ -313,7 +313,8 @@ func _target_still_valid(t) -> bool:
 		return false
 	if HexUtils.axial_distance(cell, board.world_cell(t.position)) > board.tower_reach(data.range_tiles):
 		return false
-	return board.has_los(position, t.position)
+	# Tunneling (ignore_walls) lets the tower fire through blocking tiles.
+	return data.ignore_walls or board.has_los(position, t.position)
 
 func _find_target():
 	return _acquire_target()
@@ -335,7 +336,7 @@ func _acquire_target():
 			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.position)) > board.tower_reach(data.range_tiles):
 			continue
-		if not board.has_los(position, e.position):
+		if not data.ignore_walls and not board.has_los(position, e.position):
 			continue
 		var key: int
 		var tie := 0                       # tiebreak: furthest along the path wins

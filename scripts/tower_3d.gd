@@ -327,7 +327,9 @@ func _target_still_valid(t) -> bool:
 		return false
 	if HexUtils.axial_distance(cell, board.world_cell(t.pp)) > board.tower_reach(data.range_tiles):
 		return false
-	return board.has_los(pp, t.pp)
+	# Tunneling (ignore_walls) lets the tower fire through blocking tiles, so LOS
+	# is only required when the tower lacks it.
+	return data.ignore_walls or board.has_los(pp, t.pp)
 
 func _find_target():
 	return _acquire_target()
@@ -347,7 +349,7 @@ func _acquire_target():
 			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
 			continue
-		if not board.has_los(pp, e.pp):
+		if not data.ignore_walls and not board.has_los(pp, e.pp):
 			continue
 		var key: int
 		var tie := 0
