@@ -219,7 +219,7 @@ func _collect_star_geometry(shape: String, faces: Array, edges: Array) -> void:
 			ctr += core[idx]
 		ctr /= float(f.size())
 		var apex: Vector3 = ctr * k
-		var m := f.size()
+		var m: int = f.size()
 		for t in range(m):
 			var a: Vector3 = core[f[t]]
 			var b: Vector3 = core[f[(t + 1) % m]]
