@@ -29,7 +29,7 @@ const WALL_COLOR := Color(0.09, 0.10, 0.15)    # dark obstacle (faint red rim)
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
 const COPPER_TOP := 1.2         # build-slab top = placement plane (towers/picking/overlays)
-const PATH_TOP := -3.4          # black floor under the glass; bottom of the glass slab / path channel
+const PATH_TOP := -2.8          # black floor under the frosted slab; bottom of the slab / path channel
 const WALL_TOP := 4.2           # blocking walls stand above the slab
 const ENEMY_Y := COPPER_TOP + 5.5   # enemies hover this high (above the plateau; shadow sells the gap)
 const RIM_WIDTH := 2.4          # width of the flat neon border strip along the path rim
@@ -110,19 +110,22 @@ func _build_materials() -> void:
 	_mat_mask.emission = Color(0.85, 0.35, 0.75)
 	_mat_mask.emission_energy_multiplier = 0.18
 	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Build area: a thick slab of slightly-coloured GLASS — translucent purple-pink,
-	# glossy, with mild screen refraction so it reads as glass over the dark floor
-	# below. Two-sided (it's a shell). A faint self-glow keeps the dim-lit look.
+	# Build area: a thick slab of slightly-coloured FROSTED glass — opaque (so no
+	# see-through wash-out or transparency sorting), but soft: high roughness for
+	# the matte frost, a faint clearcoat for a glassy surface sheen, subsurface
+	# scattering for the translucent frosted glow, and a dim self-glow.
 	_mat_glass = StandardMaterial3D.new()
-	_mat_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_mat_glass.albedo_color = Color(0.52, 0.20, 0.48, 0.55)
+	_mat_glass.albedo_color = Color(0.50, 0.22, 0.46)
 	_mat_glass.metallic = 0.0
-	_mat_glass.roughness = 0.08
-	_mat_glass.refraction_enabled = true
-	_mat_glass.refraction_scale = 0.05
+	_mat_glass.roughness = 0.72
+	_mat_glass.clearcoat_enabled = true
+	_mat_glass.clearcoat = 0.45
+	_mat_glass.clearcoat_roughness = 0.35
+	_mat_glass.subsurf_scatter_enabled = true
+	_mat_glass.subsurf_scatter_strength = 0.35
 	_mat_glass.emission_enabled = true
-	_mat_glass.emission = Color(0.75, 0.32, 0.62)
-	_mat_glass.emission_energy_multiplier = 0.06
+	_mat_glass.emission = Color(0.72, 0.32, 0.60)
+	_mat_glass.emission_energy_multiplier = 0.12
 	_mat_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Walls: dark obstacles with a faint red rim glow (a hazard cue), not bloomed.
 	_mat_wall = StandardMaterial3D.new()
