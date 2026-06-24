@@ -842,9 +842,12 @@ func _build_ui() -> void:
 	# now live in two tabs so only one set of controls shows at a time.
 	var sandbox_tabs := TabContainer.new()
 	# Fixed height (taller than either tab's content) so switching tabs doesn't
-	# resize the container and shove the controls below it up or down.
+	# resize the container and shove the controls below it up or down. Fill the
+	# pane width so the active tab's content can never widen the whole pane.
 	sandbox_tabs.custom_minimum_size = Vector2(0, 170)
 	sandbox_tabs.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	sandbox_tabs.size_flags_horizontal = Control.SIZE_FILL
+	sandbox_tabs.clip_contents = true
 	vbox.add_child(sandbox_tabs)
 
 	var waves_tab := VBoxContainer.new()
@@ -853,10 +856,15 @@ func _build_ui() -> void:
 	sandbox_tabs.add_child(waves_tab)
 
 	wave_select = OptionButton.new()
+	# Fill the tab width and clip long names rather than letting the longest item
+	# stretch the control (which previously widened the whole pane).
+	wave_select.size_flags_horizontal = Control.SIZE_FILL
+	wave_select.clip_text = true
+	wave_select.custom_minimum_size = Vector2(0, 0)
 	for i in range(waves.size()):
 		var w: Dictionary = waves[i]
 		var wname: String = WaveLoader.wave_name(w, i)
-		wave_select.add_item("Wave %d: %s" % [i + 1, wname])
+		wave_select.add_item(wname)
 	if waves.size() > 0:
 		wave_select.selected = 0
 	waves_tab.add_child(wave_select)
@@ -873,6 +881,9 @@ func _build_ui() -> void:
 	sandbox_tabs.add_child(spawn_tab)
 
 	enemy_select = OptionButton.new()
+	enemy_select.size_flags_horizontal = Control.SIZE_FILL
+	enemy_select.clip_text = true
+	enemy_select.custom_minimum_size = Vector2(0, 0)
 	_enemy_ids = content.enemy_ids()
 	for id in _enemy_ids:
 		enemy_select.add_item(content.enemy(str(id)).display_name)
@@ -881,6 +892,7 @@ func _build_ui() -> void:
 	spawn_tab.add_child(enemy_select)
 
 	var count_row := HBoxContainer.new()
+	count_row.size_flags_horizontal = Control.SIZE_FILL
 	var count_label := Label.new()
 	count_label.text = "Count"
 	count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -890,6 +902,7 @@ func _build_ui() -> void:
 	spawn_count.max_value = 100
 	spawn_count.step = 1
 	spawn_count.value = 5
+	spawn_count.custom_minimum_size = Vector2(0, 0)
 	count_row.add_child(spawn_count)
 	spawn_tab.add_child(count_row)
 
