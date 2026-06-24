@@ -587,9 +587,11 @@ func _process(delta: float) -> void:
 	_sync_transform()
 
 # --------------------------------------------------------------- damage / reduction
-func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> void:
+func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> bool:
+	# Returns true if this hit depleted the current form (a "kill"), so the laser
+	# can trigger its focus_time delay.
 	if not _alive:
-		return
+		return false
 	if data.ecc and not pierces_ecc:
 		amount *= (1.0 - ECC_RESIST)
 	# Buffer Overflow: remember surplus past the target's remaining HP (post-resist).
@@ -599,8 +601,9 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) 
 	health -= amount
 	if health <= 0.0:
 		_on_depleted(carry, pierces_ecc)
-	else:
-		_refresh_bar_texture(health / data.health)
+		return true
+	_refresh_bar_texture(health / data.health)
+	return false
 
 func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	var am = get_node_or_null("/root/AudioManager")
