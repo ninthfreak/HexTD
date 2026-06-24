@@ -36,7 +36,7 @@ var cam_pitch := deg_to_rad(58.0)        # angle above horizon; 90° = straight 
 var cam_yaw := 0.0                       # rotation around world Y
 var cam_distance := 400.0
 var min_distance := 120.0
-var max_distance := 900.0
+var max_distance := 1600.0
 var pan_speed := 600.0
 
 # --- speed ---
@@ -48,7 +48,7 @@ var _spawn_timeline: Array = []   # sorted {time, type} from WaveLoader.build_ti
 var _wave_clock := 0.0
 var _wave_running := false
 
-# --- level-name banner (pops up + fades out when a wave starts) ---
+# --- wave-name banner (pops up + fades out when a wave starts) ---
 var banner_label: Label
 var _banner_time := 0.0            # real-time seconds remaining (hold + fade)
 const BANNER_HOLD := 1.4          # fully-opaque seconds
@@ -102,7 +102,7 @@ func _ready() -> void:
 	_frame_camera()
 	_build_ui()
 	_build_badge_layer()
-	_build_level_banner()
+	_build_wave_banner()
 	_update_labels()
 	_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
 
@@ -561,8 +561,11 @@ func _on_start_pressed() -> void:
 		_wave_clock = 0.0
 		_wave_running = true
 	var wname: String = WaveLoader.wave_name(wave, wi)
+	# Banner: show the custom wave name if there is one, else "Wave N".
+	var nm = wave.get("name", "")
+	var banner_text: String = wname if (nm is String and nm != "") else "Wave %d" % (wi + 1)
 	wave_select.selected = (wi + 1) % waves.size()
-	_show_level_banner()
+	_show_wave_banner(banner_text)
 	_set_info("Started wave %s." % wname)
 
 func _on_enemy_bounty(amount: int) -> void:
@@ -599,14 +602,14 @@ func _mouse_over_pane() -> bool:
 	var mx := get_viewport().get_mouse_position().x
 	return mx > get_viewport().get_visible_rect().size.x - float(pane_width)
 
-# ---------------------------------------------------------------- level banner
-# A large title that pops up and fades out when a wave starts, naming the level.
-func _build_level_banner() -> void:
+# ---------------------------------------------------------------- wave banner
+# A large title that pops up and fades out when a wave starts, naming the wave.
+func _build_wave_banner() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 4                       # above badges (3) and the pane (2)
 	add_child(layer)
 	banner_label = Label.new()
-	banner_label.text = map.display_name
+	banner_label.text = ""
 	# Span the play area (left of the pane), upper third, and let alignment center
 	# the text — robust against text width / window resizes.
 	banner_label.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -623,11 +626,11 @@ func _build_level_banner() -> void:
 	banner_label.modulate = Color(1, 1, 1, 0.0)   # hidden until a wave starts
 	layer.add_child(banner_label)
 
-# Restart the pop-up timer for the current level name.
-func _show_level_banner() -> void:
+# Restart the pop-up timer, showing the given wave's name.
+func _show_wave_banner(wave_label: String) -> void:
 	if banner_label == null:
 		return
-	banner_label.text = map.display_name
+	banner_label.text = wave_label
 	_banner_time = BANNER_HOLD + BANNER_FADE
 
 # Drive the banner fade in real time so the speed multiplier doesn't change it.
@@ -834,7 +837,10 @@ func _build_ui() -> void:
 	# "Start wave" and "Spawn enemies" used to stack on top of each other; they
 	# now live in two tabs so only one set of controls shows at a time.
 	var sandbox_tabs := TabContainer.new()
-	sandbox_tabs.custom_minimum_size = Vector2(0, 150)
+	# Fixed height (taller than either tab's content) so switching tabs doesn't
+	# resize the container and shove the controls below it up or down.
+	sandbox_tabs.custom_minimum_size = Vector2(0, 170)
+	sandbox_tabs.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	vbox.add_child(sandbox_tabs)
 
 	var waves_tab := VBoxContainer.new()
