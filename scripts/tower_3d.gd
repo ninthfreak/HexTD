@@ -40,7 +40,7 @@ const HUM_TABLE := 2048
 const HUM_VOL_DB := -3.0
 
 const BODY_HEIGHT := 8.0             # nominal body height (world units)
-const BEAM_ORIGIN_LIFT := 9.3        # beam fires from the laser emitter lens
+const BEAM_ORIGIN_LIFT := 7.75       # beam fires from the laser cone tip
 const BEAM_TARGET_LIFT := 2.0        # mid-height of an enemy body (Enemy3D.BODY_HEIGHT * 0.5)
 const BEAM_BASE_THICK := 0.6
 const BEAM_FULL_THICK := 1.6
@@ -356,10 +356,9 @@ func _shoot(t) -> void:
 	board.add_projectile(p)
 
 # ---------------------------------------------------------------- body (composite 3D)
-# A proper tower built from primitive parts: a tiered gunmetal base, a glowing
-# accent band, a colour-coded core, and a mode-specific top (spire / radial
-# turret / laser emitter). Rebuilt on upgrade since the radial top depends on
-# `directions`. Parts are local to _body (the node sits at COPPER_TOP).
+# A gunmetal base + glowing accent band, topped by a single clean primitive that
+# identifies the fire mode: a CYLINDER (single), a TOROID (radial) or a low-poly
+# CONE (laser). Colour-coded by the tower's own colour. Rebuilt on upgrade.
 func _rebuild_body() -> void:
 	if _body != null and is_instance_valid(_body):
 		_body.queue_free()
@@ -372,42 +371,36 @@ func _rebuild_body() -> void:
 	var steel := _steel_mat()
 	var core := _core_mat()
 	var glow := _glow_mat()
-	_part(_frustum(r * 0.92, r * 0.66, 3.0, 6), steel, 1.5)    # tiered base
-	_part(_frustum(r * 0.70, r * 0.70, 0.5, 6), glow, 3.25)    # glowing accent band
-	_part(_frustum(r * 0.48, r * 0.44, 2.8, 6), core, 4.9)     # colour-coded core
+	_part(_frustum(r * 0.85, r * 0.70, 1.4, 6), steel, 0.7)    # short base
+	_part(_frustum(r * 0.72, r * 0.72, 0.35, 6), glow, 1.55)   # glowing accent band
 	match data.fire_mode:
 		"radial":
 			_build_radial_top(r, steel, core, glow)
 		"laser":
-			_build_laser_top(r, steel, glow)
+			_build_laser_top(r, core, glow)
 		_:
-			_build_single_top(r, steel, glow)
+			_build_single_top(r, core, glow)
 
-# Single-target: a tapered spire with a glowing tip.
-func _build_single_top(r: float, steel: StandardMaterial3D, glow: StandardMaterial3D) -> void:
-	_part(_frustum(r * 0.42, 0.4, 3.6, 6), steel, 8.1)
-	_part(_sphere(r * 0.13), glow, 9.9)
+# Single-target: a clean upright cylinder with a glowing top node.
+func _build_single_top(r: float, core: StandardMaterial3D, glow: StandardMaterial3D) -> void:
+	_part(_frustum(r * 0.55, r * 0.55, 5.0, 16), core, 4.25)   # cylinder, 1.75..6.75
+	_part(_sphere(r * 0.16), glow, 6.9)
 
-# Laser: a slim emitter barrel with a bright lens at the muzzle (the beam origin).
-func _build_laser_top(r: float, steel: StandardMaterial3D, glow: StandardMaterial3D) -> void:
-	_part(_frustum(r * 0.26, r * 0.26, 3.0, 8), steel, 7.8)
-	_part(_sphere(r * 0.22), glow, 9.3)
+# Laser: a low-poly cone (apex up), glowing tip = the beam origin.
+func _build_laser_top(r: float, core: StandardMaterial3D, glow: StandardMaterial3D) -> void:
+	_part(_frustum(r * 0.60, 0.0, 6.0, 5), core, 4.75)         # low-poly cone, 1.75..7.75
+	_part(_sphere(r * 0.14), glow, 7.75)                       # tip / beam origin
 
-# Radial: a squashed dome turret with glowing barrels radiating outward.
+# Radial: a glowing toroid ring on a short post, with a colour-coded core.
 func _build_radial_top(r: float, steel: StandardMaterial3D, core: StandardMaterial3D, glow: StandardMaterial3D) -> void:
-	var dome := _part(_sphere(r * 0.5), core, 6.3)
-	dome.scale = Vector3(1.0, 0.6, 1.0)
-	var spikes: int = clampi(data.directions, 3, 8)
-	for i in range(spikes):
-		var ang := TAU * float(i) / float(spikes)
-		var outward := Vector3(cos(ang), 0.0, sin(ang))
-		var mi := _part(_frustum(r * 0.13, 0.04, r * 0.55, 5), glow, 0.0)
-		# orient the barrel (local +Y) along `outward`, then push it out from centre
-		var xx := outward.cross(Vector3.UP).normalized()
-		if xx.length() < 0.01:
-			xx = Vector3.RIGHT
-		var zz := xx.cross(outward).normalized()
-		mi.transform = Transform3D(Basis(xx, outward, zz), Vector3(outward.x * r * 0.5, 6.6, outward.z * r * 0.5))
+	_part(_frustum(r * 0.16, r * 0.14, 2.4, 6), steel, 3.0)    # post, 1.8..4.2
+	var torus := TorusMesh.new()
+	torus.inner_radius = r * 0.30
+	torus.outer_radius = r * 0.62
+	torus.rings = 18
+	torus.ring_segments = 8
+	_part(torus, glow, 3.8)                                    # the toroid
+	_part(_sphere(r * 0.22), core, 3.8)                        # central core
 
 # --- primitive + material helpers ---
 func _frustum(bottom_r: float, top_r: float, h: float, seg: int) -> CylinderMesh:

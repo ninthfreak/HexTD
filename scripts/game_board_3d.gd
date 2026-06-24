@@ -18,7 +18,7 @@ const TRACE_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan path edge (emissive)
 const MASK_COLOR := Color(0.42, 0.16, 0.40)    # purple-pink build plateau (dim glow)
 const SPAWN_COLOR := Color(0.20, 1.00, 0.45)   # neon green
 const GOAL_COLOR := Color(1.00, 0.35, 0.30)    # neon red
-const WALL_COLOR := Color(0.27, 0.29, 0.33)    # gunmetal grey blocking walls
+const WALL_COLOR := Color(0.38, 0.40, 0.46)    # gunmetal grey blocking walls
 
 # Heights (world units). The build area is a raised plateau at COPPER_TOP (the
 # shared placement plane — towers, ray-picking and overlays all anchor here, so
@@ -129,11 +129,16 @@ func _build_materials() -> void:
 	_mat_glass.emission = Color(0.62, 0.40, 0.86)
 	_mat_glass.emission_energy_multiplier = 0.5
 	_mat_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Blocking walls: tall gunmetal-grey obstacles — solid brushed metal, no glow.
+	# Blocking walls: tall gunmetal-grey obstacles. LOW metallic + a faint self-glow
+	# so they read as solid grey — a high-metallic surface has nothing to reflect in
+	# this dark scene and just reads as a black hole.
 	_mat_wall = StandardMaterial3D.new()
 	_mat_wall.albedo_color = WALL_COLOR
-	_mat_wall.metallic = 0.8
-	_mat_wall.roughness = 0.45
+	_mat_wall.metallic = 0.25
+	_mat_wall.roughness = 0.55
+	_mat_wall.emission_enabled = true
+	_mat_wall.emission = WALL_COLOR
+	_mat_wall.emission_energy_multiplier = 0.15
 	_mat_wall.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_mat_spawn = _emissive_mat(SPAWN_COLOR)
 	_mat_goal = _emissive_mat(GOAL_COLOR)
