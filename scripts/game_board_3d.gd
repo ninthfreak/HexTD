@@ -69,7 +69,7 @@ var _entities: Node3D
 var _mat_copper: StandardMaterial3D
 var _mat_copper_edge: StandardMaterial3D
 var _mat_mask: StandardMaterial3D
-var _mat_glass: StandardMaterial3D
+var _mat_glass: ShaderMaterial
 var _mat_wall: StandardMaterial3D
 var _mat_spawn: StandardMaterial3D
 var _mat_goal: StandardMaterial3D
@@ -79,6 +79,61 @@ func _ready() -> void:
 	_build_materials()
 	_entities = Node3D.new()
 	add_child(_entities)
+
+# "Frozen smoke" build-slab shader. Highly diffuse + partially transparent, with
+# world-space fbm noise breaking the body into wispy denser/thinner regions, and
+# emission ramping up toward the bottom (y_bottom) so the slab reads as lit from
+# below. `build_color` tints it per map.
+const _FROZEN_SMOKE_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, depth_draw_opaque;
+
+uniform vec4 build_color : source_color = vec4(0.46, 0.28, 0.60, 1.0);
+uniform sampler2D smoke_tex : filter_linear_mipmap, repeat_enable;
+uniform float noise_scale = 0.035;
+uniform float y_top = 1.2;
+uniform float y_bottom = -3.2;
+uniform float base_alpha = 0.55;
+uniform float under_glow = 1.35;   // emission strength at the bottom
+uniform float top_glow = 0.22;     // emission strength at the top
+
+varying vec3 v_world;
+
+void vertex() {
+	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
+void fragment() {
+	// Two octaves of world-space noise -> a soft "frozen smoke" density field.
+	float n1 = texture(smoke_tex, v_world.xz * noise_scale).r;
+	float n2 = texture(smoke_tex, v_world.xz * noise_scale * 2.7 + vec2(13.0, 7.0)).r;
+	float smoke = clamp(n1 * 0.65 + n2 * 0.45, 0.0, 1.0);
+	// Vertical factor: 0 at the slab bottom, 1 at the top.
+	float t = clamp((v_world.y - y_bottom) / max(0.001, y_top - y_bottom), 0.0, 1.0);
+	// Lit from below: brightest at the bottom, fading up; wisps brighten it further.
+	float glow = mix(under_glow, top_glow, t) * (0.5 + 0.8 * smoke);
+	ALBEDO = build_color.rgb * (0.6 + 0.5 * smoke);
+	METALLIC = 0.0;
+	ROUGHNESS = 1.0;
+	EMISSION = build_color.rgb * glow;
+	// Wispy partial transparency: denser smoke reads more solid, thin smoke clearer.
+	ALPHA = clamp(base_alpha + (smoke - 0.5) * 0.35, 0.25, 0.9);
+}
+"""
+
+# Seamless fractal-noise texture sampled (in world space) by the smoke shader.
+func _smoke_texture() -> NoiseTexture2D:
+	var noise := FastNoiseLite.new()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 0.025
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 4
+	var tex := NoiseTexture2D.new()
+	tex.width = 256
+	tex.height = 256
+	tex.seamless = true
+	tex.noise = noise
+	return tex
 
 func _build_materials() -> void:
 	# Dark neon theme. Back-face culling disabled on every board material (flat
@@ -111,24 +166,18 @@ func _build_materials() -> void:
 	_mat_mask.emission = Color(0.85, 0.35, 0.75)
 	_mat_mask.emission_energy_multiplier = 0.18
 	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Build area: a thick slab of CLOUDY / GLOWY frosted acrylic — luminous, as if
-	# backlit and light scatters through it. Fully matte (roughness 1, no glossy
-	# clearcoat); strong subsurface scattering + backlight transmit light through
-	# the body; a soft self-glow (kept just under the bloom threshold so it glows
-	# cloudily rather than blooming out).
-	_mat_glass = StandardMaterial3D.new()
-	_mat_glass.albedo_color = Color(0.46, 0.28, 0.60)
-	_mat_glass.metallic = 0.0
-	_mat_glass.roughness = 1.0
-	_mat_glass.specular = 0.1
-	_mat_glass.subsurf_scatter_enabled = true
-	_mat_glass.subsurf_scatter_strength = 0.95
-	_mat_glass.backlight_enabled = true
-	_mat_glass.backlight = Color(0.26, 0.16, 0.36)
-	_mat_glass.emission_enabled = true
-	_mat_glass.emission = Color(0.62, 0.40, 0.86)
-	_mat_glass.emission_energy_multiplier = 0.5
-	_mat_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Build area: a thick slab of "FROZEN SMOKE" — a highly-diffuse, partially
+	# transparent frosted body whose surface is broken up by world-space fbm noise
+	# (wispy denser/thinner patches) and that is lit FROM BELOW: emission ramps up
+	# toward the slab's bottom so light appears to rise through the smoke. The tint
+	# is per-map (build_color uniform, set in setup()).
+	_mat_glass = ShaderMaterial.new()
+	_mat_glass.shader = Shader.new()
+	_mat_glass.shader.code = _FROZEN_SMOKE_SHADER
+	_mat_glass.set_shader_parameter("build_color", Color(0.46, 0.28, 0.60))
+	_mat_glass.set_shader_parameter("smoke_tex", _smoke_texture())
+	_mat_glass.set_shader_parameter("y_top", COPPER_TOP)
+	_mat_glass.set_shader_parameter("y_bottom", BUILD_BOTTOM)
 	# Blocking walls: tall gunmetal-grey obstacles. LOW metallic + a faint self-glow
 	# so they read as solid grey — a high-metallic surface has nothing to reflect in
 	# this dark scene and just reads as a black hole.
@@ -158,6 +207,9 @@ func _emissive_mat(c: Color) -> StandardMaterial3D:
 
 func setup(m: HexMapData) -> void:
 	map = m
+	# Per-map build-area tint (frosted "frozen smoke" slab).
+	if _mat_glass != null:
+		_mat_glass.set_shader_parameter("build_color", m.build_color)
 	blocking_set = {}
 	for cell in m.blocking:
 		blocking_set[cell] = true
