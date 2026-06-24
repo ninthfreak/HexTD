@@ -110,22 +110,20 @@ func _build_materials() -> void:
 	_mat_mask.emission = Color(0.85, 0.35, 0.75)
 	_mat_mask.emission_energy_multiplier = 0.18
 	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Build area: a thick slab of slightly-coloured FROSTED glass — opaque (so no
-	# see-through wash-out or transparency sorting), but soft: high roughness for
-	# the matte frost, a faint clearcoat for a glassy surface sheen, subsurface
-	# scattering for the translucent frosted glow, and a dim self-glow.
+	# Build area: a thick slab of slightly-coloured FROSTED glass. Fully matte
+	# (roughness 1, NO clearcoat — clearcoat added a glossy sheen, the opposite of
+	# diffuse) so it scatters light softly; subsurface scattering gives the
+	# translucent frosted glow; a dim self-glow keeps it lit on the dark scene.
 	_mat_glass = StandardMaterial3D.new()
-	_mat_glass.albedo_color = Color(0.50, 0.22, 0.46)
+	_mat_glass.albedo_color = Color(0.54, 0.26, 0.52)
 	_mat_glass.metallic = 0.0
-	_mat_glass.roughness = 0.72
-	_mat_glass.clearcoat_enabled = true
-	_mat_glass.clearcoat = 0.45
-	_mat_glass.clearcoat_roughness = 0.35
+	_mat_glass.roughness = 1.0
+	_mat_glass.specular = 0.1
 	_mat_glass.subsurf_scatter_enabled = true
-	_mat_glass.subsurf_scatter_strength = 0.35
+	_mat_glass.subsurf_scatter_strength = 0.5
 	_mat_glass.emission_enabled = true
-	_mat_glass.emission = Color(0.72, 0.32, 0.60)
-	_mat_glass.emission_energy_multiplier = 0.12
+	_mat_glass.emission = Color(0.72, 0.34, 0.62)
+	_mat_glass.emission_energy_multiplier = 0.2
 	_mat_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Walls: dark obstacles with a faint red rim glow (a hazard cue), not bloomed.
 	_mat_wall = StandardMaterial3D.new()
