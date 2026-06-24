@@ -286,7 +286,11 @@ func _build_path_polys() -> Array:
 				pts.append(pos[k])
 			if _signed_area(pts) < 0.0:
 				pts.reverse()
-			polys.append(_smooth_loop(pts, 2))
+			# Plain Laplacian (NOT Taubin — Taubin preserves the staircase zigzag of a
+			# "vertical" odd-r path; Laplacian flattens it). ~8 passes straighten the
+			# vertical staircase; the mild shrink is harmless since the floor, walls
+			# and plateau cut all use this same polygon.
+			polys.append(_smooth_loop(pts, 8))
 	return polys
 
 func _signed_area(p: PackedVector2Array) -> float:
