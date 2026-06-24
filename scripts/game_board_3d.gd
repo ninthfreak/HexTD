@@ -28,9 +28,9 @@ const WALL_COLOR := Color(0.09, 0.10, 0.15)    # dark obstacle (faint red rim)
 # above the plateau.
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
-const COPPER_TOP := 1.2         # build plateau top = placement plane (towers/picking/overlays)
-const PATH_TOP := -1.2          # sunken path floor (glossy black); enemies travel here
-const WALL_TOP := 4.2           # blocking walls stand above the plateau
+const COPPER_TOP := 1.2         # build-slab top = placement plane (towers/picking/overlays)
+const PATH_TOP := -3.4          # black floor under the glass; bottom of the glass slab / path channel
+const WALL_TOP := 4.2           # blocking walls stand above the slab
 const ENEMY_Y := COPPER_TOP + 5.5   # enemies hover this high (above the plateau; shadow sells the gap)
 const RIM_WIDTH := 2.4          # width of the flat neon border strip along the path rim
 
@@ -68,6 +68,7 @@ var _entities: Node3D
 var _mat_copper: StandardMaterial3D
 var _mat_copper_edge: StandardMaterial3D
 var _mat_mask: StandardMaterial3D
+var _mat_glass: StandardMaterial3D
 var _mat_wall: StandardMaterial3D
 var _mat_spawn: StandardMaterial3D
 var _mat_goal: StandardMaterial3D
@@ -109,6 +110,20 @@ func _build_materials() -> void:
 	_mat_mask.emission = Color(0.85, 0.35, 0.75)
 	_mat_mask.emission_energy_multiplier = 0.18
 	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Build area: a thick slab of slightly-coloured GLASS — translucent purple-pink,
+	# glossy, with mild screen refraction so it reads as glass over the dark floor
+	# below. Two-sided (it's a shell). A faint self-glow keeps the dim-lit look.
+	_mat_glass = StandardMaterial3D.new()
+	_mat_glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_mat_glass.albedo_color = Color(0.52, 0.20, 0.48, 0.55)
+	_mat_glass.metallic = 0.0
+	_mat_glass.roughness = 0.08
+	_mat_glass.refraction_enabled = true
+	_mat_glass.refraction_scale = 0.05
+	_mat_glass.emission_enabled = true
+	_mat_glass.emission = Color(0.75, 0.32, 0.62)
+	_mat_glass.emission_energy_multiplier = 0.06
+	_mat_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Walls: dark obstacles with a faint red rim glow (a hazard cue), not bloomed.
 	_mat_wall = StandardMaterial3D.new()
 	_mat_wall.albedo_color = WALL_COLOR
@@ -156,64 +171,65 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# The path is built from ONE smoothed outline polygon (not per-cell hexes): the
-	# floor, trench walls and neon border are all that same smooth shape, so they
-	# always align — on every orientation, including the vertical/staircase runs the
-	# per-cell clip rule never smoothed. The plateau is the board hexes with that
-	# smooth polygon CUT OUT (Geometry2D), so plateau and path tile with no gap.
-	# Normals are set explicitly (all board materials are two-sided), so triangle
-	# winding is irrelevant.
+	# Two smoothed outline polygons drive everything: the PATH region and the whole
+	# BOARD. Layers (bottom to top):
+	#   - black reflective FLOOR over the whole board at PATH_TOP (also the path
+	#     channel bottom; mirrors the hovering enemies via SSR);
+	#   - black path CHANNEL WALLS (path outline extruded up to the rim);
+	#   - the build area as a thick GLASS SLAB: a merged top (board minus path) at
+	#     COPPER_TOP + an outer-rim wall down to the floor — one continuous sheet,
+	#     so no per-cell hex facets show through the glass;
+	#   - the neon border ribbon along the path edge.
+	# Everything aligns because it's all built from the same two smooth polygons.
 	var path_polys := _build_path_polys()
+	var board_polys := _build_region_outline(Callable(self, "has_cell"), 3)
 
-	var plateau_st := SurfaceTool.new(); plateau_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var floor_st := SurfaceTool.new(); floor_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var glass_st := SurfaceTool.new(); glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var path_st := SurfaceTool.new(); path_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var have_wall := false
 	var have_spawn := false
 	var have_goal := false
-	var have_wall := false
 
-	# path floor (sunken) + trench walls + neon border, all from the smoothed loop(s)
-	for poly in path_polys:
-		_emit_cap_tris(path_st, poly, PATH_TOP)
-		_emit_wall_loop(path_st, poly, COPPER_TOP, PATH_TOP)
-		_stroke_border(edge_st, poly)
+	# black reflective floor (whole board) + black path channel walls
+	for bpoly in board_polys:
+		_emit_cap_tris(floor_st, bpoly, PATH_TOP)
+	for ppoly in path_polys:
+		_emit_wall_loop(floor_st, ppoly, COPPER_TOP, PATH_TOP)   # channel walls (black)
+		_stroke_border(edge_st, ppoly)
 
-	# plateau = board hexes minus the path polygon(s); blocking as prisms; spawn/goal
-	# as emissive markers on the sunken floor
+	# glass build slab: merged top (board minus path) + outer-rim wall
+	for bpoly in board_polys:
+		var parts: Array = [bpoly]
+		for ppoly in path_polys:
+			var np: Array = []
+			for part in parts:
+				for r in Geometry2D.clip_polygons(part, ppoly):
+					np.append(r)
+			parts = np
+		for part in parts:
+			_emit_cap_tris(glass_st, part, COPPER_TOP)
+		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, PATH_TOP)   # outer rim (glass)
+
+	# blocking prisms + spawn/goal markers on the channel floor
 	for cell in map.cells:
-		var c := _cell_to_pixel(cell)
-		var hex := _hex_plane_polygon(c)
+		var hex := _hex_plane_polygon(_cell_to_pixel(cell))
 		if blocking_set.has(cell):
 			_add_prism(wall_st, hex, WALL_TOP, PATH_TOP); have_wall = true
-			continue
-		if cell == map.spawn:
+		elif cell == map.spawn:
 			_emit_cap_tris(spawn_st, hex, PATH_TOP + 0.06); have_spawn = true
 		elif cell == map.goal:
 			_emit_cap_tris(goal_st, hex, PATH_TOP + 0.06); have_goal = true
-		if _near_path(cell):
-			# cells on/touching the path: cut the smooth path out of the hex
-			var parts: Array = [hex]
-			for poly in path_polys:
-				var np: Array = []
-				for part in parts:
-					for r in Geometry2D.clip_polygons(part, poly):
-						np.append(r)
-				parts = np
-			for part in parts:
-				_emit_cap_tris(plateau_st, part, COPPER_TOP)
-		elif not _is_path_cell(cell):
-			_add_cap(plateau_st, hex, COPPER_TOP)   # whole hex, away from the path
 
-	_commit(plateau_st, _mat_mask)
+	_commit(floor_st, _mat_copper, true)                 # glossy black floor + channel walls
+	_commit(glass_st, _mat_glass)                        # translucent build slab
+	if path_polys.size() > 0: _commit(edge_st, _mat_copper_edge)   # neon border ribbon
+	if have_wall: _commit(wall_st, _mat_wall, true)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
 	if have_goal: _commit(goal_st, _mat_goal)
-	if have_wall: _commit(wall_st, _mat_wall, true)   # walls cast shadows (depth)
-	if path_polys.size() > 0:
-		_commit(path_st, _mat_copper, true)              # glossy black sunken floor + walls
-		_commit(edge_st, _mat_copper_edge)               # neon border ribbon
 
 # A cell is "near" the path if it is a path cell or borders one — only these need
 # the (more expensive) polygon cut; the rest are whole-hex plateau.
@@ -225,20 +241,23 @@ func _near_path(cell: Vector2i) -> bool:
 			return true
 	return false
 
-# Build the smoothed outline polygon(s) of the path region. Boundary edges are
-# found exactly (a hex edge whose neighbour is non-path — hex edge i faces
-# EDGE_NB[i]), stitched into ordered loops, oriented CCW, and Laplacian-smoothed
-# so the floor/walls/border are smooth curves rather than hex facets.
 func _build_path_polys() -> Array:
+	return _build_region_outline(Callable(self, "_is_path_cell"), 8)
+
+# Build the smoothed outline polygon(s) of a cell region (cells where `is_inside`
+# is true). Boundary edges are found exactly (a hex edge whose neighbour is
+# outside the region — hex edge i faces EDGE_NB[i]), stitched into ordered loops,
+# oriented CCW, and Laplacian-smoothed so the meshes are smooth curves not facets.
+func _build_region_outline(is_inside: Callable, smooth_iters: int) -> Array:
 	var pos := {}
 	var nbr := {}
 	for cell in map.cells:
-		if not _is_path_cell(cell):
+		if not is_inside.call(cell):
 			continue
 		var c := _cell_to_pixel(cell)
 		var hp := _hex_plane_polygon(c)
 		for i in range(6):
-			if _is_path_cell(cell + EDGE_NB[i]):
+			if is_inside.call(cell + EDGE_NB[i]):
 				continue
 			var a: Vector2 = hp[i]
 			var b: Vector2 = hp[(i + 1) % 6]
@@ -290,7 +309,7 @@ func _build_path_polys() -> Array:
 			# "vertical" odd-r path; Laplacian flattens it). ~8 passes straighten the
 			# vertical staircase; the mild shrink is harmless since the floor, walls
 			# and plateau cut all use this same polygon.
-			polys.append(_smooth_loop(pts, 8))
+			polys.append(_smooth_loop(pts, smooth_iters))
 	return polys
 
 func _signed_area(p: PackedVector2Array) -> float:
