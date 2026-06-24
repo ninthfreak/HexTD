@@ -29,9 +29,10 @@ const WALL_COLOR := Color(0.09, 0.10, 0.15)    # dark obstacle (faint red rim)
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
 const COPPER_TOP := 1.2         # build-slab top = placement plane (towers/picking/overlays)
-const PATH_TOP := -2.8          # black floor under the frosted slab; bottom of the slab / path channel
+const PATH_TOP := -1.0          # path channel floor (glossy black) — shallow, so it's near the enemies
+const BUILD_BOTTOM := -3.2      # bottom of the frosted slab / rim (gives the build area its thickness)
 const WALL_TOP := 4.2           # blocking walls stand above the slab
-const ENEMY_Y := COPPER_TOP + 5.5   # enemies hover this high (above the plateau; shadow sells the gap)
+const ENEMY_Y := COPPER_TOP + 1.0   # enemies hover just above the board (close enough to reflect in the path)
 const RIM_WIDTH := 2.4          # width of the flat neon border strip along the path rim
 
 ## Copper clip tiles — identical rule to the 2D board (see that file for the full
@@ -116,16 +117,16 @@ func _build_materials() -> void:
 	# the body; a soft self-glow (kept just under the bloom threshold so it glows
 	# cloudily rather than blooming out).
 	_mat_glass = StandardMaterial3D.new()
-	_mat_glass.albedo_color = Color(0.60, 0.32, 0.56)
+	_mat_glass.albedo_color = Color(0.46, 0.28, 0.60)
 	_mat_glass.metallic = 0.0
 	_mat_glass.roughness = 1.0
 	_mat_glass.specular = 0.1
 	_mat_glass.subsurf_scatter_enabled = true
 	_mat_glass.subsurf_scatter_strength = 0.95
 	_mat_glass.backlight_enabled = true
-	_mat_glass.backlight = Color(0.34, 0.15, 0.30)
+	_mat_glass.backlight = Color(0.26, 0.16, 0.36)
 	_mat_glass.emission_enabled = true
-	_mat_glass.emission = Color(0.86, 0.46, 0.76)
+	_mat_glass.emission = Color(0.62, 0.40, 0.86)
 	_mat_glass.emission_energy_multiplier = 0.5
 	_mat_glass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Walls: dark obstacles with a faint red rim glow (a hazard cue), not bloomed.
@@ -196,7 +197,10 @@ func _build_board_meshes() -> void:
 	var have_spawn := false
 	var have_goal := false
 
-	# black path channel: smooth sunken floor + walls + neon border
+	# black path channel: smooth sunken floor + walls + neon border; plus a dark
+	# slab-bottom cap so the thick frosted rim reads as solid.
+	for bpoly in board_polys:
+		_emit_cap_tris(floor_st, bpoly, BUILD_BOTTOM)
 	for ppoly in path_polys:
 		_emit_cap_tris(floor_st, ppoly, PATH_TOP)
 		_emit_wall_loop(floor_st, ppoly, COPPER_TOP, PATH_TOP)
@@ -227,7 +231,7 @@ func _build_board_meshes() -> void:
 
 	# outer-rim wall gives the frosted slab visible thickness at the board edge
 	for bpoly in board_polys:
-		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, PATH_TOP)
+		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, BUILD_BOTTOM)
 
 	_commit(floor_st, _mat_copper, true)                 # glossy black path floor + walls
 	_commit(glass_st, _mat_glass)                        # frosted build slab
