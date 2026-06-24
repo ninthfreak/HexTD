@@ -40,7 +40,7 @@ const HUM_TABLE := 2048
 const HUM_VOL_DB := -3.0
 
 const BODY_HEIGHT := 8.0             # nominal body height (world units)
-const BEAM_ORIGIN_LIFT := 7.75       # beam fires from the laser cone tip
+const BEAM_ORIGIN_LIFT := 30.0       # beam fires from the tall laser cone tip
 const BEAM_TARGET_LIFT := 2.0        # mid-height of an enemy body (Enemy3D.BODY_HEIGHT * 0.5)
 const BEAM_BASE_THICK := 0.6
 const BEAM_FULL_THICK := 1.6
@@ -356,8 +356,10 @@ func _shoot(t) -> void:
 	board.add_projectile(p)
 
 # ---------------------------------------------------------------- body (3D)
-# One colour-coded primitive per fire mode — nothing else (no base, no caps):
-#   single -> tall thin cylinder; radial -> low-poly toroid; laser -> low-poly cone.
+# One colour-coded, FLAT-SHADED low-poly primitive per fire mode (no base/caps):
+#   single -> octagonal cylinder; radial -> polyhedral toroid; laser -> cone.
+# Built by hand with per-face normals so they read as faceted low-poly (Godot's
+# CylinderMesh/TorusMesh use smooth normals, which looked round / "high poly").
 func _rebuild_body() -> void:
 	if _body != null and is_instance_valid(_body):
 		_body.queue_free()
@@ -370,30 +372,14 @@ func _rebuild_body() -> void:
 	var mat := _core_mat()
 	match data.fire_mode:
 		"radial":
-			# polyhedral (low-poly) torus: a net of quad faces approximating the
-			# torus surface — low ring/segment counts keep it faceted.
-			var torus := TorusMesh.new()
-			torus.inner_radius = r * 0.30
-			torus.outer_radius = r * 0.62
-			torus.rings = 12             # faces around the main ring
-			torus.ring_segments = 6      # quad faces around the tube cross-section
-			_part(torus, mat, r * 0.16)  # lies flat, resting on the board
+			# polyhedral torus: thick tube (small middle opening), low-poly quad net
+			var inner := r * 0.26
+			var outer := r * 0.74
+			_part(_low_poly_torus(inner, outer, 8, 6), mat, (outer - inner) * 0.5)
 		"laser":
-			# tall low-poly cone (hexagonal pyramid), apex up = beam origin
-			_part(_frustum(r * 0.50, 0.0, 10.0, 6), mat, 5.0)
+			_part(_low_poly_cone(r * 0.75, 30.0, 6), mat, 0.0)
 		_:
-			# tall, thin cylinder
-			_part(_frustum(r * 0.34, r * 0.34, 9.0, 16), mat, 4.5)
-
-# --- primitive + material helpers ---
-func _frustum(bottom_r: float, top_r: float, h: float, seg: int) -> CylinderMesh:
-	var m := CylinderMesh.new()
-	m.bottom_radius = bottom_r
-	m.top_radius = top_r
-	m.height = h
-	m.radial_segments = seg
-	m.rings = 1
-	return m
+			_part(_low_poly_cylinder(r * 0.51, 27.0, 8), mat, 0.0)
 
 func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -403,8 +389,78 @@ func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
 	_body.add_child(mi)
 	return mi
 
+# Add a flat triangle with an outward normal (away from `ctr`).
+func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, ctr: Vector3) -> void:
+	var nrm := (b - a).cross(c - a)
+	if nrm.length() < 0.000001:
+		return
+	nrm = nrm.normalized()
+	if nrm.dot((a + b + c) / 3.0 - ctr) < 0.0:
+		nrm = -nrm
+	for v in [a, b, c]:
+		st.set_normal(nrm); st.add_vertex(v)
+
+# Flat-shaded N-gon prism (base at y=0, up to y=height).
+func _low_poly_cylinder(rad: float, height: float, sides: int) -> ArrayMesh:
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ctr := Vector3(0, height * 0.5, 0)
+	var topc := Vector3(0, height, 0)
+	for i in range(sides):
+		var a0 := TAU * float(i) / float(sides)
+		var a1 := TAU * float(i + 1) / float(sides)
+		var b0 := Vector3(cos(a0) * rad, 0, sin(a0) * rad)
+		var b1 := Vector3(cos(a1) * rad, 0, sin(a1) * rad)
+		var t0 := b0 + Vector3(0, height, 0)
+		var t1 := b1 + Vector3(0, height, 0)
+		_tri(st, b0, b1, t1, ctr); _tri(st, b0, t1, t0, ctr)   # side quad
+		_tri(st, topc, t0, t1, ctr)                            # top cap
+		_tri(st, Vector3.ZERO, b1, b0, ctr)                    # bottom cap
+	return st.commit()
+
+# Flat-shaded N-gon cone / pyramid (base at y=0, apex at y=height).
+func _low_poly_cone(base_r: float, height: float, sides: int) -> ArrayMesh:
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var apex := Vector3(0, height, 0)
+	var ctr := Vector3(0, height * 0.33, 0)
+	for i in range(sides):
+		var a0 := TAU * float(i) / float(sides)
+		var a1 := TAU * float(i + 1) / float(sides)
+		var b0 := Vector3(cos(a0) * base_r, 0, sin(a0) * base_r)
+		var b1 := Vector3(cos(a1) * base_r, 0, sin(a1) * base_r)
+		_tri(st, apex, b0, b1, ctr)              # side face
+		_tri(st, Vector3.ZERO, b1, b0, ctr)      # base cap
+	return st.commit()
+
+# Flat-shaded polyhedral torus lying flat (major ring in XZ), centred at y=0.
+# `rings` faces around the main ring, `tube_sides` quads around the tube.
+func _low_poly_torus(inner_r: float, outer_r: float, rings: int, tube_sides: int) -> ArrayMesh:
+	var rr := (inner_r + outer_r) * 0.5
+	var tt := (outer_r - inner_r) * 0.5
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in range(rings):
+		var u0 := TAU * float(i) / float(rings)
+		var u1 := TAU * float(i + 1) / float(rings)
+		for j in range(tube_sides):
+			var v0 := TAU * float(j) / float(tube_sides)
+			var v1 := TAU * float(j + 1) / float(tube_sides)
+			var a := _torus_pt(rr, tt, u0, v0)
+			var b := _torus_pt(rr, tt, u1, v0)
+			var c := _torus_pt(rr, tt, u1, v1)
+			var d := _torus_pt(rr, tt, u0, v1)
+			var nrm := _torus_nrm((u0 + u1) * 0.5, (v0 + v1) * 0.5)
+			for v in [a, b, c, a, c, d]:
+				st.set_normal(nrm); st.add_vertex(v)
+	return st.commit()
+
+func _torus_pt(rr: float, tt: float, u: float, v: float) -> Vector3:
+	return Vector3(cos(u), 0, sin(u)) * (rr + tt * cos(v)) + Vector3(0, tt * sin(v), 0)
+
+func _torus_nrm(u: float, v: float) -> Vector3:
+	return Vector3(cos(u) * cos(v), sin(v), sin(u) * cos(v)).normalized()
+
 # Colour-coded body material: the tower's own colour, lit + a soft self-glow.
-# Low metallic so it reads as colour, not a dark mirror in the dim scene.
+# Low metallic so it reads as colour, not a dark mirror; two-sided so the hand-
+# built meshes never cull inside-out.
 func _core_mat() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = data.color
@@ -413,6 +469,7 @@ func _core_mat() -> StandardMaterial3D:
 	m.emission_enabled = true
 	m.emission = data.color
 	m.emission_energy_multiplier = 0.5
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
 
 # ---------------------------------------------------------------- laser beam
