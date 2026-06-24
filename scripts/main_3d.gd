@@ -48,6 +48,12 @@ var _spawn_timeline: Array = []   # sorted {time, type} from WaveLoader.build_ti
 var _wave_clock := 0.0
 var _wave_running := false
 
+# --- level-name banner (pops up + fades out when a wave starts) ---
+var banner_label: Label
+var _banner_time := 0.0            # real-time seconds remaining (hold + fade)
+const BANNER_HOLD := 1.4          # fully-opaque seconds
+const BANNER_FADE := 1.2          # fade-out seconds
+
 # --- UI ---
 var money_label: Label
 var lives_label: Label
@@ -96,6 +102,7 @@ func _ready() -> void:
 	_frame_camera()
 	_build_ui()
 	_build_badge_layer()
+	_build_level_banner()
 	_update_labels()
 	_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
 
@@ -217,6 +224,7 @@ func _process(delta: float) -> void:
 			_spawn_enemy(entry["type"])
 		if _spawn_timeline.is_empty():
 			_wave_running = false
+	_update_banner(delta)
 	_camera_keys(delta)
 	_update_preview()
 
@@ -554,6 +562,7 @@ func _on_start_pressed() -> void:
 		_wave_running = true
 	var wname: String = WaveLoader.wave_name(wave, wi)
 	wave_select.selected = (wi + 1) % waves.size()
+	_show_level_banner()
 	_set_info("Started wave %s." % wname)
 
 func _on_enemy_bounty(amount: int) -> void:
@@ -589,6 +598,45 @@ func _on_exit_pressed() -> void:
 func _mouse_over_pane() -> bool:
 	var mx := get_viewport().get_mouse_position().x
 	return mx > get_viewport().get_visible_rect().size.x - float(pane_width)
+
+# ---------------------------------------------------------------- level banner
+# A large title that pops up and fades out when a wave starts, naming the level.
+func _build_level_banner() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 4                       # above badges (3) and the pane (2)
+	add_child(layer)
+	banner_label = Label.new()
+	banner_label.text = map.display_name
+	# Span the play area (left of the pane), upper third, and let alignment center
+	# the text — robust against text width / window resizes.
+	banner_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	banner_label.offset_right = -float(pane_width)
+	banner_label.anchor_bottom = 0.34
+	banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	banner_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	banner_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	banner_label.add_theme_font_size_override("font_size", 56)
+	banner_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	banner_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	banner_label.add_theme_constant_override("outline_size", 10)
+	banner_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	banner_label.modulate = Color(1, 1, 1, 0.0)   # hidden until a wave starts
+	layer.add_child(banner_label)
+
+# Restart the pop-up timer for the current level name.
+func _show_level_banner() -> void:
+	if banner_label == null:
+		return
+	banner_label.text = map.display_name
+	_banner_time = BANNER_HOLD + BANNER_FADE
+
+# Drive the banner fade in real time so the speed multiplier doesn't change it.
+func _update_banner(delta: float) -> void:
+	if banner_label == null or _banner_time <= 0.0:
+		return
+	var dt := delta / maxf(Engine.time_scale, 0.0001)
+	_banner_time = maxf(0.0, _banner_time - dt)
+	banner_label.modulate.a = clampf(_banner_time / BANNER_FADE, 0.0, 1.0)
 
 # ---------------------------------------------------------------- ability badges
 # The 2D BoardOverlay drew circular ability badges below the selected tower; in
@@ -783,9 +831,16 @@ func _build_ui() -> void:
 
 	vbox.add_child(HSeparator.new())
 
-	var wave_header := Label.new()
-	wave_header.text = "Start wave"
-	vbox.add_child(wave_header)
+	# "Start wave" and "Spawn enemies" used to stack on top of each other; they
+	# now live in two tabs so only one set of controls shows at a time.
+	var sandbox_tabs := TabContainer.new()
+	sandbox_tabs.custom_minimum_size = Vector2(0, 150)
+	vbox.add_child(sandbox_tabs)
+
+	var waves_tab := VBoxContainer.new()
+	waves_tab.name = "Waves"
+	waves_tab.add_theme_constant_override("separation", 8)
+	sandbox_tabs.add_child(waves_tab)
 
 	wave_select = OptionButton.new()
 	for i in range(waves.size()):
@@ -794,17 +849,18 @@ func _build_ui() -> void:
 		wave_select.add_item("Wave %d: %s" % [i + 1, wname])
 	if waves.size() > 0:
 		wave_select.selected = 0
-	vbox.add_child(wave_select)
+	waves_tab.add_child(wave_select)
 
 	var start_button := Button.new()
 	start_button.text = "Start Wave"
 	start_button.disabled = waves.is_empty()
 	start_button.pressed.connect(_on_start_pressed)
-	vbox.add_child(start_button)
+	waves_tab.add_child(start_button)
 
-	var spawn_header := Label.new()
-	spawn_header.text = "Spawn enemies"
-	vbox.add_child(spawn_header)
+	var spawn_tab := VBoxContainer.new()
+	spawn_tab.name = "Spawn"
+	spawn_tab.add_theme_constant_override("separation", 8)
+	sandbox_tabs.add_child(spawn_tab)
 
 	enemy_select = OptionButton.new()
 	_enemy_ids = content.enemy_ids()
@@ -812,7 +868,7 @@ func _build_ui() -> void:
 		enemy_select.add_item(content.enemy(str(id)).display_name)
 	if _enemy_ids.size() > 0:
 		enemy_select.selected = 0
-	vbox.add_child(enemy_select)
+	spawn_tab.add_child(enemy_select)
 
 	var count_row := HBoxContainer.new()
 	var count_label := Label.new()
@@ -825,13 +881,13 @@ func _build_ui() -> void:
 	spawn_count.step = 1
 	spawn_count.value = 5
 	count_row.add_child(spawn_count)
-	vbox.add_child(count_row)
+	spawn_tab.add_child(count_row)
 
 	var spawn_button := Button.new()
 	spawn_button.text = "Spawn"
 	spawn_button.disabled = _enemy_ids.is_empty()
 	spawn_button.pressed.connect(_on_spawn_pressed)
-	vbox.add_child(spawn_button)
+	spawn_tab.add_child(spawn_button)
 
 	speed_button = Button.new()
 	speed_button.text = "Speed: 1x"
