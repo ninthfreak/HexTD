@@ -176,7 +176,7 @@
     <aside class="side">
       <div class="group"><div class="label">Default gap (s)</div><input id="wv_default" type="number" step="0.05" min="0" value="0.7"></div>
       <button id="wv_addwave">+ Add wave</button>
-      <div class="hint">Each wave runs its groups in order. <code>type</code> is an enemy id.</div>
+      <div class="hint">Groups run on an absolute timeline when any group has a <code>start</code> &gt; 0; otherwise they chain sequentially. <code>type</code> is an enemy id.</div>
       <div class="savebar">
         <div class="file">→ data/waves.json <span id="wv_pending"></span></div>
         <button class="primary" id="wv_save">Save waves.json</button>
@@ -305,11 +305,23 @@ function normUpgrades(arr){
 }
 function wavesToJSON(w){
   return { spawn_interval_default:+(w.spawn_interval_default??0.7),
-    waves:(w.waves||[]).map(wave=>({groups:(wave.groups||[]).map(g=>({type:g.type,count:+g.count,gap:+g.gap}))})) };
+    waves:(w.waves||[]).map(wave=>{
+      const out={};
+      if(wave.name) out.name=wave.name;
+      out.groups=(wave.groups||[]).map(g=>{
+        const o={type:g.type,count:+g.count,gap:+g.gap};
+        if(g.start!=null && +g.start!==0) o.start=+g.start;
+        return o;
+      });
+      return out;
+    })};
 }
 function wavesFromJSON(obj){
   return { spawn_interval_default:+(obj.spawn_interval_default??0.7),
-    waves:(obj.waves||[]).map(wave=>({groups:(wave.groups||[]).map(g=>({type:g.type??'bit',count:+(g.count??1),gap:+(g.gap??0.7)}))})) };
+    waves:(obj.waves||[]).map(wave=>({
+      name:wave.name||'',
+      groups:(wave.groups||[]).map(g=>({type:g.type??'bit',count:+(g.count??1),gap:+(g.gap??0.7),start:+(g.start??0)}))
+    }))};
 }
 
 // ===================== defaults (used only if server has no files) =====================
@@ -660,9 +672,12 @@ function renderWaves(){
   const wrap=document.getElementById('wv_list'); wrap.innerHTML='';
   const types=MODEL.enemyOrder;
   MODEL.waves.waves.forEach((wave,wi)=>{
-    const card=el('div',{class:'card'}, el('div',{class:'row',style:'justify-content:space-between'},
+    const card=el('div',{class:'card'}, el('div',{class:'row',style:'justify-content:space-between;align-items:center'},
       el('h3',{}, 'Wave '+(wi+1)),
-      el('button',{class:'danger',onclick:()=>{MODEL.waves.waves.splice(wi,1); setDirty('waves'); renderWaves();}},'Remove wave')));
+      el('div',{style:'display:flex;gap:8px;align-items:center'},
+        el('div',{class:'lbl',style:'margin:0'},'name'),
+        el('input',{type:'text',value:wave.name||'',placeholder:'(auto)',style:'width:120px',oninput:ev=>{wave.name=ev.target.value; setDirty('waves');}}),
+        el('button',{class:'danger',onclick:()=>{MODEL.waves.waves.splice(wi,1); setDirty('waves'); renderWaves();}},'Remove wave'))));
     wave.groups.forEach((g,gi)=>{
       const typeSel=el('select',{onchange:ev=>{g.type=ev.target.value; setDirty('waves');}},
         ...(types.includes(g.type)?[]:[el('option',{value:g.type,selected:true}, g.type+' (missing)')]),
@@ -671,14 +686,15 @@ function renderWaves(){
         el('div',{}, el('div',{class:'lbl'},'enemy'), typeSel),
         el('div',{}, el('div',{class:'lbl'},'count'), el('input',{type:'number',min:1,value:g.count,oninput:ev=>{g.count=+ev.target.value; setDirty('waves');}})),
         el('div',{}, el('div',{class:'lbl'},'gap (s)'), el('input',{type:'number',step:'0.05',min:0,value:g.gap,oninput:ev=>{g.gap=+ev.target.value; setDirty('waves');}})),
+        el('div',{}, el('div',{class:'lbl'},'start (s)'), el('input',{type:'number',step:'0.1',min:0,value:g.start||0,oninput:ev=>{g.start=+ev.target.value; setDirty('waves');}})),
         el('button',{class:'danger',onclick:()=>{wave.groups.splice(gi,1); setDirty('waves'); renderWaves();}},'×')));
     });
-    card.append(el('button',{onclick:()=>{wave.groups.push({type:types[0]||'bit',count:5,gap:0.6}); setDirty('waves'); renderWaves();}},'+ Add group'));
+    card.append(el('button',{onclick:()=>{wave.groups.push({type:types[0]||'bit',count:5,gap:0.6,start:0}); setDirty('waves'); renderWaves();}},'+ Add group'));
     wrap.append(card);
   });
 }
 document.getElementById('wv_default').oninput=ev=>{ MODEL.waves.spawn_interval_default=+ev.target.value; setDirty('waves'); };
-document.getElementById('wv_addwave').onclick=()=>{ MODEL.waves.waves.push({groups:[{type:MODEL.enemyOrder[0]||'bit',count:6,gap:0.6}]}); setDirty('waves'); renderWaves(); };
+document.getElementById('wv_addwave').onclick=()=>{ MODEL.waves.waves.push({name:'',groups:[{type:MODEL.enemyOrder[0]||'bit',count:6,gap:0.6,start:0}]}); setDirty('waves'); renderWaves(); };
 document.getElementById('wv_save').onclick=async ()=>{
   if(!requireServer()) return;
   if(!confirm('Save data/waves.json? This overwrites the file on disk.')) return;
