@@ -84,26 +84,6 @@ func _ready() -> void:
 	_build_ui()
 	_update_labels()
 	_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
-	_build_sentinel()
-
-# TEMPORARY build sentinel — proves which code is actually running. If you see
-# this banner, the latest scripts are live (and ENEMY_Y/PATH_TOP show the real
-# runtime values). Remove once we've confirmed sync.
-func _build_sentinel() -> void:
-	var layer := CanvasLayer.new()
-	layer.layer = 128
-	add_child(layer)
-	var lbl := Label.new()
-	lbl.text = "BUILD SENTINEL #1  |  ENEMY_Y=%.1f  PATH_TOP=%.1f  RIM_WIDTH=%.1f" % [
-		GameBoard3D.ENEMY_Y, GameBoard3D.PATH_TOP, GameBoard3D.RIM_WIDTH]
-	lbl.add_theme_font_size_override("font_size", 22)
-	lbl.add_theme_color_override("font_color", Color(1, 1, 0))
-	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0))
-	lbl.add_theme_constant_override("outline_size", 6)
-	lbl.position = Vector2(16, 12)
-	layer.add_child(lbl)
-	print("[HexTD] BUILD SENTINEL #1  ENEMY_Y=", GameBoard3D.ENEMY_Y,
-		"  PATH_TOP=", GameBoard3D.PATH_TOP, "  RIM_WIDTH=", GameBoard3D.RIM_WIDTH)
 
 # ---------------------------------------------------------------- environment & camera
 # A directional sun + a procedural sky. The shiny copper / clearcoat-mask
