@@ -176,18 +176,21 @@ func _build_board_meshes() -> void:
 	_mesh_root = Node3D.new()
 	add_child(_mesh_root)
 
-	# Layers (bottom to top):
-	#   - black glossy path FLOOR + CHANNEL WALLS, from the smoothed path outline;
-	#   - the build area as a thick FROSTED slab: per-cell top caps at COPPER_TOP
-	#     (the path cut out of each touched cell — PER-CELL, because a single merged
-	#     "board minus path" polygon has a hole the triangulator can't handle and
-	#     fills, which hid the path), plus an outer-rim wall down to the floor for
-	#     real thickness;
+	# Flat-path design (no sunken channel), so the frosted top is ONE seamless
+	# sheet — no per-cell hex facets to catch the glow unevenly. Layers:
+	#   - FROSTED build slab: seamless top (the whole board outline, triangulated)
+	#     at COPPER_TOP + an outer-rim wall down to BUILD_BOTTOM + a dark bottom cap
+	#     (so the thick rim reads solid);
+	#   - the path as a flat glossy-black INLAY sitting just on top of the slab
+	#     (enemies hover just above it, so it mirrors them);
 	#   - the neon border ribbon along the path edge.
+	# Both the slab top and the path inlay are single triangulated polygons (no
+	# holes — the board is solid, the path is a strip), so both are seamless.
 	var path_polys := _build_path_polys()
 	var board_polys := _build_region_outline(Callable(self, "has_cell"), 0)
+	var inlay_y := COPPER_TOP + 0.04
 
-	var floor_st := SurfaceTool.new(); floor_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var glass_st := SurfaceTool.new(); glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -197,44 +200,29 @@ func _build_board_meshes() -> void:
 	var have_spawn := false
 	var have_goal := false
 
-	# black path channel: smooth sunken floor + walls + neon border; plus a dark
-	# slab-bottom cap so the thick frosted rim reads as solid.
+	# frosted slab: seamless top + outer rim + dark bottom
 	for bpoly in board_polys:
-		_emit_cap_tris(floor_st, bpoly, BUILD_BOTTOM)
+		_emit_cap_tris(glass_st, bpoly, COPPER_TOP)
+		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, BUILD_BOTTOM)
+		_emit_cap_tris(copper_st, bpoly, BUILD_BOTTOM)   # dark slab bottom
+
+	# flat glossy-black path inlay (on top of the slab) + neon border
 	for ppoly in path_polys:
-		_emit_cap_tris(floor_st, ppoly, PATH_TOP)
-		_emit_wall_loop(floor_st, ppoly, COPPER_TOP, PATH_TOP)
+		_emit_cap_tris(copper_st, ppoly, inlay_y)
 		_stroke_border(edge_st, ppoly)
 
-	# frosted build slab: per-cell top (board minus path), blocking prisms, markers
+	# blocking prisms (stand on the slab) + spawn/goal markers on the path inlay
 	for cell in map.cells:
 		var hex := _hex_plane_polygon(_cell_to_pixel(cell))
 		if blocking_set.has(cell):
-			_add_prism(wall_st, hex, WALL_TOP, PATH_TOP); have_wall = true
-			continue
-		if cell == map.spawn:
-			_emit_cap_tris(spawn_st, hex, PATH_TOP + 0.06); have_spawn = true
+			_add_prism(wall_st, hex, WALL_TOP, COPPER_TOP); have_wall = true
+		elif cell == map.spawn:
+			_emit_cap_tris(spawn_st, hex, inlay_y + 0.03); have_spawn = true
 		elif cell == map.goal:
-			_emit_cap_tris(goal_st, hex, PATH_TOP + 0.06); have_goal = true
-		if _near_path(cell):
-			var parts: Array = [hex]
-			for ppoly in path_polys:
-				var np: Array = []
-				for part in parts:
-					for r in Geometry2D.clip_polygons(part, ppoly):
-						np.append(r)
-				parts = np
-			for part in parts:
-				_emit_cap_tris(glass_st, part, COPPER_TOP)
-		elif not _is_path_cell(cell):
-			_add_cap(glass_st, hex, COPPER_TOP)   # whole hex, away from the path
+			_emit_cap_tris(goal_st, hex, inlay_y + 0.03); have_goal = true
 
-	# outer-rim wall gives the frosted slab visible thickness at the board edge
-	for bpoly in board_polys:
-		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, BUILD_BOTTOM)
-
-	_commit(floor_st, _mat_copper, true)                 # glossy black path floor + walls
 	_commit(glass_st, _mat_glass)                        # frosted build slab
+	_commit(copper_st, _mat_copper, true)                # dark bottom + glossy path inlay
 	if path_polys.size() > 0: _commit(edge_st, _mat_copper_edge)   # neon border ribbon
 	if have_wall: _commit(wall_st, _mat_wall, true)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
@@ -394,7 +382,7 @@ func _stroke_border(st: SurfaceTool, poly: PackedVector2Array) -> void:
 		var mdir: Vector2 = sv.normalized() if sv.length() > 0.0001 else n2
 		outu.append(mdir)
 		mfac.append(1.0 / maxf(mdir.dot(n2), 0.6))
-	var ry := COPPER_TOP + 0.25
+	var ry := COPPER_TOP + 0.12   # just above the flat path inlay
 	var inset := 1.2
 	for i in range(n):
 		var j := (i + 1) % n
