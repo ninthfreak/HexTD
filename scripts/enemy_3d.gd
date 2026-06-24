@@ -115,6 +115,8 @@ func _build_body() -> void:
 		_body.material_override = _faces_material()
 		_body_root.add_child(_body)
 		_body_top = BODY_HEIGHT
+	# ECC scan band sweeps the body's full height, so tune it once the height is known.
+	_tune_scan(_body)
 
 func _place_bar() -> void:
 	if _bar != null:
@@ -364,25 +366,101 @@ func _min_edges(verts: PackedVector3Array) -> Array:
 	return out
 
 # Faces: lit metallic (form from the key light) + a modest self-glow so the body
-# reads on the dark board without washing out the edge outline.
-func _faces_material() -> StandardMaterial3D:
+# reads on the dark board without washing out the edge outline. Enemies carrying
+# a special property (ECC / Encrypted / both = "TLS") get a ShaderMaterial that
+# adds the property visuals instead; plain enemies keep the cheap StandardMaterial.
+func _faces_material() -> Material:
+	if data.ecc or data.encrypted:
+		return _property_material()
 	var mat := StandardMaterial3D.new()
 	var fill: Color = data.color
 	mat.albedo_color = fill
-	# Low metallic + medium roughness so the faces catch the (dim) key light as a
-	# solid coloured body — a high-metallic body just reflects the dark sky and
-	# reads black, leaving only the edges (which then bloom into a formless blob).
 	mat.metallic = 0.2
 	mat.roughness = 0.5
-	# Two-sided: the hull winding yields outward normals (so front faces light
-	# correctly), but for convex solids the back faces are occluded anyway, and
-	# disabling culling removes any winding-convention risk (no inside-out body).
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	if data.glow > 0.0:
 		mat.emission_enabled = true
 		mat.emission = fill
 		mat.emission_energy_multiplier = 0.3 + data.glow * 0.25
 	return mat
+
+# Shader for the special-property body. Replicates the plain look (lit metallic +
+# self-glow) and adds, per uniform flags:
+#  - ECC: a thick horizontal emission band sweeping up/down the body height.
+#  - Encrypted: partial face transparency, so the opaque wireframe edges show
+#    through as a "revealed wireframe".
+#  - both (TLS): both — and the scan band is forced opaque so the sweeping line
+#    is never see-through.
+const _PROPERTY_SHADER := """
+shader_type spatial;
+render_mode cull_disabled, depth_draw_opaque;
+
+uniform vec4 body_color : source_color = vec4(1.0);
+uniform float emission_energy = 0.4;
+uniform float base_alpha = 1.0;
+uniform float scan_enabled = 0.0;
+uniform float scan_center = 0.0;
+uniform float scan_amp = 1.0;
+uniform float scan_half_width = 1.0;
+uniform float scan_speed = 1.6;
+uniform float scan_boost = 2.4;
+uniform float scan_phase = 0.0;
+
+varying float v_y;
+
+void vertex() {
+	v_y = VERTEX.y;
+}
+
+void fragment() {
+	ALBEDO = body_color.rgb;
+	METALLIC = 0.2;
+	ROUGHNESS = 0.5;
+	vec3 emis = body_color.rgb * emission_energy;
+	float alpha = base_alpha;
+	if (scan_enabled > 0.5) {
+		float pos = scan_center + scan_amp * sin(TIME * scan_speed + scan_phase);
+		float band = 1.0 - smoothstep(scan_half_width * 0.55, scan_half_width, abs(v_y - pos));
+		emis += body_color.rgb * band * scan_boost;
+		alpha = max(alpha, band);   // scan band stays opaque (TLS: never transparent)
+	}
+	EMISSION = emis;
+	ALPHA = clamp(alpha, 0.0, 1.0);
+}
+"""
+
+static var _property_shader: Shader
+
+func _property_material() -> ShaderMaterial:
+	if _property_shader == null:
+		_property_shader = Shader.new()
+		_property_shader.code = _PROPERTY_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = _property_shader
+	var fill: Color = data.color
+	var energy := 0.0
+	if data.glow > 0.0:
+		energy = 0.3 + data.glow * 0.25
+	m.set_shader_parameter("body_color", fill)
+	m.set_shader_parameter("emission_energy", energy)
+	# Encrypted: ghost the faces (the opaque edge wireframe then reads through them).
+	m.set_shader_parameter("base_alpha", 0.4 if data.encrypted else 1.0)
+	# ECC: enable the sweeping band (extents are set in _tune_scan once the height is known).
+	m.set_shader_parameter("scan_enabled", 1.0 if data.ecc else 0.0)
+	m.set_shader_parameter("scan_phase", randf() * TAU)   # de-sync the sweep across enemies
+	return m
+
+# Set the ECC scan band's vertical extents from the finished body height. The
+# band sweeps the full [0, _body_top] span and is kept thick (~0.44 * height).
+func _tune_scan(mi: MeshInstance3D) -> void:
+	if mi == null:
+		return
+	var m = mi.material_override
+	if m is ShaderMaterial:
+		var top: float = maxf(_body_top, 0.001)
+		m.set_shader_parameter("scan_center", top * 0.5)
+		m.set_shader_parameter("scan_amp", top * 0.5)
+		m.set_shader_parameter("scan_half_width", top * 0.22)
 
 # Edges: unshaded emission for a crisp glowing outline. Kept modest — too bright
 # and the bloom swallows the body into a formless blob.
