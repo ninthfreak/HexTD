@@ -12,6 +12,12 @@ signal split(lesser, placements)
 
 const TURN_RATE := 9.0
 const SPEED_MULT := 2.5         # global travel-speed multiplier applied to data.speed (JSON values stay as authored)
+# Denial of Service (DoS) debuff: a hit fully stops the enemy for DOS_STOP seconds,
+# then drops it to DOS_SLOW_FACTOR of its speed for DOS_SLOW_TIME seconds.
+const DOS_STOP := 0.5
+const DOS_SLOW_TIME := 2.0
+const DOS_SLOW_FACTOR := 0.5
+const DOS_FROST := Color(0.5, 0.85, 1.0)   # icy tint while frozen/slowed
 const ECC_RESIST := 0.9
 const GLOW_HDR_BOOST := 0.9
 const BODY_HEIGHT := 4.0
@@ -64,6 +70,12 @@ var heading := 0.0             # radians; 0 = facing +X in plane space
 var pp := Vector2.ZERO
 var _index := 0
 var _alive := true
+
+# DoS debuff state
+var _freeze_time := 0.0
+var _slow_time := 0.0
+var _tint_mats: Array = []      # {mat, alb, emi, emi_on} for body materials we can frost-tint
+var _dos_vis_k := -1.0          # last-applied tint strength (avoid per-frame churn)
 var _body_root: Node3D         # rotates with heading (body only — bar stays upright)
 var _body: MeshInstance3D      # the body faces (prism for legacy shapes, hull faces for solids)
 var _body_top := BODY_HEIGHT   # world height of the body's top (drives the health bar)
@@ -118,6 +130,7 @@ func _build_body() -> void:
 		_body_top = BODY_HEIGHT
 	# ECC scan band sweeps the body's full height, so tune it once the height is known.
 	_tune_scan(_body)
+	_collect_tint_mats()
 
 func _place_bar() -> void:
 	if _bar != null:
@@ -579,13 +592,69 @@ func _process(delta: float) -> void:
 	var dist := to_target.length()
 	if dist > 0.001:
 		heading = lerp_angle(heading, to_target.angle(), clampf(TURN_RATE * delta, 0.0, 1.0))
+	_tick_dos(delta)
 	var step := data.speed * SPEED_MULT * delta
+	if _freeze_time > 0.0:
+		step = 0.0
+	elif _slow_time > 0.0:
+		step *= DOS_SLOW_FACTOR
 	if step >= dist:
 		pp = target
 		_index += 1
 	else:
 		pp += to_target / dist * step
 	_sync_transform()
+
+# --------------------------------------------------------------- Denial of Service
+# Apply (or refresh) the freeze-then-slow debuff. Re-hits take the longer remaining
+# of each phase rather than stacking. The slow timer only counts down once the
+# freeze has elapsed, so the full slow window always follows the stop.
+func apply_dos() -> void:
+	if not _alive:
+		return
+	_freeze_time = maxf(_freeze_time, DOS_STOP)
+	_slow_time = maxf(_slow_time, DOS_SLOW_TIME)
+
+func _tick_dos(delta: float) -> void:
+	if _freeze_time > 0.0:
+		_freeze_time -= delta
+	elif _slow_time > 0.0:
+		_slow_time -= delta
+	_apply_dos_visual()
+
+# Snapshot the body materials we can frost-tint (StandardMaterial3D only; the ECC
+# scan shader is left alone). Rebuilt whenever the body is (re)built.
+func _collect_tint_mats() -> void:
+	_tint_mats.clear()
+	_dos_vis_k = -1.0
+	if _body_root != null:
+		_gather_tint_mats(_body_root)
+
+func _gather_tint_mats(n: Node) -> void:
+	if n is MeshInstance3D:
+		var m: Material = (n as MeshInstance3D).material_override
+		if m is StandardMaterial3D:
+			var sm := m as StandardMaterial3D
+			_tint_mats.append({"mat": sm, "alb": sm.albedo_color, "emi": sm.emission, "emi_on": sm.emission_enabled})
+	for c in n.get_children():
+		_gather_tint_mats(c)
+
+# Lerp the body toward an icy colour while frozen (strong) or slowed (mild), and
+# restore the originals when the debuff lapses. Only writes on a change in strength.
+func _apply_dos_visual() -> void:
+	var k := 0.0
+	if _freeze_time > 0.0:
+		k = 0.85
+	elif _slow_time > 0.0:
+		k = 0.5
+	if is_equal_approx(k, _dos_vis_k):
+		return
+	_dos_vis_k = k
+	for t in _tint_mats:
+		var sm: StandardMaterial3D = t["mat"]
+		sm.albedo_color = (t["alb"] as Color).lerp(DOS_FROST, k)
+		if t["emi_on"]:
+			sm.emission = (t["emi"] as Color).lerp(DOS_FROST, k)
 
 # --------------------------------------------------------------- damage / reduction
 func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> bool:

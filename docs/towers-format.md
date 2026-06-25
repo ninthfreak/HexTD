@@ -31,6 +31,7 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `cipher` | bool | false | Can see and target Encrypted enemies. |
 | `buffer_overflow` | bool | false | Single-hit surplus damage spills into the target's decay children. Single-target only. |
 | `ignore_walls` | bool | false | "Tunneling": attack through blocking tiles (LOS ignored; `radial` spokes pass through walls). |
+| `dos` | bool | false | "Denial of Service": a hit freezes the enemy briefly, then slows it for a short window. `single`/`radial` only (laser ignores it). |
 | `height_scale` | number | 1.0 | Body height multiplier, 3D view (min 0.05). |
 | `width_scale` | number | 1.0 | Body width / footprint multiplier (min 0.05; also scales the 2D body). |
 | `upgrades` | array | `[]` | Up to 3 upgrade slots — see below. |
@@ -86,6 +87,7 @@ change".
 | `bit_corruption` | `"on"`\|`"off"` | Enable/disable Bit Corruption. |
 | `ignore_walls` | `"on"`\|`"off"` | Enable/disable Tunneling. |
 | `buffer_overflow` | `"on"`\|`"off"` | Enable/disable Buffer Overflow. |
+| `dos` | `"on"`\|`"off"` | Enable/disable Denial of Service. |
 
 Flags resolve in slot order — a later slot's `"on"`/`"off"` overrides an earlier
 one.

@@ -267,12 +267,13 @@ function towersToJSON(towers, order){
     if(t.cipher) o.cipher=true;
     if(t.buffer_overflow) o.buffer_overflow=true;
     if(t.ignore_walls) o.ignore_walls=true;
+    if(t.dos) o.dos=true;
     if(+t.height_scale && +t.height_scale!==1) o.height_scale=+t.height_scale;
     if(+t.width_scale && +t.width_scale!==1) o.width_scale=+t.width_scale;
     if(Array.isArray(t.upgrades)&&t.upgrades.length){
       const tierJSON=u=>{const e={cost:Math.round(+u.cost||0)};
         for(const s of ['damage','range','fire_rate','directions','ramp_time','focus_time','height','width']) if(+u[s]) e[s]=+u[s];
-        for(const f of ['cipher','bit_corruption','ignore_walls','buffer_overflow']) if(u[f]==='on'||u[f]==='off') e[f]=u[f];
+        for(const f of ['cipher','bit_corruption','ignore_walls','buffer_overflow','dos']) if(u[f]==='on'||u[f]==='off') e[f]=u[f];
         if(u.color) e.color=u.color;
         return e;};
       o.upgrades=t.upgrades.slice(0,3).map((slot,si)=>({
@@ -291,7 +292,7 @@ function towersFromJSON(obj){
       fire_mode:(d.fire_mode==='radial'||d.fire_mode==='laser')?d.fire_mode:'single',
       directions:+(d.directions??6), ramp_time:+(d.ramp_time??2), focus_time:+(d.focus_time??0),
       bit_corruption:!!d.bit_corruption, cipher:!!d.cipher, buffer_overflow:!!d.buffer_overflow,
-      ignore_walls:!!d.ignore_walls,
+      ignore_walls:!!d.ignore_walls, dos:!!d.dos,
       height_scale:+(d.height_scale??1), width_scale:+(d.width_scale??1),
       upgrades:normUpgrades(d.upgrades) }; }
   return {towers, order};
@@ -303,7 +304,8 @@ function normTier(u){u=u||{};return {
   cipher:(u.cipher==='on'||u.cipher==='off')?u.cipher:'inherit',
   bit_corruption:(u.bit_corruption==='on'||u.bit_corruption==='off')?u.bit_corruption:'inherit',
   ignore_walls:(u.ignore_walls==='on'||u.ignore_walls==='off')?u.ignore_walls:'inherit',
-  buffer_overflow:(u.buffer_overflow==='on'||u.buffer_overflow==='off')?u.buffer_overflow:'inherit'};}
+  buffer_overflow:(u.buffer_overflow==='on'||u.buffer_overflow==='off')?u.buffer_overflow:'inherit',
+  dos:(u.dos==='on'||u.dos==='off')?u.dos:'inherit'};}
 function normUpgrades(arr){
   if(!Array.isArray(arr)) return [];
   // tolerate the older flat tier list (array of tier objects) by wrapping it as one slot
@@ -342,7 +344,7 @@ const DEF_ENEMIES={
   byte:{name:'byte',shape:'octagon',color:'#b06ae8',health:116,speed:60,reward:16,side:16,length:32,width:16,radius:22,sides:8,reduces_to:'nybble'},
 };
 const DEF_ENEMY_ORDER=['bit','2bit','nybble','byte'];
-const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,height_scale:1,width_scale:1} };
+const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,dos:false,height_scale:1,width_scale:1} };
 const DEF_TOWER_ORDER=['basic'];
 const DEF_WAVES={ spawn_interval_default:0.7, waves:[
   {groups:[{type:'bit',count:12,gap:0.55}]},
@@ -771,7 +773,8 @@ function renderTowerEditor(){
     checkbox('Bit Corruption — ignores ECC resist', t.bit_corruption, ev=>upd('bit_corruption',ev.target.checked)),
     checkbox('Cipher — can target Encrypted', t.cipher, ev=>upd('cipher',ev.target.checked)),
     checkbox('Buffer Overflow — surplus spills into decay children', t.buffer_overflow, ev=>upd('buffer_overflow',ev.target.checked)),
-    checkbox('Tunneling — attack through blocking tiles', t.ignore_walls, ev=>upd('ignore_walls',ev.target.checked))));
+    checkbox('Tunneling — attack through blocking tiles', t.ignore_walls, ev=>upd('ignore_walls',ev.target.checked)),
+    checkbox('Denial of Service — freeze then slow on hit (single/radial)', t.dos, ev=>upd('dos',ev.target.checked))));
   box.append(el('div',{class:'card',style:'max-width:720px'}, el('h3',{},'Edit tower'),
     el('div',{class:'row',style:'align-items:flex-start;gap:24px'},
       el('div',{class:'formgrid',style:'flex:1'}, ...grid),
@@ -814,12 +817,13 @@ function upgradeEditor(t){
         ...field('bit corruption',tri(u,'bit_corruption')),
         ...field('ignore walls',tri(u,'ignore_walls')),
         ...field('buffer overflow',tri(u,'buffer_overflow')),
+        ...field('denial of service',tri(u,'dos')),
       ];
       slotBox.append(el('div',{style:'border-top:1px solid #2a2f3a;padding-top:10px;margin-top:8px'}, head, el('div',{class:'formgrid'}, ...g)));
     });
     if(slot.tiers.length<5)
       slotBox.append(el('button',{style:'margin-top:10px',onclick:()=>{
-        slot.tiers.push({cost:50,damage:0,range:0,fire_rate:0,directions:0,ramp_time:0,focus_time:0,height:0,width:0,color:'',cipher:'inherit',bit_corruption:'inherit',ignore_walls:'inherit',buffer_overflow:'inherit'});
+        slot.tiers.push({cost:50,damage:0,range:0,fire_rate:0,directions:0,ramp_time:0,focus_time:0,height:0,width:0,color:'',cipher:'inherit',bit_corruption:'inherit',ignore_walls:'inherit',buffer_overflow:'inherit',dos:'inherit'});
         setDirty('towers');renderTowerEditor();}},'+ Add tier'));
     else slotBox.append(el('div',{class:'hint',style:'margin-top:8px'},'Maximum of 5 tiers.'));
     wrap.append(slotBox);
@@ -844,7 +848,7 @@ function deleteTower(id){
 }
 document.getElementById('tw_add').onclick=()=>{
   const id=uniqueId('tower',MODEL.towerOrder);
-  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,height_scale:1,width_scale:1};
+  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,dos:false,height_scale:1,width_scale:1};
   MODEL.towerOrder.push(id); selTower=id; setDirty('towers'); renderTowers();
 };
 document.getElementById('tw_save').onclick=async ()=>{

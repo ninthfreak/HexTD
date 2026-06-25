@@ -52,6 +52,7 @@ const ABILITY_BADGES := [
 	{"prop": "cipher", "file": "cipher", "focal_out_x": 0.48, "focal_out_y": 0.50, "focal_in_x": 0.48, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.05, "reveal_rate": 1.0, "tip": "Cipher\nSees and targets Encrypted enemies."},
 	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_out_x": 0.66, "focal_out_y": 0.34, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.40, "reveal_rate": 1.0, "tip": "Buffer Overflow\nSurplus damage spills into the target's decay children."},
 	{"prop": "ignore_walls", "file": "tunneling", "focal_out_x": 0.84, "focal_out_y": 0.50, "focal_in_x": 0.60, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Tunneling\nAttacks through blocking tiles."},
+	{"prop": "dos", "file": "dos", "focal_out_x": 0.50, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Denial of Service\nFreezes an enemy, then slows it."},
 ]
 const BADGE_BASE_WORLD := 30.0       # frame edge length (world units) at scale 1.0; tune via badge_world_scale
 static var _badge_tex := {}          # texture file base -> Texture2D (shared cache, caches misses)
@@ -204,8 +205,8 @@ func tier_summary(s: int) -> String:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
 		lines.append("Color change")
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow"}
-	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow"]:
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow", "dos": "Denial of service"}
+	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":
 			lines.append("%s: enabled" % flag_labels[key])
@@ -259,6 +260,7 @@ func _apply_tier(tier: Dictionary) -> void:
 	_apply_flag("bit_corruption", tier)
 	_apply_flag("ignore_walls", tier)
 	_apply_flag("buffer_overflow", tier)
+	_apply_flag("dos", tier)
 
 func _apply_flag(key: String, tier: Dictionary) -> void:
 	var v := str(tier.get(key, ""))
@@ -318,6 +320,7 @@ func _fire_volley() -> void:
 		p.ignore_walls = data.ignore_walls
 		p.pierces_ecc = data.bit_corruption
 		p.can_see_encrypted = data.cipher
+		p.applies_dos = data.dos
 		board.add_projectile(p)
 
 func _process_laser(delta: float) -> void:
@@ -454,7 +457,7 @@ func cycle_target_priority() -> String:
 
 func _shoot(t) -> void:
 	var p := Projectile3D.new()
-	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow)
+	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
 	board.add_projectile(p)
 
 # ---------------------------------------------------------------- body (3D)

@@ -11,12 +11,13 @@ var damage: float
 var col: Color
 var pierces_ecc := false
 var buffer_overflow := false   # tower had Buffer Overflow: surplus spills into decay children
+var applies_dos := false       # tower had Denial of Service: freeze-then-slow the enemy on hit
 var pp := Vector2.ZERO
 
 const GLOW := 1.7              # over-bright factor that the env's bloom picks up
 const SPHERE_RADIUS := 1.4
 
-func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := false, overflow := false) -> void:
+func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := false, overflow := false, dos := false) -> void:
 	pp = start_plane
 	target = t
 	damage = dmg
@@ -24,6 +25,7 @@ func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := 
 	col = c
 	pierces_ecc = pierce
 	buffer_overflow = overflow
+	applies_dos = dos
 	_build_mesh()
 	_sync_transform()
 
@@ -61,6 +63,8 @@ func _process(delta: float) -> void:
 	var step := speed * delta
 	if step >= dist:
 		target.take_damage(damage, pierces_ecc, buffer_overflow)
+		if applies_dos and is_instance_valid(target):
+			target.apply_dos()
 		var am = get_node_or_null("/root/AudioManager")
 		if am:
 			am.play_sfx("projectile_hit")

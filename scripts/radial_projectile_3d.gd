@@ -14,6 +14,7 @@ var range_tiles := 3
 var col := Color(1, 1, 1)
 var ignore_walls := false       # false: walls stop the shot
 var pierces_ecc := false        # tower had Bit Corruption
+var applies_dos := false        # tower had Denial of Service: freeze-then-slow each enemy hit
 var can_see_encrypted := false  # tower had Cipher
 var pp := Vector2.ZERO
 
@@ -92,5 +93,7 @@ func _check_hits() -> void:
 		if pp.distance_to(e.pp) <= r:
 			_hit[e] = true
 			e.take_damage(damage, pierces_ecc)
+			if applies_dos:
+				e.apply_dos()
 			if am:
 				am.play_sfx("projectile_hit")

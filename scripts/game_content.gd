@@ -55,6 +55,7 @@ func _tower_from_dict(d: Dictionary) -> TowerData:
 	t.bit_corruption = bool(d.get("bit_corruption", false))
 	t.cipher = bool(d.get("cipher", false))
 	t.buffer_overflow = bool(d.get("buffer_overflow", false))
+	t.dos = bool(d.get("dos", false))
 	t.height_scale = maxf(0.05, float(d.get("height_scale", 1.0)))
 	t.width_scale = maxf(0.05, float(d.get("width_scale", 1.0)))
 	t.upgrades = _parse_upgrades(d.get("upgrades", []))
@@ -82,7 +83,7 @@ func _parse_upgrades(arr) -> Array:
 				for stat in ["damage", "range", "fire_rate", "directions", "ramp_time", "focus_time", "height", "width"]:
 					if u.has(stat):
 						tier[stat] = float(u[stat])
-				for flag in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow"]:
+				for flag in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos"]:
 					if u.has(flag):
 						tier[flag] = str(u[flag])
 				if u.has("color") and str(u["color"]) != "":
