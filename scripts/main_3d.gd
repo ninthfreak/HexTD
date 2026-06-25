@@ -46,6 +46,7 @@ var is_game := false
 var game_wave_index := 0          # next wave to start in game mode (0-based)
 
 # --- speed / pause ---
+const BAR_ICON_PX := 96          # height of the big graphic-only transport buttons
 var speed_steps := [1.0, 2.0, 3.0]
 var speed_index := 0
 var paused := false
@@ -69,8 +70,8 @@ var wave_select: OptionButton
 var enemy_select: OptionButton
 var spawn_count: SpinBox
 var _enemy_ids: Array = []
-var speed_button: Button
-var pause_button: Button
+var speed_button: TextureButton      # the graphic itself is the button (no chrome)
+var pause_button: TextureButton
 var start_next_button: Button        # game mode: start the next wave
 var sound_button: Button
 var sound_on := true
@@ -662,7 +663,7 @@ func _on_speed_pressed() -> void:
 	# While paused, just remember the new speed; resuming applies it.
 	if not paused:
 		Engine.time_scale = speed_steps[speed_index]
-	speed_button.icon = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
+	speed_button.texture_normal = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
 
 # Pause freezes everything by zeroing the engine time scale (all _process delta
 # is scaled by it). Resuming restores the current speed multiplier. The icon
@@ -670,7 +671,7 @@ func _on_speed_pressed() -> void:
 func _on_pause_pressed() -> void:
 	paused = not paused
 	Engine.time_scale = 0.0 if paused else speed_steps[speed_index]
-	pause_button.icon = _load_icon("play" if paused else "pause")
+	pause_button.texture_normal = _load_icon("play" if paused else "pause")
 
 func _on_sound_pressed() -> void:
 	sound_on = not sound_on
@@ -1027,25 +1028,28 @@ func _build_ui() -> void:
 	vbox.add_child(bottom_spacer)
 
 	var transport := HBoxContainer.new()
-	transport.add_theme_constant_override("separation", 8)
+	transport.add_theme_constant_override("separation", 12)
 	vbox.add_child(transport)
 
-	pause_button = Button.new()
-	# Icon shows the action the button performs: pause while running, play while
-	# paused. Momentary (not toggle) so it doesn't sit visually depressed.
-	pause_button.icon = _load_icon("pause")
-	pause_button.expand_icon = true
+	# Big graphic-only buttons: the SVG art *is* the button (TextureButton, no
+	# panel/stylebox). The pause icon shows the action it performs — pause while
+	# running, play while paused.
+	pause_button = TextureButton.new()
+	pause_button.texture_normal = _load_icon("pause")
+	pause_button.ignore_texture_size = true
+	pause_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	pause_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pause_button.custom_minimum_size = Vector2(0, 48)
+	pause_button.custom_minimum_size = Vector2(0, BAR_ICON_PX)
 	pause_button.tooltip_text = "Pause / Resume"
 	pause_button.pressed.connect(_on_pause_pressed)
 	transport.add_child(pause_button)
 
-	speed_button = Button.new()
-	speed_button.icon = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
-	speed_button.expand_icon = true
+	speed_button = TextureButton.new()
+	speed_button.texture_normal = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
+	speed_button.ignore_texture_size = true
+	speed_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	speed_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	speed_button.custom_minimum_size = Vector2(0, 48)
+	speed_button.custom_minimum_size = Vector2(0, BAR_ICON_PX)
 	speed_button.tooltip_text = "Game speed"
 	speed_button.pressed.connect(_on_speed_pressed)
 	transport.add_child(speed_button)
