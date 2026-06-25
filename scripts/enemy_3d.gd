@@ -11,6 +11,7 @@ signal reached_goal()
 signal split(lesser, placements)
 
 const TURN_RATE := 9.0
+const SPEED_MULT := 2.0         # global travel-speed multiplier applied to data.speed (JSON values stay as authored)
 const ECC_RESIST := 0.9
 const GLOW_HDR_BOOST := 0.9
 const BODY_HEIGHT := 4.0
@@ -578,7 +579,7 @@ func _process(delta: float) -> void:
 	var dist := to_target.length()
 	if dist > 0.001:
 		heading = lerp_angle(heading, to_target.angle(), clampf(TURN_RATE * delta, 0.0, 1.0))
-	var step := data.speed * delta
+	var step := data.speed * SPEED_MULT * delta
 	if step >= dist:
 		pp = target
 		_index += 1
