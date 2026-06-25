@@ -35,11 +35,13 @@ var _beam_impact: MeshInstance3D     # bright dot at the target end
 # A row of billboarded hex "windows" hung off the (unscaled) tower root at a
 # fixed local offset, fixed world scale. Each badge is a quad with a parallax
 # shader: the hex frame is fixed, and the glyph inside reveals more/less of itself
-# with camera distance (zoom_t), scaled around a per-icon focal point. The frame
-# scales with the tower (perspective handles size); only zoom_t is set per frame.
+# with camera distance, scaled around a per-icon focal point. The frame scales
+# with the tower (perspective handles size); only the reveal scalars (zoom_t for
+# window width, focal_t for focal travel) are pushed to the shader per frame.
 @export var badge_world_scale: float = 1.0
-@export var cam_dist_near: float = 150.0   # camera distance at full glyph reveal (zoomed in -> zoom_t = 1)
-@export var cam_dist_far: float = 900.0    # camera distance at minimum reveal (zoomed out -> zoom_t = 0)
+@export var cam_dist_near: float = 500.0    # camera distance at/below which the glyph is fully in view (zoom_t = 1)
+@export var cam_dist_far: float = 1500.0    # camera distance at minimum reveal (zoom_t = 0); 1000 lands ~68%+ in view
+@export var focal_center_dist: float = 1000.0  # at/below this distance the focal is fully centered (focal_in)
 var _badge_anchor: Node3D = null
 var _badge_mats: Array = []          # ShaderMaterial per live badge (zoom_t updated per frame)
 # Display order. `prop` is the TowerData flag; art is art/<file>_{glyph,backplate,rim}.png.
@@ -66,6 +68,7 @@ uniform float reveal_out = 0.5;
 uniform float reveal_in = 1.0;
 uniform float reveal_rate = 1.0;
 uniform float zoom_t = 0.0;
+uniform float focal_t = 0.0;
 
 void vertex() {
 	// Billboard the quad to face the camera while preserving its world scale.
@@ -78,8 +81,9 @@ void vertex() {
 
 void fragment() {
 	float k = pow(clamp(zoom_t, 0.0, 1.0), reveal_rate);
+	float kf = pow(clamp(focal_t, 0.0, 1.0), reveal_rate);
 	float w = mix(reveal_out, reveal_in, k);          // window width fraction
-	vec2 fcur = mix(focal_out, focal_in, k);          // focal travels zoomed-out feature -> zoomed-in center
+	vec2 fcur = mix(focal_out, focal_in, kf);         // focal centers on its own (earlier) distance ramp
 	vec2 guv = fcur + (UV - 0.5) * w;                 // sample window around the current focal
 	vec4 glyph = texture(glyph_tex, guv);
 	if (guv.x < 0.0 || guv.x > 1.0 || guv.y < 0.0 || guv.y > 1.0) {
@@ -736,6 +740,7 @@ func _make_badge_material(entry: Dictionary) -> ShaderMaterial:
 	mat.set_shader_parameter("reveal_in", float(entry["reveal_in"]))
 	mat.set_shader_parameter("reveal_rate", float(entry["reveal_rate"]))
 	mat.set_shader_parameter("zoom_t", 0.0)
+	mat.set_shader_parameter("focal_t", 0.0)
 	return mat
 
 # Drive the parallax: set zoom_t (0 far .. 1 near) on every live badge material.
@@ -747,8 +752,13 @@ func _update_badge_zoom() -> void:
 	var d: float = cam.global_position.distance_to(_badge_anchor.global_position)
 	var span: float = maxf(0.001, cam_dist_far - cam_dist_near)
 	var t: float = clampf((cam_dist_far - d) / span, 0.0, 1.0)
+	# Focal centers on a closer ramp (done by focal_center_dist) so it is settled
+	# before the width finishes opening, per the reveal-distance targets.
+	var fspan: float = maxf(0.001, cam_dist_far - focal_center_dist)
+	var ft: float = clampf((cam_dist_far - d) / fspan, 0.0, 1.0)
 	for m in _badge_mats:
 		m.set_shader_parameter("zoom_t", t)
+		m.set_shader_parameter("focal_t", ft)
 
 # Shared parallax shader, compiled once.
 static func _badge_shader() -> Shader:
