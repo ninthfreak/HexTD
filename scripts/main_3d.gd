@@ -662,18 +662,15 @@ func _on_speed_pressed() -> void:
 	# While paused, just remember the new speed; resuming applies it.
 	if not paused:
 		Engine.time_scale = speed_steps[speed_index]
-	speed_button.text = "Speed: %dx" % int(speed_steps[speed_index])
+	speed_button.icon = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
 
 # Pause freezes everything by zeroing the engine time scale (all _process delta
-# is scaled by it). Resuming restores the current speed multiplier.
+# is scaled by it). Resuming restores the current speed multiplier. The icon
+# swaps to the play glyph while paused so the button reads as "resume".
 func _on_pause_pressed() -> void:
 	paused = not paused
-	if paused:
-		Engine.time_scale = 0.0
-		pause_button.text = "Resume"
-	else:
-		Engine.time_scale = speed_steps[speed_index]
-		pause_button.text = "Pause"
+	Engine.time_scale = 0.0 if paused else speed_steps[speed_index]
+	pause_button.icon = _load_icon("play" if paused else "pause")
 
 func _on_sound_pressed() -> void:
 	sound_on = not sound_on
@@ -784,6 +781,18 @@ func _build_badge_tooltip() -> void:
 	row.add_child(badge_tip_glyph)
 	badge_tip_layer.add_child(badge_tip_panel)
 
+# Load a UI icon from art/<file>.svg (pause / speed_Nx). Returns null if the
+# asset hasn't been imported, so headless/parse runs don't choke on missing art.
+func _load_icon(file: String) -> Texture2D:
+	if _art_cache.has(file):
+		return _art_cache[file]
+	var tex: Texture2D = null
+	var path := "res://art/%s.svg" % file
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	_art_cache[file] = tex
+	return tex
+
 func _load_art(file: String) -> Texture2D:
 	if _art_cache.has(file):
 		return _art_cache[file]
@@ -874,16 +883,10 @@ func _build_ui() -> void:
 
 	vbox.add_child(HSeparator.new())
 
-	if is_game:
-		# Game mode: a single sequential control. Waves run in order with a manual
-		# break between each — no wave picker, no free spawning.
-		start_next_button = Button.new()
-		start_next_button.disabled = waves.is_empty()
-		start_next_button.text = "Start Wave 1" if not waves.is_empty() else "No waves"
-		start_next_button.custom_minimum_size = Vector2(0, 40)
-		start_next_button.pressed.connect(_on_start_next_pressed)
-		vbox.add_child(start_next_button)
-	else:
+	# Sandbox keeps its wave-picker / spawn tabs here. The actual Start button and
+	# the pause/speed transport live in a bottom bar built at the end of this
+	# method (identical placement in both modes); game mode shows no tabs at all.
+	if not is_game:
 		# "Start wave" and "Spawn enemies" used to stack on top of each other; they
 		# now live in two tabs so only one set of controls shows at a time.
 		var sandbox_tabs := TabContainer.new()
@@ -914,12 +917,6 @@ func _build_ui() -> void:
 		if waves.size() > 0:
 			wave_select.selected = 0
 		waves_tab.add_child(wave_select)
-
-		var start_button := Button.new()
-		start_button.text = "Start Wave"
-		start_button.disabled = waves.is_empty()
-		start_button.pressed.connect(_on_start_pressed)
-		waves_tab.add_child(start_button)
 
 		var spawn_tab := VBoxContainer.new()
 		spawn_tab.name = "Spawn"
@@ -957,16 +954,6 @@ func _build_ui() -> void:
 		spawn_button.disabled = _enemy_ids.is_empty()
 		spawn_button.pressed.connect(_on_spawn_pressed)
 		spawn_tab.add_child(spawn_button)
-
-	pause_button = Button.new()
-	pause_button.text = "Pause"
-	pause_button.pressed.connect(_on_pause_pressed)
-	vbox.add_child(pause_button)
-
-	speed_button = Button.new()
-	speed_button.text = "Speed: 1x"
-	speed_button.pressed.connect(_on_speed_pressed)
-	vbox.add_child(speed_button)
 
 	sound_button = Button.new()
 	sound_button.text = "Sound: On"
@@ -1030,6 +1017,54 @@ func _build_ui() -> void:
 	help.modulate = Color(1, 1, 1, 0.7)
 	help.text = "Pan: middle-drag or WASD / arrows.\nZoom: scroll wheel.\nCancel: right-click or Esc.\nClick a placed tower to see its range."
 	vbox.add_child(help)
+
+	# --- bottom transport bar ---
+	# An expanding spacer sinks the transport to the bottom of the pane. Pause and
+	# the speed toggle sit side-by-side (icon buttons), with the Start-wave button
+	# pinned beneath them at the very bottom — same layout in both modes.
+	var bottom_spacer := Control.new()
+	bottom_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(bottom_spacer)
+
+	var transport := HBoxContainer.new()
+	transport.add_theme_constant_override("separation", 8)
+	vbox.add_child(transport)
+
+	pause_button = Button.new()
+	# Icon shows the action the button performs: pause while running, play while
+	# paused. Momentary (not toggle) so it doesn't sit visually depressed.
+	pause_button.icon = _load_icon("pause")
+	pause_button.expand_icon = true
+	pause_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pause_button.custom_minimum_size = Vector2(0, 48)
+	pause_button.tooltip_text = "Pause / Resume"
+	pause_button.pressed.connect(_on_pause_pressed)
+	transport.add_child(pause_button)
+
+	speed_button = Button.new()
+	speed_button.icon = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
+	speed_button.expand_icon = true
+	speed_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	speed_button.custom_minimum_size = Vector2(0, 48)
+	speed_button.tooltip_text = "Game speed"
+	speed_button.pressed.connect(_on_speed_pressed)
+	transport.add_child(speed_button)
+
+	if is_game:
+		# A single sequential control: waves run in order with a manual break between.
+		start_next_button = Button.new()
+		start_next_button.disabled = waves.is_empty()
+		start_next_button.text = "Start Wave 1" if not waves.is_empty() else "No waves"
+		start_next_button.custom_minimum_size = Vector2(0, 44)
+		start_next_button.pressed.connect(_on_start_next_pressed)
+		vbox.add_child(start_next_button)
+	else:
+		var start_button := Button.new()
+		start_button.text = "Start Wave"
+		start_button.disabled = waves.is_empty()
+		start_button.custom_minimum_size = Vector2(0, 44)
+		start_button.pressed.connect(_on_start_pressed)
+		vbox.add_child(start_button)
 
 func _on_tower_button_input(event: InputEvent, id: String) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
