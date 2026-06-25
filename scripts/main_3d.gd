@@ -46,7 +46,12 @@ var is_game := false
 var game_wave_index := 0          # next wave to start in game mode (0-based)
 
 # --- speed / pause ---
-const BAR_ICON_PX := 96          # height of the big graphic-only transport buttons
+const BAR_ICON_PX := 100         # pause / speed hex button size
+const WAVE_ICON_PX := 150        # wave hex button — 50% larger than the others
+# Wave-number tints, matched to the SVG art strokes.
+const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
+const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
+const WAVE_DONE_COL := Color(0.5, 0.85, 0.55)
 var speed_steps := [1.0, 2.0, 3.0]
 var speed_index := 0
 var paused := false
@@ -72,7 +77,8 @@ var spawn_count: SpinBox
 var _enemy_ids: Array = []
 var speed_button: TextureButton      # the graphic itself is the button (no chrome)
 var pause_button: TextureButton
-var start_next_button: Button        # game mode: start the next wave
+var wave_button: TextureButton       # honeycomb centre: starts the next wave
+var wave_num_label: Label            # next/current wave number drawn in the hex middle
 var sound_button: Button
 var sound_on := true
 var target_button: Button
@@ -240,8 +246,8 @@ func _process(delta: float) -> void:
 			_spawn_enemy(entry["type"])
 		if _spawn_timeline.is_empty():
 			_wave_running = false
-	if is_game:
-		_update_start_next_button()
+	_update_pause_button()
+	_update_wave_button()
 	_update_banner(delta)
 	_camera_keys(delta)
 	_update_preview()
@@ -630,24 +636,63 @@ func _on_start_next_pressed() -> void:
 	_show_wave_banner(banner_text)
 	_set_info("Started wave %s." % wname)
 
-# Reflect the current wave state in the button: ready between waves, locked while
-# a wave is live, and a terminal message once every wave has been cleared.
-func _update_start_next_button() -> void:
-	if start_next_button == null:
-		return
-	if game_wave_index >= waves.size():
-		start_next_button.disabled = true
-		if not _wave_running and _spawn_timeline.is_empty() and board.enemies.is_empty():
-			start_next_button.text = "All Waves Cleared!"
-		else:
-			start_next_button.text = "Final Wave…"
-		return
-	if _can_start_next():
-		start_next_button.disabled = false
-		start_next_button.text = "Start Wave %d" % (game_wave_index + 1)
+# Combat is "in progress" while a wave is spawning or any enemy is still alive on
+# the board — the only time pausing is meaningful.
+func _combat_active() -> bool:
+	return _wave_running or not board.enemies.is_empty()
+
+# The hex centre button dispatches to the mode's start logic.
+func _on_wave_button_pressed() -> void:
+	if is_game:
+		_on_start_next_pressed()
 	else:
-		start_next_button.disabled = true
-		start_next_button.text = "Wave %d in progress…" % game_wave_index
+		_on_start_pressed()
+
+# Reflect wave state on the centre hex: the "start" art with the next wave number
+# when a wave can be started, the "in progress" art with the live wave number
+# while one runs, and a cleared marker once every wave is done. Sandbox can always
+# start, so it just shows the currently selected wave.
+func _update_wave_button() -> void:
+	if wave_button == null:
+		return
+	if is_game:
+		if game_wave_index >= waves.size():
+			var cleared := not _combat_active() and _spawn_timeline.is_empty()
+			wave_button.disabled = true
+			wave_button.texture_normal = _load_icon("wave_start" if cleared else "wave_inprogress")
+			wave_num_label.text = "✓" if cleared else str(game_wave_index)
+			wave_num_label.add_theme_color_override("font_color", WAVE_DONE_COL if cleared else WAVE_RUN_COL)
+		elif _can_start_next():
+			wave_button.disabled = false
+			wave_button.texture_normal = _load_icon("wave_start")
+			wave_num_label.text = str(game_wave_index + 1)
+			wave_num_label.add_theme_color_override("font_color", WAVE_START_COL)
+		else:
+			wave_button.disabled = true
+			wave_button.texture_normal = _load_icon("wave_inprogress")
+			wave_num_label.text = str(game_wave_index)
+			wave_num_label.add_theme_color_override("font_color", WAVE_RUN_COL)
+	else:
+		wave_button.disabled = waves.is_empty()
+		var sel: int = (wave_select.selected if wave_select != null else 0)
+		wave_button.texture_normal = _load_icon("wave_start")
+		wave_num_label.text = str(sel + 1) if not waves.is_empty() else ""
+		wave_num_label.add_theme_color_override("font_color", WAVE_START_COL)
+
+# The pause/play control only makes sense during combat — gray it out and lock it
+# between waves. Its icon shows the action it performs (pause while running, play
+# while paused).
+func _update_pause_button() -> void:
+	if pause_button == null:
+		return
+	var active := _combat_active()
+	if not active and paused:
+		# Combat ended while paused (shouldn't normally happen) — restore time flow.
+		paused = false
+		Engine.time_scale = speed_steps[speed_index]
+	pause_button.disabled = not active
+	pause_button.texture_normal = _load_icon("play" if paused else "pause")
+	pause_button.self_modulate = Color(1, 1, 1) if active else Color(0.42, 0.42, 0.42, 0.85)
 
 func _on_enemy_bounty(amount: int) -> void:
 	money += amount
@@ -669,9 +714,11 @@ func _on_speed_pressed() -> void:
 # is scaled by it). Resuming restores the current speed multiplier. The icon
 # swaps to the play glyph while paused so the button reads as "resume".
 func _on_pause_pressed() -> void:
+	if not _combat_active():
+		return                       # nothing to pause between waves
 	paused = not paused
 	Engine.time_scale = 0.0 if paused else speed_steps[speed_index]
-	pause_button.texture_normal = _load_icon("play" if paused else "pause")
+	_update_pause_button()
 
 func _on_sound_pressed() -> void:
 	sound_on = not sound_on
@@ -1019,56 +1066,86 @@ func _build_ui() -> void:
 	help.text = "Pan: middle-drag or WASD / arrows.\nZoom: scroll wheel.\nCancel: right-click or Esc.\nClick a placed tower to see its range."
 	vbox.add_child(help)
 
-	# --- bottom transport bar ---
-	# An expanding spacer sinks the transport to the bottom of the pane. Pause and
-	# the speed toggle sit side-by-side (icon buttons), with the Start-wave button
-	# pinned beneath them at the very bottom — same layout in both modes.
+	# --- bottom transport honeycomb ---
+	# An expanding spacer sinks the cluster to the bottom of the pane.
 	var bottom_spacer := Control.new()
 	bottom_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(bottom_spacer)
+	_build_transport(vbox)
 
-	var transport := HBoxContainer.new()
-	transport.add_theme_constant_override("separation", 12)
-	vbox.add_child(transport)
+# Pause, the wave button and speed as graphic-only hex buttons nested into a
+# honeycomb: the (larger) wave hex sits on top, with pause tucked under its
+# lower-left edge and speed under its lower-right edge. The SVG hex art is drawn
+# in a 240-unit viewBox; a smaller hex sits flush against a larger one's slanted
+# edge when its right/left point meets the big hex's bottom corner, so the offsets
+# below are derived straight from those vertex coordinates and hold at any size.
+func _build_transport(parent: Control) -> void:
+	var d := float(BAR_ICON_PX)
+	var dw := float(WAVE_ICON_PX)
+	var fs := d / 240.0
+	var fw := dw / 240.0
+	var row_y := 217.0 * fw - 120.0 * fs          # pause/speed drop so their side point meets the wave's bottom corner
+	var pause_pos := Vector2(0.0, row_y)
+	var wave_pos := Vector2(232.0 * fs - 64.0 * fw, 0.0)
+	var speed_pos := Vector2(112.0 * fw + 224.0 * fs, row_y)
+	var honeycomb := Control.new()
+	honeycomb.custom_minimum_size = Vector2(speed_pos.x + d, row_y + d)
+	honeycomb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	parent.add_child(honeycomb)
 
-	# Big graphic-only buttons: the SVG art *is* the button (TextureButton, no
-	# panel/stylebox). The pause icon shows the action it performs — pause while
-	# running, play while paused.
-	pause_button = TextureButton.new()
+	# Pause/speed first, wave last so the big hex draws on top at the shared edges.
+	pause_button = _make_hex_button(honeycomb, pause_pos, d)
 	pause_button.texture_normal = _load_icon("pause")
-	pause_button.ignore_texture_size = true
-	pause_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	pause_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pause_button.custom_minimum_size = Vector2(0, BAR_ICON_PX)
+	_apply_hex_click_mask(pause_button)
 	pause_button.tooltip_text = "Pause / Resume"
 	pause_button.pressed.connect(_on_pause_pressed)
-	transport.add_child(pause_button)
 
-	speed_button = TextureButton.new()
+	speed_button = _make_hex_button(honeycomb, speed_pos, d)
 	speed_button.texture_normal = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
-	speed_button.ignore_texture_size = true
-	speed_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	speed_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	speed_button.custom_minimum_size = Vector2(0, BAR_ICON_PX)
+	_apply_hex_click_mask(speed_button)
 	speed_button.tooltip_text = "Game speed"
 	speed_button.pressed.connect(_on_speed_pressed)
-	transport.add_child(speed_button)
 
-	if is_game:
-		# A single sequential control: waves run in order with a manual break between.
-		start_next_button = Button.new()
-		start_next_button.disabled = waves.is_empty()
-		start_next_button.text = "Start Wave 1" if not waves.is_empty() else "No waves"
-		start_next_button.custom_minimum_size = Vector2(0, 44)
-		start_next_button.pressed.connect(_on_start_next_pressed)
-		vbox.add_child(start_next_button)
-	else:
-		var start_button := Button.new()
-		start_button.text = "Start Wave"
-		start_button.disabled = waves.is_empty()
-		start_button.custom_minimum_size = Vector2(0, 44)
-		start_button.pressed.connect(_on_start_pressed)
-		vbox.add_child(start_button)
+	wave_button = _make_hex_button(honeycomb, wave_pos, dw)
+	wave_button.texture_normal = _load_icon("wave_start")
+	_apply_hex_click_mask(wave_button)
+	wave_button.tooltip_text = "Start the next wave"
+	wave_button.pressed.connect(_on_wave_button_pressed)
+	wave_num_label = Label.new()
+	wave_num_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	wave_num_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wave_num_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	wave_num_label.add_theme_font_size_override("font_size", int(dw * 0.30))
+	wave_num_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wave_button.add_child(wave_num_label)
+
+	_update_pause_button()
+	_update_wave_button()
+
+# A square TextureButton whose SVG art is the whole button (no chrome), placed at
+# an explicit position inside a non-container parent.
+func _make_hex_button(parent: Control, pos: Vector2, d: float) -> TextureButton:
+	var b := TextureButton.new()
+	b.ignore_texture_size = true
+	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	b.position = pos
+	b.size = Vector2(d, d)
+	b.custom_minimum_size = Vector2(d, d)
+	parent.add_child(b)
+	return b
+
+# Restrict a hex button's clickable area to the opaque hex art, so the overlapping
+# (transparent) corners of neighbouring hex buttons don't steal each other's clicks.
+func _apply_hex_click_mask(b: TextureButton) -> void:
+	var tex: Texture2D = b.texture_normal
+	if tex == null:
+		return
+	var img := tex.get_image()
+	if img == null:
+		return
+	var bm := BitMap.new()
+	bm.create_from_image_alpha(img, 0.25)
+	b.texture_click_mask = bm
 
 func _on_tower_button_input(event: InputEvent, id: String) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
