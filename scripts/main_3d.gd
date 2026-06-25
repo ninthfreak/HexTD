@@ -3,8 +3,8 @@ extends Node3D
 ## 3D sandbox scene. Same game loop as the 2D Main — sandbox controls,
 ## drag-to-place towers, wave/spawn helpers — but with a 3D camera, directional
 ## light, sky environment and a raycast-to-ground click model. A selected tower's
-## ability badges float in a row below it, screen-projected from its world
-## position so they stay a constant on-screen size.
+## ability badges are real world-space children of the tower (built in Tower3D),
+## so they ride the camera natively; Main3D just toggles them on selection.
 
 # --- tunable game state ---
 var money := 200
@@ -69,23 +69,10 @@ var upgrade_buttons: Array = []
 var sell_button: Button
 var info_label: Label
 
-# --- ability badges (world-anchored, screen-projected under the selected tower) ---
-# Display-only: one self-contained PNG per ability flag that is true, in a row.
-var badge_layer: CanvasLayer
-var badge_root: Control
-var _badge_tex := {}                 # icon file base -> Texture2D (cache; stores null misses too)
-const BADGE_PX := 52.0               # on-screen badge size (px); detailed icons must stay legible
-const BADGE_GAP_PX := 8.0
-const BADGE_DROP_PX := 48.0          # below the tower's projected base
-# Ability badges in display order. `prop` is the TowerData flag; the icon is
-# art/<file>.png (PNG preferred, SVG fallback). A flag with no art is skipped,
-# and buffer_overflow lights up automatically wherever that flag is set.
-const ABILITY_BADGES := [
-	{"prop": "bit_corruption", "file": "bit_corruption"},
-	{"prop": "cipher", "file": "cipher"},
-	{"prop": "buffer_overflow", "file": "buffer_overflow"},
-	{"prop": "ignore_walls", "file": "tunneling"},
-]
+# --- ability badges ---
+# A selected tower's ability icons are real world-space children of the tower
+# (built in Tower3D); Main3D only toggles them as the selection changes.
+var _badged_tower = null
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
@@ -108,7 +95,6 @@ func _ready() -> void:
 	_build_camera()
 	_frame_camera()
 	_build_ui()
-	_build_badge_layer()
 	_build_wave_banner()
 	_update_labels()
 	_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
@@ -286,7 +272,7 @@ func _update_preview() -> void:
 		overlay.selected_color = sel_t.data.color
 		overlay.selected_ignore_walls = sel_t.data.ignore_walls
 	overlay.refresh()
-	_update_badges(sel_t)
+	_set_badged_tower(sel_t)
 	_update_target_button()
 	_update_tower_buttons()
 
@@ -375,6 +361,9 @@ func _on_upgrade_pressed(s: int) -> void:
 		return
 	money -= c
 	t.upgrade(s)
+	# A new tier can flip an ability flag, so rebuild the badge row.
+	if t == _badged_tower:
+		t.set_badges_visible(true)
 	_update_labels()
 	_update_tower_buttons()
 	_set_info("%s: %s now at tier %d." % [t.data.display_name, t.slot_name(s), t.slot_level(s)])
@@ -655,74 +644,17 @@ func _update_banner(delta: float) -> void:
 	banner_label.modulate.a = clampf(_banner_time / BANNER_FADE, 0.0, 1.0)
 
 # ---------------------------------------------------------------- ability badges
-# When a tower is selected, its ability icons float in a centered row just below
-# it. Implemented as screen-projected UI so they always face the camera and hold a
-# constant on-screen size regardless of zoom/distance. Display only — no input.
-func _build_badge_layer() -> void:
-	badge_layer = CanvasLayer.new()
-	badge_layer.layer = 1                 # over the 3D world, under the right pane (2)
-	add_child(badge_layer)
-	badge_root = Control.new()
-	badge_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	badge_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge_layer.add_child(badge_root)
-
-# Rebuild the badge row for the selected tower (cleared + rebuilt each frame so it
-# tracks the tower as the camera pans/zooms). Cleared and left empty on deselect.
-func _update_badges(sel_t) -> void:
-	if badge_root == null:
+# Toggle the world-space badge row as the selection changes. The badges live on
+# the tower itself (Tower3D.set_badges_visible), so they track the camera natively
+# — Main3D only flips them on/off here.
+func _set_badged_tower(t) -> void:
+	if t == _badged_tower:
 		return
-	for c in badge_root.get_children():
-		c.queue_free()
-	if sel_t == null:
-		return
-	# Collect a texture for each ability the tower has, in display order. Flags whose
-	# art is missing are skipped so the row stays gapless and centered.
-	var texes: Array = []
-	for entry in ABILITY_BADGES:
-		var prop: String = entry["prop"]
-		if not bool(sel_t.data.get(prop)):
-			continue
-		var tex := _badge_texture(str(entry["file"]))
-		if tex != null:
-			texes.append(tex)
-	if texes.is_empty():
-		return
-	# Anchor the row under the selected tower's base, projected to the screen.
-	var wc: Vector2 = board.cell_center_world(selected_cell)
-	var world := Vector3(wc.x, GameBoard3D.COPPER_TOP, wc.y)
-	if camera == null or camera.is_position_behind(world):
-		return
-	var sp: Vector2 = camera.unproject_position(world)
-	var n := texes.size()
-	var step := BADGE_PX + BADGE_GAP_PX
-	var start_x := sp.x - step * float(n - 1) * 0.5
-	var y := sp.y + BADGE_DROP_PX
-	for i in range(n):
-		var tr := TextureRect.new()
-		tr.texture = texes[i]
-		# Self-contained art: just downscale the PNG, no panel/frame/tint behind it.
-		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.custom_minimum_size = Vector2(BADGE_PX, BADGE_PX)
-		tr.size = Vector2(BADGE_PX, BADGE_PX)
-		tr.position = Vector2(start_x + step * float(i) - BADGE_PX * 0.5, y - BADGE_PX * 0.5)
-		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		badge_root.add_child(tr)
-
-# Cached art lookup: art/<file>.png preferred, then .svg / .webp. Misses (null)
-# are cached too so a not-yet-added icon isn't re-probed every frame.
-func _badge_texture(file: String) -> Texture2D:
-	if _badge_tex.has(file):
-		return _badge_tex[file]
-	var tex: Texture2D = null
-	for ext in [".png", ".svg", ".webp"]:
-		var path := "res://art/%s%s" % [file, ext]
-		if ResourceLoader.exists(path):
-			tex = load(path)
-			break
-	_badge_tex[file] = tex
-	return tex
+	if _badged_tower != null and is_instance_valid(_badged_tower):
+		_badged_tower.set_badges_visible(false)
+	_badged_tower = t
+	if t != null:
+		t.set_badges_visible(true)
 
 # Same controls and layout as the 2D Main.
 # CanvasLayer floats the panel above the 3D viewport.
