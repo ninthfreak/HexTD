@@ -699,7 +699,7 @@ func _build_badges() -> void:
 			continue
 		var mat := _make_badge_material(entry)
 		if mat != null:
-			built.append({"mat": mat, "tip": str(entry.get("tip", ""))})
+			built.append({"mat": mat, "tip": str(entry.get("tip", "")), "file": str(entry["file"])})
 	if built.is_empty():
 		return
 	# The anchor hangs off the tower ROOT (never scaled — only `_body` is), so it
@@ -723,7 +723,7 @@ func _build_badges() -> void:
 		mi.position = Vector3(start_x + spacing * float(i), 0.0, 0.0)
 		_badge_anchor.add_child(mi)
 		_badge_mats.append(mat)
-		_badge_info.append({"mi": mi, "tip": str(b["tip"])})
+		_badge_info.append({"mi": mi, "tip": str(b["tip"]), "file": str(b["file"])})
 
 # Build the parallax material for one icon (null if any of its 3 layers is absent).
 func _make_badge_material(entry: Dictionary) -> ShaderMaterial:
@@ -764,12 +764,12 @@ func _update_badge_zoom() -> void:
 		m.set_shader_parameter("zoom_t", t)
 		m.set_shader_parameter("focal_t", ft)
 
-# Tooltip text for whichever badge is under `screen_pos` (camera-projected), or
-# "" if none. The badges are billboarded quads, so the world half-width along the
-# camera's right axis projects to the on-screen hit radius.
-func badge_tip_at(camera: Camera3D, screen_pos: Vector2) -> String:
+# Which badge is under `screen_pos` (camera-projected): returns {tip, file} for the
+# hovered badge, or {} if none. The badges are billboarded quads, so the world
+# half-width along the camera's right axis projects to the on-screen hit radius.
+func badge_tip_at(camera: Camera3D, screen_pos: Vector2) -> Dictionary:
 	if _badge_anchor == null or camera == null:
-		return ""
+		return {}
 	var half: float = BADGE_BASE_WORLD * 0.5 * badge_world_scale
 	var right: Vector3 = camera.global_transform.basis.x
 	for info in _badge_info:
@@ -783,8 +783,8 @@ func badge_tip_at(camera: Camera3D, screen_pos: Vector2) -> String:
 		var edge: Vector2 = camera.unproject_position(c + right * half)
 		var r: float = maxf(8.0, center.distance_to(edge))
 		if screen_pos.distance_to(center) <= r:
-			return str(info["tip"])
-	return ""
+			return {"tip": str(info["tip"]), "file": str(info["file"])}
+	return {}
 
 # Shared parallax shader, compiled once.
 static func _badge_shader() -> Shader:
