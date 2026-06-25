@@ -709,7 +709,7 @@ func _build_badges() -> void:
 	_badge_anchor.position = Vector3(0.0, 4.0, GameBoard3D.TOWER_RADIUS * 1.4)
 	_badge_anchor.scale = Vector3.ONE * badge_world_scale
 	add_child(_badge_anchor)
-	var n := mats.size()
+	var n := built.size()
 	var spacing := BADGE_BASE_WORLD * 1.15
 	var start_x := -spacing * float(n - 1) * 0.5
 	for i in range(n):
