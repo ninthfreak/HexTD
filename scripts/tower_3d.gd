@@ -31,6 +31,25 @@ var _beam_cyl: CylinderMesh
 var _beam_mat: StandardMaterial3D
 var _beam_impact: MeshInstance3D     # bright dot at the target end
 
+# --- ability badges (real world-space children of the tower) ---
+# A row of billboarded icons hung off an identity-scale anchor below the tower.
+# They ride the camera natively (no per-frame repositioning); only their scale is
+# soft-clamped so they never shrink to nothing when the camera pulls far back.
+@export var badge_world_scale: float = 1.0    # constant world scale while in the normal/zoomed-in band
+@export var clamp_distance: float = 600.0     # camera distance past which on-screen size freezes (3D analog of the spec's clamp_zoom)
+var _badge_anchor: Node3D = null
+var _badges_built := false
+var _last_cam_d := -1.0
+# Display order; `prop` is the TowerData flag, art is art/<file>.png (PNG first).
+const ABILITY_BADGES := [
+	{"prop": "bit_corruption", "file": "bit_corruption"},
+	{"prop": "cipher", "file": "cipher"},
+	{"prop": "buffer_overflow", "file": "buffer_overflow"},
+	{"prop": "ignore_walls", "file": "tunneling"},
+]
+const BADGE_BASE_WORLD := 8.0        # badge edge length (world units) at scale 1.0
+static var _badge_tex := {}          # icon file base -> Texture2D (shared cache, caches misses)
+
 const LASER_START_FRAC := 0.1
 const BEAM_GLOW := 2.2
 const HUM_BASE_HZ := 40.0
@@ -208,6 +227,8 @@ func _process(delta: float) -> void:
 			_process_laser(delta)
 		_:
 			_process_targeted(delta)
+	if _badges_built:
+		_update_badge_scale()
 
 func _process_targeted(delta: float) -> void:
 	_cooldown -= delta
@@ -597,3 +618,91 @@ func _exit_tree() -> void:
 		_beam.queue_free()
 	if _beam_impact != null and is_instance_valid(_beam_impact):
 		_beam_impact.queue_free()
+
+# ---------------------------------------------------------------- ability badges
+# Show/hide the tower's ability badge row. Built as real world-space children so
+# the camera moves and zooms them natively — no screen-space follow, no per-frame
+# repositioning. Called by Main3D on (de)selection; safe to call repeatedly (it
+# rebuilds, so it also refreshes after an upgrade changes the tower's flags).
+func set_badges_visible(on: bool) -> void:
+	_clear_badges()
+	if on:
+		_build_badges()
+
+func _clear_badges() -> void:
+	if _badge_anchor != null and is_instance_valid(_badge_anchor):
+		_badge_anchor.queue_free()
+	_badge_anchor = null
+	_badges_built = false
+
+func _build_badges() -> void:
+	if data == null:
+		return
+	# One badge per ability flag that is true (skip flags whose art is missing so
+	# the row stays gapless), in display order.
+	var texes: Array = []
+	for entry in ABILITY_BADGES:
+		var prop: String = entry["prop"]
+		if not bool(data.get(prop)):
+			continue
+		var tex := _badge_texture(str(entry["file"]))
+		if tex != null:
+			texes.append(tex)
+	if texes.is_empty():
+		return
+	# The anchor hangs off the tower ROOT (which is never scaled — only `_body`
+	# is), so it inherits identity scale; its own scale is the soft clamp below.
+	_badge_anchor = Node3D.new()
+	_badge_anchor.position = Vector3(0.0, 4.0, GameBoard3D.TOWER_RADIUS * 1.4)
+	add_child(_badge_anchor)
+	var n := texes.size()
+	var spacing := BADGE_BASE_WORLD * 1.15
+	var start_x := -spacing * float(n - 1) * 0.5
+	for i in range(n):
+		var sp := Sprite3D.new()
+		sp.texture = texes[i]
+		# Self-contained art: just the PNG, billboarded, no panel/tint behind it.
+		sp.pixel_size = BADGE_BASE_WORLD / 512.0
+		sp.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		sp.shaded = false
+		sp.no_depth_test = true
+		sp.render_priority = 8
+		sp.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		sp.position = Vector3(start_x + spacing * float(i), 0.0, 0.0)
+		_badge_anchor.add_child(sp)
+	_badges_built = true
+	_last_cam_d = -1.0
+	_update_badge_scale()
+
+# Soft-clamp the badge anchor's scale (never its position). In the normal /
+# zoomed-in band the badges hold a constant world scale (ride the world 1:1); once
+# the camera is farther than `clamp_distance` the scale grows with distance so the
+# on-screen size freezes at a floor. Recomputed only when the distance changes.
+func _update_badge_scale() -> void:
+	if _badge_anchor == null:
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var d := cam.global_position.distance_to(_badge_anchor.global_position)
+	if absf(d - _last_cam_d) < 0.5:
+		return
+	_last_cam_d = d
+	var s := badge_world_scale
+	if d > clamp_distance:
+		s = badge_world_scale * (d / clamp_distance)
+	_badge_anchor.scale = Vector3(s, s, s)
+
+# Cached art lookup: art/<file>.png preferred, then .svg / .webp. Misses (null)
+# are cached too so a not-yet-added icon isn't re-probed.
+static func _badge_texture(file: String) -> Texture2D:
+	if _badge_tex.has(file):
+		return _badge_tex[file]
+	var tex: Texture2D = null
+	for ext in [".png", ".svg", ".webp"]:
+		var path := "res://art/%s%s" % [file, ext]
+		if ResourceLoader.exists(path):
+			tex = load(path)
+			break
+	_badge_tex[file] = tex
+	return tex
