@@ -278,6 +278,8 @@ func _process(delta: float) -> void:
 			_process_radial(delta)
 		"laser":
 			_process_laser(delta)
+		"arc":
+			_process_arc(delta)
 		_:
 			_process_targeted(delta)
 	if _badge_anchor != null and not _badge_mats.is_empty():
@@ -299,6 +301,24 @@ func _process_radial(delta: float) -> void:
 			_cooldown = 1.0 / data.fire_rate
 		else:
 			_cooldown = 0.0
+
+# Arc: aim at the prioritised target and emit one expanding wave per shot.
+func _process_arc(delta: float) -> void:
+	_cooldown -= delta
+	if _cooldown <= 0.0:
+		var t = _find_target()
+		if t != null:
+			_fire_arc(t)
+			_cooldown = 1.0 / data.fire_rate
+
+func _fire_arc(t) -> void:
+	var w := ArcWave3D.new()
+	w.setup(pp, t.pp - pp, data.damage, data.projectile_speed,
+			cell, board.tower_reach(data.range_tiles), data.color, board)
+	w.pierces_ecc = data.bit_corruption
+	w.applies_dos = data.dos
+	w.can_see_encrypted = data.cipher
+	board.add_projectile(w)
 
 func _any_enemy_in_range() -> bool:
 	for e in board.enemies:

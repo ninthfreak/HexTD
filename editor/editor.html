@@ -257,7 +257,7 @@ function enemiesFromJSON(obj){
 function towersToJSON(towers, order){
   const out={};
   for(const id of order){ const t=towers[id]; if(!t) continue;
-    const mode=(t.fire_mode==='radial'||t.fire_mode==='laser')?t.fire_mode:'single';
+    const mode=(t.fire_mode==='radial'||t.fire_mode==='laser'||t.fire_mode==='arc')?t.fire_mode:'single';
     const o={ name:t.name, color:t.color, range:+t.range, fire_rate:+t.fire_rate,
       damage:+t.damage, cost:+t.cost, projectile_speed:+t.projectile_speed, fire_mode:mode };
     if(mode==='radial') o.directions=Math.max(1,Math.round(+t.directions||6));
@@ -289,7 +289,7 @@ function towersFromJSON(obj){
     towers[id]={ name:d.name??id, color:d.color??'#59b2ff', range:+(d.range??3),
       fire_rate:+(d.fire_rate??1.5), damage:+(d.damage??10), cost:+(d.cost??40),
       projectile_speed:+(d.projectile_speed??320),
-      fire_mode:(d.fire_mode==='radial'||d.fire_mode==='laser')?d.fire_mode:'single',
+      fire_mode:(d.fire_mode==='radial'||d.fire_mode==='laser'||d.fire_mode==='arc')?d.fire_mode:'single',
       directions:+(d.directions??6), ramp_time:+(d.ramp_time??2), focus_time:+(d.focus_time??0),
       bit_corruption:!!d.bit_corruption, cipher:!!d.cipher, buffer_overflow:!!d.buffer_overflow,
       ignore_walls:!!d.ignore_walls, dos:!!d.dos,
@@ -747,11 +747,12 @@ function renderTowerEditor(){
   const upd=(k,v)=>{ t[k]=v; setDirty('towers'); if(k==='name'||k==='color'||k==='cost') updateTowerListItem(id); drawTowerPreview(prev,t); };
   const num=(k,step='1')=>el('input',{type:'number',value:t[k],step,oninput:ev=>upd(k,ev.target.value)});
   const idInput=el('input',{type:'text',value:id,onchange:ev=>renameTower(id,ev.target.value.trim())});
-  const radial=(t.fire_mode==='radial'), laser=(t.fire_mode==='laser');
+  const radial=(t.fire_mode==='radial'), laser=(t.fire_mode==='laser'), arc=(t.fire_mode==='arc');
   const modeSel=el('select',{onchange:ev=>{ t.fire_mode=ev.target.value; setDirty('towers'); renderTowerEditor(); }},
-    el('option',{value:'single',selected:!radial&&!laser},'single (targets one enemy)'),
+    el('option',{value:'single',selected:t.fire_mode!=='radial'&&t.fire_mode!=='laser'&&t.fire_mode!=='arc'},'single (targets one enemy)'),
     el('option',{value:'radial',selected:radial},'radial (burst in all directions)'),
-    el('option',{value:'laser',selected:laser},'laser (charging beam, one enemy)'));
+    el('option',{value:'laser',selected:laser},'laser (charging beam, one enemy)'),
+    el('option',{value:'arc',selected:t.fire_mode==='arc'},'arc (aimed expanding wave)'));
   const grid=[
     ...field('id',idInput),
     ...field('name',el('input',{type:'text',value:t.name,oninput:ev=>upd('name',ev.target.value)})),
@@ -761,7 +762,7 @@ function renderTowerEditor(){
     ...field(laser?'max damage / second':'damage',num('damage')),
     ...field('cost ($)',num('cost')),
   ];
-  if(!laser) grid.push(...field(radial?'fire rate (volleys/s)':'fire rate (shots/s)',num('fire_rate','0.1')));
+  if(!laser) grid.push(...field(radial?'fire rate (volleys/s)':(arc?'fire rate (waves/s)':'fire rate (shots/s)'),num('fire_rate','0.1')));
   if(!laser) grid.push(...field('projectile speed',num('projectile_speed')));
   if(radial) grid.push(...field('directions (6 = hex flat sides)',
     el('input',{type:'number',min:'1',step:'1',value:(t.directions??6),oninput:ev=>upd('directions',ev.target.value)})));
