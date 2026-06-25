@@ -40,9 +40,9 @@ decision record, status, and open assumptions — start there.**
 - Keep **map/enemy JSON parsing backward compatible.** Tower format need not be
   backward compatible (I'll redefine my few towers).
 - **Keep the schema docs current.** `docs/maps-format.md`, `docs/enemies-format.md`,
-  and `docs/towers-format.md` describe the JSON formats. When a change touches a
-  data format (new field, default, or parsing rule), update the matching schema doc
-  in the same commit.
+  `docs/towers-format.md`, and `docs/waves-format.md` describe the JSON formats. When
+  a change touches a data format (new field, default, or parsing rule), update the
+  matching schema doc in the same commit.
 
 ## Workflow
 
