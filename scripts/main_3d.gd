@@ -78,6 +78,11 @@ var _badged_tower = null
 var badge_tip_layer: CanvasLayer
 var badge_tip_panel: PanelContainer
 var badge_tip_label: Label
+var badge_tip_back: TextureRect       # composite glyph preview (right of the text)
+var badge_tip_glyph: TextureRect
+var badge_tip_rim: TextureRect
+var _tip_file := ""                   # icon currently shown in the preview (skip redundant reloads)
+var _art_cache := {}                  # art file base -> Texture2D
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
@@ -674,8 +679,11 @@ func _set_badged_tower(t) -> void:
 	else:
 		_update_badge_tooltip()   # selection cleared -> drop any visible tip
 
-# A small screen-space tooltip panel, shown when the cursor is over one of the
-# selected tower's badges.
+# A small screen-space tooltip panel: ability text on the left, the full composite
+# badge (backplate + un-cropped glyph + rim) on the right. Shown when the cursor is
+# over one of the selected tower's badges.
+const TIP_ICON_PX := 56.0             # tooltip glyph preview size
+const TIP_GLYPH_INSET := 8.0          # inset so the full glyph sits inside the hex frame
 func _build_badge_tooltip() -> void:
 	badge_tip_layer = CanvasLayer.new()
 	badge_tip_layer.layer = 5             # above the pane (2) and the wave banner (4)
@@ -688,23 +696,68 @@ func _build_badge_tooltip() -> void:
 	sb.set_corner_radius_all(6)
 	sb.set_content_margin_all(8)
 	badge_tip_panel.add_theme_stylebox_override("panel", sb)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge_tip_panel.add_child(row)
 	badge_tip_label = Label.new()
 	badge_tip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge_tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	badge_tip_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	badge_tip_panel.add_child(badge_tip_label)
-	badge_tip_layer.add_child(badge_tip_panel)
+	row.add_child(badge_tip_label)
+	# Composite preview: three stacked layers in a fixed square (glyph inset so its
+	# corners don't poke past the hex frame).
+	var preview := Control.new()
+	preview.custom_minimum_size = Vector2(TIP_ICON_PX, TIP_ICON_PX)
+	preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(preview)
+	badge_tip_back = _make_tip_layer(preview, 0.0)
+	badge_tip_glyph = _make_tip_layer(preview, TIP_GLYPH_INSET)
+	badge_tip_rim = _make_tip_layer(preview, 0.0)
 
-# Ask the selected tower whether a badge is under the cursor; show its tip if so.
+# One full-rect TextureRect layer in the preview, inset by `pad` px on each side.
+func _make_tip_layer(parent: Control, pad: float) -> TextureRect:
+	var tr := TextureRect.new()
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tr.offset_left = pad
+	tr.offset_top = pad
+	tr.offset_right = -pad
+	tr.offset_bottom = -pad
+	parent.add_child(tr)
+	return tr
+
+func _load_art(file: String) -> Texture2D:
+	if _art_cache.has(file):
+		return _art_cache[file]
+	var tex: Texture2D = null
+	var path := "res://art/%s.png" % file
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	_art_cache[file] = tex
+	return tex
+
+# Ask the selected tower whether a badge is under the cursor; show its tip + the
+# full composite glyph if so.
 func _update_badge_tooltip() -> void:
 	if badge_tip_panel == null:
 		return
-	var tip := ""
+	var hit := {}
 	if _badged_tower != null and is_instance_valid(_badged_tower) and camera != null and not _mouse_over_pane():
-		tip = _badged_tower.badge_tip_at(camera, get_viewport().get_mouse_position())
-	if tip == "":
+		hit = _badged_tower.badge_tip_at(camera, get_viewport().get_mouse_position())
+	if hit.is_empty():
 		badge_tip_panel.visible = false
+		_tip_file = ""
 		return
-	badge_tip_label.text = tip
+	badge_tip_label.text = str(hit["tip"])
+	var file: String = str(hit["file"])
+	if file != _tip_file:
+		_tip_file = file
+		badge_tip_back.texture = _load_art(file + "_backplate")
+		badge_tip_glyph.texture = _load_art(file + "_glyph")
+		badge_tip_rim.texture = _load_art(file + "_rim")
 	badge_tip_panel.visible = true
 	badge_tip_panel.position = get_viewport().get_mouse_position() + Vector2(16, 16)
 
