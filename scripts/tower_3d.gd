@@ -52,7 +52,7 @@ const ABILITY_BADGES := [
 	{"prop": "cipher", "file": "cipher", "focal_out_x": 0.48, "focal_out_y": 0.50, "focal_in_x": 0.48, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.05, "reveal_rate": 1.0, "tip": "Cipher\nSees and targets Encrypted enemies."},
 	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_out_x": 0.66, "focal_out_y": 0.34, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.40, "reveal_rate": 1.0, "tip": "Buffer Overflow\nSurplus damage spills into the target's decay children."},
 	{"prop": "ignore_walls", "file": "tunneling", "focal_out_x": 0.84, "focal_out_y": 0.50, "focal_in_x": 0.60, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Tunneling\nAttacks through blocking tiles."},
-	{"prop": "dos", "file": "dos", "focal_out_x": 0.50, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Denial of Service\nFreezes an enemy, then slows it."},
+	{"prop": "dos", "file": "dos", "focal_out_x": 0.72, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.70, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Denial of Service\nFreezes an enemy, then slows it."},
 ]
 const BADGE_BASE_WORLD := 30.0       # frame edge length (world units) at scale 1.0; tune via badge_world_scale
 static var _badge_tex := {}          # texture file base -> Texture2D (shared cache, caches misses)
