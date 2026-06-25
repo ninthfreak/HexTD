@@ -152,7 +152,7 @@ func setup(d: TowerData, b, pos_plane: Vector2) -> void:
 	_rebuild_body()
 
 func _sync_transform() -> void:
-	position = Vector3(pp.x, GameBoard3D.COPPER_TOP, pp.y)
+	position = Vector3(pp.x, GameBoard3D.BUS_TOP, pp.y)
 
 # ---------------------------------------------------------------- upgrades (ported)
 const SELL_REFUND := 0.75
@@ -639,7 +639,7 @@ func _update_beam(frac: float, on: bool) -> void:
 	# explicit Vector2 first so the Vector3 constructor sees typed floats
 	# rather than Variant member accesses on an untyped reference.
 	var tpp: Vector2 = _laser_target.pp
-	var from := Vector3(pp.x, GameBoard3D.COPPER_TOP + BEAM_ORIGIN_LIFT, pp.y)
+	var from := Vector3(pp.x, GameBoard3D.BUS_TOP + BEAM_ORIGIN_LIFT, pp.y)
 	# enemies hover at ENEMY_Y, so aim there (+ a little for body mid-height)
 	var to := Vector3(tpp.x, GameBoard3D.ENEMY_Y + BEAM_TARGET_LIFT, tpp.y)
 	var dir := to - from

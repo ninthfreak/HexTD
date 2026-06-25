@@ -6,7 +6,7 @@ extends Resource
 @export var display_name: String = "Level"
 @export var cells: Array[Vector2i] = []      # every valid hex on the board
 @export var path: Array[Vector2i] = []        # ordered spawn -> goal (enemy route)
-@export var trace: Array[Vector2i] = []       # copper region (non-buildable); empty -> falls back to path
+@export var bus: Array[Vector2i] = []       # bus region (non-buildable); empty -> falls back to path
 @export var buildable: Array[Vector2i] = []   # cells where towers may be placed
 @export var blocking: Array[Vector2i] = []    # walls that block tower line of sight
 @export var spawn: Vector2i = Vector2i.ZERO

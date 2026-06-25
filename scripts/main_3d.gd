@@ -101,7 +101,7 @@ func _ready() -> void:
 	_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
 
 # ---------------------------------------------------------------- environment & camera
-# A directional sun + a procedural sky. The shiny copper / clearcoat-mask
+# A directional sun + a procedural sky. The shiny bus / clearcoat-mask
 # materials need an environment to reflect; the sky gives them something rich
 # to mirror without committing to a baked HDRI.
 func _build_environment() -> void:
@@ -128,13 +128,13 @@ func _build_environment() -> void:
 	env.ssao_radius = 2.5
 	env.ssao_intensity = 0.9
 	env.ssao_power = 2.0
-	# SSR: the dark glossy substrate mirrors the neon traces, enemies and towers
+	# SSR: the dark glossy substrate mirrors the neon buses, enemies and towers
 	# — the wet-floor-under-neon look. This is where the reflections finally read.
 	env.ssr_enabled = true
 	env.ssr_max_steps = 96
 	env.ssr_fade_in = 0.1
 	env.ssr_fade_out = 6.0
-	# HDR glow blooms every emissive surface (traces, markers, enemies, lasers,
+	# HDR glow blooms every emissive surface (buses, markers, enemies, lasers,
 	# projectiles). Stronger here since the dark scene is built around the glow.
 	env.glow_enabled = true
 	env.glow_intensity = 1.0
@@ -297,8 +297,8 @@ func _mouse_to_plane() -> Vector2:
 	var dir := camera.project_ray_normal(mp)
 	if absf(dir.y) < 0.00001:
 		return Vector2.ZERO
-	# Intersect with y = COPPER_TOP (where towers sit / cells are addressed).
-	var t: float = (GameBoard3D.COPPER_TOP - from.y) / dir.y
+	# Intersect with y = BUS_TOP (where towers sit / cells are addressed).
+	var t: float = (GameBoard3D.BUS_TOP - from.y) / dir.y
 	if t < 0.0:
 		return Vector2.ZERO
 	var w := from + dir * t

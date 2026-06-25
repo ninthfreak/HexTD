@@ -124,8 +124,8 @@
       <div class="group"><div class="label">Map name (= filename)</div><input id="m_name" type="text" value="My Map" spellcheck="false"></div>
       <div class="group"><div class="label">Brush</div>
         <div class="tools" id="m_tools">
-          <div class="tool active" data-tool="path"><span class="sw path"></span>Trace <kbd>P</kbd></div>
-          <div class="tool" data-tool="grass"><span class="sw grass"></span>Solder Mask <kbd>G</kbd></div>
+          <div class="tool active" data-tool="path"><span class="sw path"></span>Bus <kbd>P</kbd></div>
+          <div class="tool" data-tool="grass"><span class="sw grass"></span>Substrate <kbd>G</kbd></div>
           <div class="tool" data-tool="spawn"><span class="sw spawn"></span>Spawn <kbd>S</kbd></div>
           <div class="tool" data-tool="goal"><span class="sw goal"></span>Goal <kbd>O</kbd></div>
           <div class="tool" data-tool="block"><span class="sw block"></span>Block <kbd>B</kbd></div>
@@ -882,16 +882,16 @@ let MapTab=null;
   function pixelToCell(px,py){const s=st.size;const x=px-(margin()+s*SQRT3*0.5),y=py-(margin()+s);
     const q=(SQRT3/3*x-1/3*y)/s,r=(2/3*y)/s;const [aq,ar]=cubeRound(q,r);return axialToOff(aq,ar);}
   // Band-aware Taubin smoothing of a pixel polyline, endpoints pinned. Each pass
-  // centers points to the trace cross-section then applies lambda/mu smoothing
+  // centers points to the bus cross-section then applies lambda/mu smoothing
   // (mu<0 cancels shrinkage so corners only round slightly). Mirrors game_board.gd.
-  function smoothPath(pts, inTrace){
+  function smoothPath(pts, inBus){
     if(pts.length<3) return pts;
     const ITER=6, CENTER=0.6, LAM=0.5, MU=-0.53;
     let p=pts.map(q=>[q[0],q[1]]);
     let sp=0; for(let i=1;i<p.length;i++) sp+=Math.hypot(p[i][0]-p[i-1][0],p[i][1]-p[i-1][1]);
     sp=Math.max(1, sp/Math.max(1,p.length-1));
     const step=sp*0.4, reach=sp*8;
-    const march=(pt,nx,ny)=>{let d=0;while(d<reach){if(!inTrace(pt[0]+nx*(d+step),pt[1]+ny*(d+step)))break;d+=step;}return d;};
+    const march=(pt,nx,ny)=>{let d=0;while(d<reach){if(!inBus(pt[0]+nx*(d+step),pt[1]+ny*(d+step)))break;d+=step;}return d;};
     const lap=(arr,f)=>{const o=arr.map(q=>[q[0],q[1]]);for(let i=1;i<arr.length-1;i++){const ax=(arr[i-1][0]+arr[i+1][0])/2,ay=(arr[i-1][1]+arr[i+1][1])/2;o[i]=[arr[i][0]+(ax-arr[i][0])*f,arr[i][1]+(ay-arr[i][1])*f];}return o;};
     for(let it=0;it<ITER;it++){
       const c=p.map(q=>[q[0],q[1]]);
@@ -913,7 +913,7 @@ let MapTab=null;
     T.add(k(...st.spawn)); T.add(k(...st.goal));
     const start=k(...st.spawn), end=k(...st.goal);
     if(!T.has(start)||!T.has(end)) return null;
-    // distance from the edge of the trace band (multi-source BFS)
+    // distance from the edge of the bus band (multi-source BFS)
     const dist=new Map(), q=[];
     for(const key of T){ const [c,r]=parseKey(key);
       if(neighbors(c,r).some(([nc,nr])=>!T.has(k(nc,nr)))){ dist.set(key,1); q.push(key); } }
@@ -932,7 +932,7 @@ let MapTab=null;
   }
   const cv=document.getElementById('m_cv'), ctx=cv.getContext('2d');
   function hexPath(cx,cy){ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/180*(60*i-30);const x=cx+Math.cos(a)*st.size,y=cy+Math.sin(a)*st.size;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();}
-  // --- Trim preview (editor-only): shows which slice of each copper cell becomes solder
+  // --- Trim preview (editor-only): shows which slice of each bus cell becomes substrate
   // mask in the live game, filled magenta. Mirrors GameBoard's tile rule so anomalies can
   // be traced to map vs rule. Vertex order matches hexPath: 0=NE,1=SE,
   // 2=S,3=SW,4=NW,5=N. EDGE_NB[i] = axial neighbour across edge e_i (same as the game).
@@ -941,9 +941,9 @@ let MapTab=null;
     "HALF_E":[0,1],"HALF_W":[3,4],"HALF_NE":[0,5],"HALF_SW":[2,3],"HALF_NW":[4,5],"HALF_SE":[1,2]};
   const HALF_TILE={0:"HALF_E",1:"HALF_SE",2:"HALF_SW",3:"HALF_W",4:"HALF_NW",5:"HALF_NE"};
   const POINT_TILE={5:"CORNER_N",0:"CORNER_NE",1:"CORNER_SE",2:"CORNER_S",3:"CORNER_SW",4:"CORNER_NW"};
-  function isCopper(c,r){
+  function isBus(c,r){
     if(c<0||r<0||c>=st.cols||r>=st.rows) return false;
-    if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r) return true;   // spawn/goal are copper in-game
+    if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r) return true;   // spawn/goal are bus in-game
     if(st.goal&&st.goal[0]===c&&st.goal[1]===r) return true;
     return st.cells.get(k(c,r))==='path';
   }
@@ -957,27 +957,27 @@ let MapTab=null;
       out.push(run); }
     return out;
   }
-  function copperTile(c,r){
-    const ax=offToAxial(c,r), copper=[], offmap=[];
+  function busTile(c,r){
+    const ax=offToAxial(c,r), bus=[], offmap=[];
     for(let i=0;i<6;i++){
       const o=axialToOff(ax[0]+EDGE_NB[i][0], ax[1]+EDGE_NB[i][1]);
-      copper[i]=isCopper(o[0],o[1]);
+      bus[i]=isBus(o[0],o[1]);
       offmap[i]=(o[0]<0||o[1]<0||o[0]>=st.cols||o[1]>=st.rows);
     }
-    // Map-edge rule (mirrors GameBoard): a trace cell on the boundary clips toward its
-    // in-map mask side so the trace runs off the edge cleanly. Interior cells fall through.
+    // Map-edge rule (mirrors GameBoard): a bus cell on the boundary clips toward its
+    // in-map mask side so the bus runs off the edge cleanly. Interior cells fall through.
     const on_lr=offmap[0]||offmap[3], on_tb=offmap[1]||offmap[2]||offmap[4]||offmap[5];
     if(on_lr||on_tb){
       if(on_lr){
-        if(!copper[4]&&!copper[5]) return "CORNER_N";
-        if(!copper[1]&&!copper[2]) return "CORNER_S";
+        if(!bus[4]&&!bus[5]) return "CORNER_N";
+        if(!bus[1]&&!bus[2]) return "CORNER_S";
         return null;
       }
-      if(!copper[3]) return "HALF_W";
-      if(!copper[0]) return "HALF_E";
+      if(!bus[3]) return "HALF_W";
+      if(!bus[0]) return "HALF_E";
       return null;
     }
-    const ex=[]; for(let i=0;i<6;i++) if(!copper[i]) ex.push(i);
+    const ex=[]; for(let i=0;i<6;i++) if(!bus[i]) ex.push(i);
     if(ex.length===0) return null;
     const runs=edgeRuns(ex); if(runs.length!==1) return null;
     const run=runs[0];
@@ -990,7 +990,7 @@ let MapTab=null;
     const run = o.length===1 ? [o[0]] : (o[1]===(o[0]+1)%6 ? [o[0],o[1]] : [o[1],o[0]]);
     return [(run[0]+5)%6, ...run, (run[run.length-1]+1)%6];   // omitted verts + the two chord ends
   }
-  const TRIM_COLOR='#e000d6';   // editor-only marker: the slice that becomes solder mask in-game
+  const TRIM_COLOR='#e000d6';   // editor-only marker: the slice that becomes substrate in-game
   function drawTrim(c,r,tile){
     const verts=trimPoly(tile), ctr=center(c,r), s=st.size, cx=ctr[0], cy=ctr[1];
     ctx.beginPath();
@@ -1000,8 +1000,8 @@ let MapTab=null;
   }
   function drawTrimPreview(){
     for(let r=0;r<st.rows;r++)for(let c=0;c<st.cols;c++){
-      if(st.cells.get(k(c,r))!=='path') continue;   // stripe the traces; spawn/goal stay clean
-      const tile=copperTile(c,r); if(tile) drawTrim(c,r,tile);
+      if(st.cells.get(k(c,r))!=='path') continue;   // stripe the buses; spawn/goal stay clean
+      const tile=busTile(c,r); if(tile) drawTrim(c,r,tile);
     }
   }
   function render(){
@@ -1019,9 +1019,9 @@ let MapTab=null;
     drawTrimPreview();
     const route=solveRoute();
     if(route&&route.length>1){ctx.lineWidth=Math.max(3,s*0.42);ctx.lineJoin='round';ctx.lineCap='round';ctx.strokeStyle='rgba(255,210,63,.85)';
-      const inTrace=(x,y)=>{const [c,r]=pixelToCell(x,y);const key=k(c,r);
+      const inBus=(x,y)=>{const [c,r]=pixelToCell(x,y);const key=k(c,r);
         return st.cells.get(key)==='path' || (st.spawn&&st.spawn[0]===c&&st.spawn[1]===r) || (st.goal&&st.goal[0]===c&&st.goal[1]===r);};
-      const rpts=smoothPath(route.map(([c,r])=>center(c,r)), inTrace);
+      const rpts=smoothPath(route.map(([c,r])=>center(c,r)), inBus);
       ctx.beginPath();rpts.forEach(([x,y],i)=>{i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}
     mark(st.spawn,'#bfffd0','S');mark(st.goal,'#ffd0d0','G');drawBrushPreview();ui(route);
   }
@@ -1034,7 +1034,7 @@ let MapTab=null;
     ctx.fillStyle='#0d1117';ctx.font='700 '+(st.size*0.7)+'px monospace';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(letter,x,y);}
   function ui(route){
     let grass=0,path=0,block=0;for(const t of st.cells.values()){if(t==='grass')grass++;else if(t==='path')path++;else if(t==='block')block++;}
-    document.getElementById('m_counts').textContent='solder mask '+grass+'  ·  trace '+path+'  ·  block '+block+'  ·  '+st.cols+'×'+st.rows;
+    document.getElementById('m_counts').textContent='substrate '+grass+'  ·  bus '+path+'  ·  block '+block+'  ·  '+st.cols+'×'+st.rows;
     const sEl=document.getElementById('m_status'),tx=document.getElementById('m_statusText');sEl.className='status';
     if(!st.spawn||!st.goal){sEl.classList.add('warn');tx.textContent='Place a spawn and a goal.';}
     else if(!route){sEl.classList.add('bad');tx.textContent='No connected path from spawn to goal.';}
@@ -1043,11 +1043,11 @@ let MapTab=null;
   }
   function sanitizeName(n){return (String(n||'map').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''))||'map';}
   function buildExport(route){ route=route===undefined?solveRoute():route; if(!route) return null;
-    const cells=[]; const blocking=[]; const trace=[];
-    for(const [key,t] of st.cells){ cells.push(parseKey(key)); if(t==='block') blocking.push(parseKey(key)); if(t==='path') trace.push(parseKey(key)); }
-    if(st.spawn){cells.push(st.spawn.slice()); trace.push(st.spawn.slice());}
-    if(st.goal){cells.push(st.goal.slice()); trace.push(st.goal.slice());}
-    return {name:st.name||'Map',format:'hex-oddr-pointy-v1',cols:st.cols,rows:st.rows,build_color:st.buildColor||'#754799',spawn:st.spawn,goal:st.goal,path:route,trace,blocking,cells};}
+    const cells=[]; const blocking=[]; const bus=[];
+    for(const [key,t] of st.cells){ cells.push(parseKey(key)); if(t==='block') blocking.push(parseKey(key)); if(t==='path') bus.push(parseKey(key)); }
+    if(st.spawn){cells.push(st.spawn.slice()); bus.push(st.spawn.slice());}
+    if(st.goal){cells.push(st.goal.slice()); bus.push(st.goal.slice());}
+    return {name:st.name||'Map',format:'hex-oddr-pointy-v1',cols:st.cols,rows:st.rows,build_color:st.buildColor||'#754799',spawn:st.spawn,goal:st.goal,path:route,bus,blocking,cells};}
   function applyOne(c,r){
     if(c<0||r<0||c>=st.cols||r>=st.rows) return; const key=k(c,r);
     const clr=()=>{if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)st.spawn=null; if(st.goal&&st.goal[0]===c&&st.goal[1]===r)st.goal=null;};
@@ -1100,11 +1100,11 @@ let MapTab=null;
   document.getElementById('m_clear').addEventListener('click',()=>{if(!confirm('Clear the whole map?'))return;st.cells.clear();st.spawn=null;st.goal=null;markDirty();render();});
   function loadData(d){
     st.cols=d.cols|0; st.rows=d.rows|0; st.name=d.name||'Map'; st.buildColor=d.build_color||'#754799'; st.cells.clear(); st.spawn=d.spawn||null; st.goal=d.goal||null;
-    const traceSrc=(d.trace&&d.trace.length)?d.trace:(d.path||[]);
-    const traceSet=new Set(traceSrc.map(([c,r])=>k(c,r)));
+    const busSrc=(d.bus&&d.bus.length)?d.bus:((d.trace&&d.trace.length)?d.trace:(d.path||[]));
+    const busSet=new Set(busSrc.map(([c,r])=>k(c,r)));
     const blockSet=new Set((d.blocking||[]).map(([c,r])=>k(c,r)));
     for(const [c,r] of (d.cells||[])){ if(st.spawn&&st.spawn[0]===c&&st.spawn[1]===r)continue; if(st.goal&&st.goal[0]===c&&st.goal[1]===r)continue;
-      var key=k(c,r); st.cells.set(key, traceSet.has(key)?'path':(blockSet.has(key)?'block':'grass')); }
+      var key=k(c,r); st.cells.set(key, busSet.has(key)?'path':(blockSet.has(key)?'block':'grass')); }
     document.getElementById('m_name').value=st.name; document.getElementById('m_cols').value=st.cols; document.getElementById('m_rows').value=st.rows;
     document.getElementById('m_build_color').value=st.buildColor; render();
   }

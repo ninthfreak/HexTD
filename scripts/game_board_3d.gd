@@ -1,10 +1,10 @@
 class_name GameBoard3D
 extends Node3D
-## 3D version of the board. All hex math, footprint/LOS/range, and the copper
+## 3D version of the board. All hex math, footprint/LOS/range, and the bus
 ## clip-tile selection are ported UNCHANGED from the 2D GameBoard — they operate
 ## on PLANE coordinates (Vector2). The plane maps to 3D as (x, y) -> (x, 0, y),
 ## so world y is height/up. Rendering is generated prism meshes instead of 2D
-## draw calls; materials are real metallic copper + clearcoat solder mask so the
+## draw calls; materials are real metallic bus + clearcoat substrate so the
 ## finish reflects the environment dynamically.
 ##
 ## Entities (towers/enemies/projectiles) are Node3D and keep a 2D `pp` (plane
@@ -12,15 +12,15 @@ extends Node3D
 
 const HEX_SIZE := 11.34
 ## Dark neon / digital-grid theme. The board is a near-black glossy reflective
-## substrate; the path "trace", spawn and goal are emissive neon so the HDR glow
+## substrate; the path "bus", spawn and goal are emissive neon so the HDR glow
 ## blooms them and the dark floor mirrors them (SSR).
-const TRACE_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan path edge (emissive)
-const MASK_COLOR := Color(0.42, 0.16, 0.40)    # purple-pink build plateau (dim glow)
+const BUS_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan path edge (emissive)
+const SUBSTRATE_COLOR := Color(0.42, 0.16, 0.40)    # purple-pink build plateau (dim glow)
 const SPAWN_COLOR := Color(0.20, 1.00, 0.45)   # neon green
 const GOAL_COLOR := Color(1.00, 0.35, 0.30)    # neon red
 const WALL_COLOR := Color(0.38, 0.40, 0.46)    # gunmetal grey blocking walls
 
-# Heights (world units). The build area is a raised plateau at COPPER_TOP (the
+# Heights (world units). The build area is a raised plateau at BUS_TOP (the
 # shared placement plane — towers, ray-picking and overlays all anchor here, so
 # that constant is unchanged); the PATH is carved BELOW it, a sunken glossy
 # channel whose side walls (rising from PATH_TOP up to the plateau rim) carry the
@@ -28,14 +28,14 @@ const WALL_COLOR := Color(0.38, 0.40, 0.46)    # gunmetal grey blocking walls
 # above the plateau.
 const MASK_TOP := 0.0
 const MASK_THICK := 6.0
-const COPPER_TOP := 1.2         # build-slab top = placement plane (towers/picking/overlays)
+const BUS_TOP := 1.2         # build-slab top = placement plane (towers/picking/overlays)
 const PATH_TOP := -1.0          # path channel floor (glossy black) — shallow, so it's near the enemies
 const BUILD_BOTTOM := -3.2      # bottom of the frosted slab / rim (gives the build area its thickness)
-const WALL_TOP := 44.4          # blocking walls stand tall (taller than towers) so they read as blockers; height = WALL_TOP - COPPER_TOP
-const ENEMY_Y := COPPER_TOP + 1.0   # enemies hover just above the board (close enough to reflect in the path)
+const WALL_TOP := 44.4          # blocking walls stand tall (taller than towers) so they read as blockers; height = WALL_TOP - BUS_TOP
+const ENEMY_Y := BUS_TOP + 1.0   # enemies hover just above the board (close enough to reflect in the path)
 const RIM_WIDTH := 2.4          # width of the flat neon border strip along the path rim
 
-## Copper clip tiles — identical rule to the 2D board (see that file for the full
+## Bus clip tiles — identical rule to the 2D board (see that file for the full
 ## explanation). 0=NE,1=SE,2=S,3=SW,4=NW,5=N.
 const TILE_OMIT := {
 	"CORNER_N": [5], "CORNER_S": [2], "CORNER_NE": [0], "CORNER_SE": [1], "CORNER_SW": [3], "CORNER_NW": [4],
@@ -60,15 +60,15 @@ var map: HexMapData
 var path_pixels := PackedVector2Array()   # smoothed path, PLANE coords
 var occupied := {}
 var blocking_set := {}
-var trace_set := {}
+var bus_set := {}
 var buildable_set := {}
 var enemies: Array = []
 var _bounds := Rect2()
 var _entities: Node3D
 
-var _mat_copper: StandardMaterial3D
-var _mat_copper_edge: StandardMaterial3D
-var _mat_mask: StandardMaterial3D
+var _mat_bus: StandardMaterial3D
+var _mat_bus_edge: StandardMaterial3D
+var _mat_substrate: StandardMaterial3D
 var _mat_glass: ShaderMaterial
 var _mat_wall: StandardMaterial3D
 var _mat_spawn: StandardMaterial3D
@@ -140,32 +140,32 @@ func _build_materials() -> void:
 	# board viewed from above — removes any winding fragility).
 	#
 	# The path is a sunken channel: a glossy polished-black floor + trench walls
-	# (_mat_copper, reflects enemies/neon via SSR), bordered by a continuous mitered
-	# neon ribbon (_mat_copper_edge). All three are built from ONE smoothed outline
+	# (_mat_bus, reflects enemies/neon via SSR), bordered by a continuous mitered
+	# neon ribbon (_mat_bus_edge). All three are built from ONE smoothed outline
 	# polygon (see _build_path_polys / _stroke_border), so they always align.
-	_mat_copper = StandardMaterial3D.new()
-	_mat_copper.albedo_color = Color(0.01, 0.012, 0.015)
-	_mat_copper.metallic = 0.95
-	_mat_copper.roughness = 0.04            # sharp mirror reflections
-	_mat_copper.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mat_bus = StandardMaterial3D.new()
+	_mat_bus.albedo_color = Color(0.01, 0.012, 0.015)
+	_mat_bus.metallic = 0.95
+	_mat_bus.roughness = 0.04            # sharp mirror reflections
+	_mat_bus.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Trench side walls: the neon edge that outlines the sunken path.
-	_mat_copper_edge = StandardMaterial3D.new()
-	_mat_copper_edge.albedo_color = TRACE_COLOR.darkened(0.7)
-	_mat_copper_edge.emission_enabled = true
-	_mat_copper_edge.emission = TRACE_COLOR
-	_mat_copper_edge.emission_energy_multiplier = 3.0   # neon border ribbon
-	_mat_copper_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mat_bus_edge = StandardMaterial3D.new()
+	_mat_bus_edge.albedo_color = BUS_COLOR.darkened(0.7)
+	_mat_bus_edge.emission_enabled = true
+	_mat_bus_edge.emission = BUS_COLOR
+	_mat_bus_edge.emission_energy_multiplier = 3.0   # neon border ribbon
+	_mat_bus_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Build plateau: purple-pink with a VERY DIM self-glow (emission < 1 so it
 	# reads as faintly lit but does not bloom), lightly glossy so it still catches
 	# the key light and a little reflection.
-	_mat_mask = StandardMaterial3D.new()
-	_mat_mask.albedo_color = MASK_COLOR
-	_mat_mask.metallic = 0.3
-	_mat_mask.roughness = 0.42
-	_mat_mask.emission_enabled = true
-	_mat_mask.emission = Color(0.85, 0.35, 0.75)
-	_mat_mask.emission_energy_multiplier = 0.18
-	_mat_mask.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mat_substrate = StandardMaterial3D.new()
+	_mat_substrate.albedo_color = SUBSTRATE_COLOR
+	_mat_substrate.metallic = 0.3
+	_mat_substrate.roughness = 0.42
+	_mat_substrate.emission_enabled = true
+	_mat_substrate.emission = Color(0.85, 0.35, 0.75)
+	_mat_substrate.emission_energy_multiplier = 0.18
+	_mat_substrate.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Build area: a thick slab of "FROZEN SMOKE" — a highly-diffuse, partially
 	# transparent frosted body whose surface is broken up by world-space fbm noise
 	# (wispy denser/thinner patches) and that is lit FROM BELOW: emission ramps up
@@ -176,7 +176,7 @@ func _build_materials() -> void:
 	_mat_glass.shader.code = _FROZEN_SMOKE_SHADER
 	_mat_glass.set_shader_parameter("build_color", Color(0.46, 0.28, 0.60))
 	_mat_glass.set_shader_parameter("smoke_tex", _smoke_texture())
-	_mat_glass.set_shader_parameter("y_top", COPPER_TOP)
+	_mat_glass.set_shader_parameter("y_top", BUS_TOP)
 	_mat_glass.set_shader_parameter("y_bottom", BUILD_BOTTOM)
 	# Blocking walls: tall gunmetal-grey obstacles. LOW metallic + a faint self-glow
 	# so they read as solid grey — a high-metallic surface has nothing to reflect in
@@ -228,9 +228,9 @@ func setup(m: HexMapData) -> void:
 	blocking_set = {}
 	for cell in m.blocking:
 		blocking_set[cell] = true
-	trace_set = {}
-	for cell in m.trace:
-		trace_set[cell] = true
+	bus_set = {}
+	for cell in m.bus:
+		bus_set[cell] = true
 	buildable_set = {}
 	for cell in m.buildable:
 		buildable_set[cell] = true
@@ -251,7 +251,7 @@ func _build_board_meshes() -> void:
 	# Flat-path design (no sunken channel), so the frosted top is ONE seamless
 	# sheet — no per-cell hex facets to catch the glow unevenly. Layers:
 	#   - FROSTED build slab: seamless top (the whole board outline, triangulated)
-	#     at COPPER_TOP + an outer-rim wall down to BUILD_BOTTOM + a dark bottom cap
+	#     at BUS_TOP + an outer-rim wall down to BUILD_BOTTOM + a dark bottom cap
 	#     (so the thick rim reads solid);
 	#   - the path as a flat glossy-black INLAY sitting just on top of the slab
 	#     (enemies hover just above it, so it mirrors them);
@@ -260,9 +260,9 @@ func _build_board_meshes() -> void:
 	# holes — the board is solid, the path is a strip), so both are seamless.
 	var path_polys := _build_path_polys()
 	var board_polys := _build_region_outline(Callable(self, "has_cell"), 0)
-	var inlay_y := COPPER_TOP + 0.04
+	var inlay_y := BUS_TOP + 0.04
 
-	var copper_st := SurfaceTool.new(); copper_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var bus_st := SurfaceTool.new(); bus_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var glass_st := SurfaceTool.new(); glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -274,28 +274,28 @@ func _build_board_meshes() -> void:
 
 	# frosted slab: seamless top + outer rim + dark bottom
 	for bpoly in board_polys:
-		_emit_cap_tris(glass_st, bpoly, COPPER_TOP)
-		_emit_wall_loop(glass_st, bpoly, COPPER_TOP, BUILD_BOTTOM)
-		_emit_cap_tris(copper_st, bpoly, BUILD_BOTTOM)   # dark slab bottom
+		_emit_cap_tris(glass_st, bpoly, BUS_TOP)
+		_emit_wall_loop(glass_st, bpoly, BUS_TOP, BUILD_BOTTOM)
+		_emit_cap_tris(bus_st, bpoly, BUILD_BOTTOM)   # dark slab bottom
 
 	# flat glossy-black path inlay (on top of the slab) + neon border
 	for ppoly in path_polys:
-		_emit_cap_tris(copper_st, ppoly, inlay_y)
+		_emit_cap_tris(bus_st, ppoly, inlay_y)
 		_stroke_border(edge_st, ppoly)
 
 	# blocking prisms (stand on the slab) + spawn/goal markers on the path inlay
 	for cell in map.cells:
 		var hex := _hex_plane_polygon(_cell_to_pixel(cell))
 		if blocking_set.has(cell):
-			_add_prism(wall_st, hex, WALL_TOP, COPPER_TOP); have_wall = true
+			_add_prism(wall_st, hex, WALL_TOP, BUS_TOP); have_wall = true
 		elif cell == map.spawn:
 			_emit_cap_tris(spawn_st, hex, inlay_y + 0.03); have_spawn = true
 		elif cell == map.goal:
 			_emit_cap_tris(goal_st, hex, inlay_y + 0.03); have_goal = true
 
 	_commit(glass_st, _mat_glass)                        # frosted build slab
-	_commit(copper_st, _mat_copper, true)                # dark bottom + glossy path inlay
-	if path_polys.size() > 0: _commit(edge_st, _mat_copper_edge)   # neon border ribbon
+	_commit(bus_st, _mat_bus, true)                # dark bottom + glossy path inlay
+	if path_polys.size() > 0: _commit(edge_st, _mat_bus_edge)   # neon border ribbon
 	if have_wall: _commit(wall_st, _mat_wall, true)
 	if have_spawn: _commit(spawn_st, _mat_spawn)
 	if have_goal: _commit(goal_st, _mat_goal)
@@ -454,7 +454,7 @@ func _stroke_border(st: SurfaceTool, poly: PackedVector2Array) -> void:
 		var mdir: Vector2 = sv.normalized() if sv.length() > 0.0001 else n2
 		outu.append(mdir)
 		mfac.append(1.0 / maxf(mdir.dot(n2), 0.6))
-	var ry := COPPER_TOP + 0.12   # just above the flat path inlay
+	var ry := BUS_TOP + 0.12   # just above the flat path inlay
 	var inset := 1.2
 	for i in range(n):
 		var j := (i + 1) % n
@@ -470,7 +470,7 @@ func _stroke_border(st: SurfaceTool, poly: PackedVector2Array) -> void:
 			st.add_vertex(v)
 
 func _is_path_cell(cell: Vector2i) -> bool:
-	return trace_set.has(cell) or cell == map.spawn or cell == map.goal
+	return bus_set.has(cell) or cell == map.spawn or cell == map.goal
 
 # Glossy-black trench walls (into `black_st`) for each clipped-floor edge that
 # borders a non-path cell — vertical quads from the sunken floor up to the rim.
@@ -482,8 +482,8 @@ func _add_path_walls(black_st: SurfaceTool, center: Vector2, poly: PackedVector2
 		var b := poly[(i + 1) % n]
 		if not _is_border_edge(center, a, b):
 			continue
-		var at := Vector3(a.x, COPPER_TOP, a.y)
-		var bt := Vector3(b.x, COPPER_TOP, b.y)
+		var at := Vector3(a.x, BUS_TOP, a.y)
+		var bt := Vector3(b.x, BUS_TOP, b.y)
 		var ab := Vector3(a.x, PATH_TOP, a.y)
 		var bb := Vector3(b.x, PATH_TOP, b.y)
 		black_st.add_vertex(at); black_st.add_vertex(bb); black_st.add_vertex(ab)
@@ -529,7 +529,7 @@ func _build_path_border(rim_st: SurfaceTool) -> void:
 		if not _is_path_cell(cell):
 			continue
 		var c := _cell_to_pixel(cell)
-		var poly := _clipped_plane_polygon(cell, c, trace_set)
+		var poly := _clipped_plane_polygon(cell, c, bus_set)
 		var m := poly.size()
 		for i in range(m):
 			var a: Vector2 = poly[i]
@@ -581,7 +581,7 @@ func _build_path_border(rim_st: SurfaceTool) -> void:
 				cur = nxt
 			if loop.size() >= 3:
 				loops.append(loop)
-	var ry := COPPER_TOP + 0.25
+	var ry := BUS_TOP + 0.25
 	var inset := 1.2
 	for loop in loops:
 		var nn: int = loop.size()
@@ -674,8 +674,8 @@ func _add_plateau_skirt(st: SurfaceTool, center: Vector2, poly: PackedVector2Arr
 		var probe: Vector2 = mid + outward.normalized() * (HEX_SIZE * 0.5)
 		if has_cell(world_cell(probe)):
 			continue   # interior edge — no perimeter skirt
-		var at := Vector3(a.x, COPPER_TOP, a.y)
-		var bt := Vector3(b.x, COPPER_TOP, b.y)
+		var at := Vector3(a.x, BUS_TOP, a.y)
+		var bt := Vector3(b.x, BUS_TOP, b.y)
 		var ab := Vector3(a.x, PATH_TOP, a.y)
 		var bb := Vector3(b.x, PATH_TOP, b.y)
 		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
@@ -737,7 +737,7 @@ func _hex_plane_polygon(center: Vector2) -> PackedVector2Array:
 
 # Clipped top polygon = full hex minus the clipped vertices (straight edges),
 # computed against `region` (the set of cells forming the raised area whose
-# silhouette is being smoothed — the build plateau here, the trace in 2D).
+# silhouette is being smoothed — the build plateau here, the bus in 2D).
 func _clipped_plane_polygon(cell: Vector2i, center: Vector2, region: Dictionary) -> PackedVector2Array:
 	var hp := _hex_plane_polygon(center)
 	var tile := _clip_tile(cell, region)
@@ -752,32 +752,32 @@ func _clipped_plane_polygon(cell: Vector2i, center: Vector2, region: Dictionary)
 
 # ---------------------------------------------------------------- clip rule (ported)
 # Smooths the boundary of `region` by cutting a cell's protruding corners. Ported
-# verbatim from the 2D copper rule, generalised from the fixed trace set to any
+# verbatim from the 2D bus rule, generalised from the fixed bus set to any
 # region set (so it can smooth the build plateau's silhouette along the path).
 func _clip_tile(cell: Vector2i, region: Dictionary) -> String:
-	var copper: Array = []
+	var bus: Array = []
 	var offmap: Array = []
 	for i in range(6):
 		var n: Vector2i = cell + EDGE_NB[i]
-		copper.append(region.has(n))
+		bus.append(region.has(n))
 		offmap.append(not has_cell(n))
 	var on_lr: bool = offmap[0] or offmap[3]
 	var on_tb: bool = offmap[1] or offmap[2] or offmap[4] or offmap[5]
 	if on_lr or on_tb:
 		if on_lr:
-			if not copper[4] and not copper[5]:
+			if not bus[4] and not bus[5]:
 				return "CORNER_N"
-			if not copper[1] and not copper[2]:
+			if not bus[1] and not bus[2]:
 				return "CORNER_S"
 			return ""
-		if not copper[3]:
+		if not bus[3]:
 			return "HALF_W"
-		if not copper[0]:
+		if not bus[0]:
 			return "HALF_E"
 		return ""
 	var exposed: Array = []
 	for i in range(6):
-		if not copper[i]:
+		if not bus[i]:
 			exposed.append(i)
 	if exposed.is_empty():
 		return ""
@@ -819,7 +819,7 @@ func _edge_runs(exposed: Array) -> Array:
 	return out
 
 # ---------------------------------------------------------------- plane <-> 3D
-func plane_to_world3(p: Vector2, h := COPPER_TOP) -> Vector3:
+func plane_to_world3(p: Vector2, h := BUS_TOP) -> Vector3:
 	return Vector3(p.x, h, p.y)
 
 func world3_to_plane(w: Vector3) -> Vector2:
@@ -866,7 +866,7 @@ func _center_pass(pts: PackedVector2Array, step: float, reach: float) -> PackedV
 func _march(p: Vector2, dir: Vector2, step: float, reach: float) -> float:
 	var d := 0.0
 	while d < reach:
-		if not _in_trace(p + dir * (d + step)):
+		if not _in_bus(p + dir * (d + step)):
 			break
 		d += step
 	return d
@@ -878,8 +878,8 @@ func _laplacian_pass(pts: PackedVector2Array, factor: float) -> PackedVector2Arr
 		out[i] = pts[i].lerp(avg, factor)
 	return out
 
-func _in_trace(p: Vector2) -> bool:
-	return trace_set.has(world_cell(p))
+func _in_bus(p: Vector2) -> bool:
+	return bus_set.has(world_cell(p))
 
 # ---------------------------------------------------------------- logic API (ported, plane coords)
 func get_path_points() -> PackedVector2Array:
