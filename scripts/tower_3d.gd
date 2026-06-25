@@ -45,10 +45,10 @@ var _badge_mats: Array = []          # ShaderMaterial per live badge (zoom_t upd
 # Display order. `prop` is the TowerData flag; art is art/<file>_{glyph,backplate,rim}.png.
 # focal/reveal_* drive the per-icon parallax window (see ABILITY_BADGE_PARALLAX_SPEC).
 const ABILITY_BADGES := [
-	{"prop": "bit_corruption", "file": "bit_corruption", "focal_x": 0.50, "focal_y": 0.50, "reveal_out": 0.55, "reveal_in": 1.0, "reveal_rate": 1.0},
-	{"prop": "cipher", "file": "cipher", "focal_x": 0.48, "focal_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.0, "reveal_rate": 1.0},
-	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_x": 0.66, "focal_y": 0.34, "reveal_out": 0.50, "reveal_in": 1.0, "reveal_rate": 1.0},
-	{"prop": "ignore_walls", "file": "tunneling", "focal_x": 0.84, "focal_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.0, "reveal_rate": 1.0},
+	{"prop": "bit_corruption", "file": "bit_corruption", "focal_out_x": 0.50, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.55, "reveal_in": 1.25, "reveal_rate": 1.0},
+	{"prop": "cipher", "file": "cipher", "focal_out_x": 0.48, "focal_out_y": 0.50, "focal_in_x": 0.48, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.05, "reveal_rate": 1.0},
+	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_out_x": 0.66, "focal_out_y": 0.34, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.40, "reveal_rate": 1.0},
+	{"prop": "ignore_walls", "file": "tunneling", "focal_out_x": 0.84, "focal_out_y": 0.50, "focal_in_x": 0.60, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.15, "reveal_rate": 1.0},
 ]
 const BADGE_BASE_WORLD := 30.0       # frame edge length (world units) at scale 1.0; tune via badge_world_scale
 static var _badge_tex := {}          # texture file base -> Texture2D (shared cache, caches misses)
@@ -60,7 +60,8 @@ render_mode unshaded, cull_disabled;
 uniform sampler2D glyph_tex : source_color;
 uniform sampler2D backplate_tex : source_color;
 uniform sampler2D rim_tex : source_color;
-uniform vec2 focal_point = vec2(0.5, 0.5);
+uniform vec2 focal_out = vec2(0.5, 0.5);
+uniform vec2 focal_in = vec2(0.5, 0.5);
 uniform float reveal_out = 0.5;
 uniform float reveal_in = 1.0;
 uniform float reveal_rate = 1.0;
@@ -78,7 +79,8 @@ void vertex() {
 void fragment() {
 	float k = pow(clamp(zoom_t, 0.0, 1.0), reveal_rate);
 	float w = mix(reveal_out, reveal_in, k);          // window width fraction
-	vec2 guv = focal_point + (UV - 0.5) * w;          // sample window around focal
+	vec2 fcur = mix(focal_out, focal_in, k);          // focal travels zoomed-out feature -> zoomed-in center
+	vec2 guv = fcur + (UV - 0.5) * w;                 // sample window around the current focal
 	vec4 glyph = texture(glyph_tex, guv);
 	if (guv.x < 0.0 || guv.x > 1.0 || guv.y < 0.0 || guv.y > 1.0) {
 		glyph.a = 0.0;
@@ -728,7 +730,8 @@ func _make_badge_material(entry: Dictionary) -> ShaderMaterial:
 	mat.set_shader_parameter("glyph_tex", glyph)
 	mat.set_shader_parameter("backplate_tex", backplate)
 	mat.set_shader_parameter("rim_tex", rim)
-	mat.set_shader_parameter("focal_point", Vector2(float(entry["focal_x"]), float(entry["focal_y"])))
+	mat.set_shader_parameter("focal_out", Vector2(float(entry["focal_out_x"]), float(entry["focal_out_y"])))
+	mat.set_shader_parameter("focal_in", Vector2(float(entry["focal_in_x"]), float(entry["focal_in_y"])))
 	mat.set_shader_parameter("reveal_out", float(entry["reveal_out"]))
 	mat.set_shader_parameter("reveal_in", float(entry["reveal_in"]))
 	mat.set_shader_parameter("reveal_rate", float(entry["reveal_rate"]))
