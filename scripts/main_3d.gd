@@ -57,6 +57,7 @@ const BANNER_FADE := 1.2          # fade-out seconds
 # --- UI ---
 var money_label: Label
 var lives_label: Label
+var cam_label: Label                 # camera readout, right of the lives line
 var wave_select: OptionButton
 var enemy_select: OptionButton
 var spawn_count: SpinBox
@@ -220,6 +221,15 @@ func _process(delta: float) -> void:
 	_update_banner(delta)
 	_camera_keys(delta)
 	_update_preview()
+	_update_cam_readout()
+
+# Live camera readout: orbit distance (the zoom metric) plus the camera's world
+# position, so it's clear where the camera sits at any zoom/pan.
+func _update_cam_readout() -> void:
+	if cam_label == null or camera == null:
+		return
+	var p: Vector3 = camera.global_position
+	cam_label.text = "cam d:%d  (%d, %d, %d)" % [int(round(cam_distance)), int(round(p.x)), int(round(p.y)), int(round(p.z))]
 
 func _camera_keys(delta: float) -> void:
 	var dir := Vector2.ZERO
@@ -697,9 +707,20 @@ func _build_ui() -> void:
 	vbox.add_child(map_label)
 
 	money_label = Label.new()
-	lives_label = Label.new()
 	vbox.add_child(money_label)
-	vbox.add_child(lives_label)
+
+	# Lives on the left, a camera-position readout right-justified on the same line
+	# (handy for dialing in how things look at different zoom distances).
+	var stat_row := HBoxContainer.new()
+	lives_label = Label.new()
+	lives_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stat_row.add_child(lives_label)
+	cam_label = Label.new()
+	cam_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cam_label.modulate = Color(1, 1, 1, 0.55)
+	cam_label.add_theme_font_size_override("font_size", 12)
+	stat_row.add_child(cam_label)
+	vbox.add_child(stat_row)
 
 	vbox.add_child(HSeparator.new())
 
