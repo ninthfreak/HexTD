@@ -44,13 +44,14 @@ var _beam_impact: MeshInstance3D     # bright dot at the target end
 @export var focal_center_dist: float = 1000.0  # at/below this distance the focal is fully centered (focal_in)
 var _badge_anchor: Node3D = null
 var _badge_mats: Array = []          # ShaderMaterial per live badge (zoom_t updated per frame)
+var _badge_info: Array = []          # {mi: MeshInstance3D, tip: String} per live badge (hover tooltips)
 # Display order. `prop` is the TowerData flag; art is art/<file>_{glyph,backplate,rim}.png.
 # focal/reveal_* drive the per-icon parallax window (see ABILITY_BADGE_PARALLAX_SPEC).
 const ABILITY_BADGES := [
-	{"prop": "bit_corruption", "file": "bit_corruption", "focal_out_x": 0.50, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.55, "reveal_in": 1.25, "reveal_rate": 1.0},
-	{"prop": "cipher", "file": "cipher", "focal_out_x": 0.48, "focal_out_y": 0.50, "focal_in_x": 0.48, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.05, "reveal_rate": 1.0},
-	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_out_x": 0.66, "focal_out_y": 0.34, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.40, "reveal_rate": 1.0},
-	{"prop": "ignore_walls", "file": "tunneling", "focal_out_x": 0.84, "focal_out_y": 0.50, "focal_in_x": 0.60, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.15, "reveal_rate": 1.0},
+	{"prop": "bit_corruption", "file": "bit_corruption", "focal_out_x": 0.50, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.55, "reveal_in": 1.25, "reveal_rate": 1.0, "tip": "Bit Corruption\nBypasses ECC damage resistance."},
+	{"prop": "cipher", "file": "cipher", "focal_out_x": 0.48, "focal_out_y": 0.50, "focal_in_x": 0.48, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.05, "reveal_rate": 1.0, "tip": "Cipher\nSees and targets Encrypted enemies."},
+	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_out_x": 0.66, "focal_out_y": 0.34, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.40, "reveal_rate": 1.0, "tip": "Buffer Overflow\nSurplus damage spills into the target's decay children."},
+	{"prop": "ignore_walls", "file": "tunneling", "focal_out_x": 0.84, "focal_out_y": 0.50, "focal_in_x": 0.60, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Tunneling\nAttacks through blocking tiles."},
 ]
 const BADGE_BASE_WORLD := 30.0       # frame edge length (world units) at scale 1.0; tune via badge_world_scale
 static var _badge_tex := {}          # texture file base -> Texture2D (shared cache, caches misses)
@@ -684,21 +685,22 @@ func _clear_badges() -> void:
 		_badge_anchor.queue_free()
 	_badge_anchor = null
 	_badge_mats.clear()
+	_badge_info.clear()
 
 func _build_badges() -> void:
 	if data == null:
 		return
 	# One badge per ability flag that is true; skip any whose textures are missing
 	# so the row stays gapless. Display order follows ABILITY_BADGES.
-	var mats: Array = []
+	var built: Array = []
 	for entry in ABILITY_BADGES:
 		var prop: String = entry["prop"]
 		if not bool(data.get(prop)):
 			continue
 		var mat := _make_badge_material(entry)
 		if mat != null:
-			mats.append(mat)
-	if mats.is_empty():
+			built.append({"mat": mat, "tip": str(entry.get("tip", ""))})
+	if built.is_empty():
 		return
 	# The anchor hangs off the tower ROOT (never scaled — only `_body` is), so it
 	# never inherits the tower's height/width scale. Its world scale is fixed once;
@@ -711,7 +713,8 @@ func _build_badges() -> void:
 	var spacing := BADGE_BASE_WORLD * 1.15
 	var start_x := -spacing * float(n - 1) * 0.5
 	for i in range(n):
-		var mat: ShaderMaterial = mats[i]
+		var b: Dictionary = built[i]
+		var mat: ShaderMaterial = b["mat"]
 		var mesh := QuadMesh.new()
 		mesh.size = Vector2(BADGE_BASE_WORLD, BADGE_BASE_WORLD)
 		var mi := MeshInstance3D.new()
@@ -720,6 +723,7 @@ func _build_badges() -> void:
 		mi.position = Vector3(start_x + spacing * float(i), 0.0, 0.0)
 		_badge_anchor.add_child(mi)
 		_badge_mats.append(mat)
+		_badge_info.append({"mi": mi, "tip": str(b["tip"])})
 
 # Build the parallax material for one icon (null if any of its 3 layers is absent).
 func _make_badge_material(entry: Dictionary) -> ShaderMaterial:
@@ -759,6 +763,28 @@ func _update_badge_zoom() -> void:
 	for m in _badge_mats:
 		m.set_shader_parameter("zoom_t", t)
 		m.set_shader_parameter("focal_t", ft)
+
+# Tooltip text for whichever badge is under `screen_pos` (camera-projected), or
+# "" if none. The badges are billboarded quads, so the world half-width along the
+# camera's right axis projects to the on-screen hit radius.
+func badge_tip_at(camera: Camera3D, screen_pos: Vector2) -> String:
+	if _badge_anchor == null or camera == null:
+		return ""
+	var half: float = BADGE_BASE_WORLD * 0.5 * badge_world_scale
+	var right: Vector3 = camera.global_transform.basis.x
+	for info in _badge_info:
+		var mi: MeshInstance3D = info["mi"]
+		if not is_instance_valid(mi):
+			continue
+		var c: Vector3 = mi.global_position
+		if camera.is_position_behind(c):
+			continue
+		var center: Vector2 = camera.unproject_position(c)
+		var edge: Vector2 = camera.unproject_position(c + right * half)
+		var r: float = maxf(8.0, center.distance_to(edge))
+		if screen_pos.distance_to(center) <= r:
+			return str(info["tip"])
+	return ""
 
 # Shared parallax shader, compiled once.
 static func _badge_shader() -> Shader:
