@@ -46,7 +46,8 @@ var is_game := false
 var game_wave_index := 0          # next wave to start in game mode (0-based)
 
 # --- speed / pause ---
-const BAR_ICON_PX := 100         # size of each graphic-only hex transport button
+const BAR_ICON_PX := 100         # pause / speed hex button size
+const WAVE_ICON_PX := 150        # wave hex button — 50% larger than the others
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -1072,40 +1073,49 @@ func _build_ui() -> void:
 	vbox.add_child(bottom_spacer)
 	_build_transport(vbox)
 
-# Pause, the wave button and speed as three big graphic-only hex buttons nested
-# into a honeycomb: pause (upper-left) and speed (upper-right) sit on a row, and
-# the wave button drops into the notch between them. The SVG hex art is drawn in a
-# 240-unit viewBox; an edge-sharing neighbour is offset by (±168, 97) of those
-# units, so scaling that offset by the display size keeps the three hexes flush.
+# Pause, the wave button and speed as graphic-only hex buttons nested into a
+# honeycomb: the (larger) wave hex sits on top, with pause tucked under its
+# lower-left edge and speed under its lower-right edge. The SVG hex art is drawn
+# in a 240-unit viewBox; a smaller hex sits flush against a larger one's slanted
+# edge when its right/left point meets the big hex's bottom corner, so the offsets
+# below are derived straight from those vertex coordinates and hold at any size.
 func _build_transport(parent: Control) -> void:
 	var d := float(BAR_ICON_PX)
-	var f := d / 240.0
-	var ox := 168.0 * f
-	var oy := 97.0 * f
+	var dw := float(WAVE_ICON_PX)
+	var fs := d / 240.0
+	var fw := dw / 240.0
+	var row_y := 217.0 * fw - 120.0 * fs          # pause/speed drop so their side point meets the wave's bottom corner
+	var pause_pos := Vector2(0.0, row_y)
+	var wave_pos := Vector2(232.0 * fs - 64.0 * fw, 0.0)
+	var speed_pos := Vector2(112.0 * fw + 224.0 * fs, row_y)
 	var honeycomb := Control.new()
-	honeycomb.custom_minimum_size = Vector2(2.0 * ox + d, oy + d)
+	honeycomb.custom_minimum_size = Vector2(speed_pos.x + d, row_y + d)
 	honeycomb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	parent.add_child(honeycomb)
 
-	pause_button = _make_hex_button(honeycomb, Vector2(0, 0), d)
+	# Pause/speed first, wave last so the big hex draws on top at the shared edges.
+	pause_button = _make_hex_button(honeycomb, pause_pos, d)
 	pause_button.texture_normal = _load_icon("pause")
+	_apply_hex_click_mask(pause_button)
 	pause_button.tooltip_text = "Pause / Resume"
 	pause_button.pressed.connect(_on_pause_pressed)
 
-	speed_button = _make_hex_button(honeycomb, Vector2(2.0 * ox, 0), d)
+	speed_button = _make_hex_button(honeycomb, speed_pos, d)
 	speed_button.texture_normal = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
+	_apply_hex_click_mask(speed_button)
 	speed_button.tooltip_text = "Game speed"
 	speed_button.pressed.connect(_on_speed_pressed)
 
-	wave_button = _make_hex_button(honeycomb, Vector2(ox, oy), d)
+	wave_button = _make_hex_button(honeycomb, wave_pos, dw)
 	wave_button.texture_normal = _load_icon("wave_start")
+	_apply_hex_click_mask(wave_button)
 	wave_button.tooltip_text = "Start the next wave"
 	wave_button.pressed.connect(_on_wave_button_pressed)
 	wave_num_label = Label.new()
 	wave_num_label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	wave_num_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	wave_num_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	wave_num_label.add_theme_font_size_override("font_size", int(d * 0.30))
+	wave_num_label.add_theme_font_size_override("font_size", int(dw * 0.30))
 	wave_num_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wave_button.add_child(wave_num_label)
 
@@ -1123,6 +1133,19 @@ func _make_hex_button(parent: Control, pos: Vector2, d: float) -> TextureButton:
 	b.custom_minimum_size = Vector2(d, d)
 	parent.add_child(b)
 	return b
+
+# Restrict a hex button's clickable area to the opaque hex art, so the overlapping
+# (transparent) corners of neighbouring hex buttons don't steal each other's clicks.
+func _apply_hex_click_mask(b: TextureButton) -> void:
+	var tex: Texture2D = b.texture_normal
+	if tex == null:
+		return
+	var img := tex.get_image()
+	if img == null:
+		return
+	var bm := BitMap.new()
+	bm.create_from_image_alpha(img, 0.25)
+	b.texture_click_mask = bm
 
 func _on_tower_button_input(event: InputEvent, id: String) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
