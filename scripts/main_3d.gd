@@ -72,8 +72,12 @@ var info_label: Label
 
 # --- ability badges ---
 # A selected tower's ability icons are real world-space children of the tower
-# (built in Tower3D); Main3D only toggles them as the selection changes.
+# (built in Tower3D); Main3D only toggles them as the selection changes, and shows
+# a hover tooltip (screen-space) for whichever badge the cursor is over.
 var _badged_tower = null
+var badge_tip_layer: CanvasLayer
+var badge_tip_panel: PanelContainer
+var badge_tip_label: Label
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
@@ -97,6 +101,7 @@ func _ready() -> void:
 	_frame_camera()
 	_build_ui()
 	_build_wave_banner()
+	_build_badge_tooltip()
 	_update_labels()
 	_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
 
@@ -283,6 +288,7 @@ func _update_preview() -> void:
 		overlay.selected_ignore_walls = sel_t.data.ignore_walls
 	overlay.refresh()
 	_set_badged_tower(sel_t)
+	_update_badge_tooltip()
 	_update_target_button()
 	_update_tower_buttons()
 
@@ -665,6 +671,42 @@ func _set_badged_tower(t) -> void:
 	_badged_tower = t
 	if t != null:
 		t.set_badges_visible(true)
+	else:
+		_update_badge_tooltip()   # selection cleared -> drop any visible tip
+
+# A small screen-space tooltip panel, shown when the cursor is over one of the
+# selected tower's badges.
+func _build_badge_tooltip() -> void:
+	badge_tip_layer = CanvasLayer.new()
+	badge_tip_layer.layer = 5             # above the pane (2) and the wave banner (4)
+	add_child(badge_tip_layer)
+	badge_tip_panel = PanelContainer.new()
+	badge_tip_panel.visible = false
+	badge_tip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.08, 0.12, 0.95)
+	sb.set_corner_radius_all(6)
+	sb.set_content_margin_all(8)
+	badge_tip_panel.add_theme_stylebox_override("panel", sb)
+	badge_tip_label = Label.new()
+	badge_tip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge_tip_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	badge_tip_panel.add_child(badge_tip_label)
+	badge_tip_layer.add_child(badge_tip_panel)
+
+# Ask the selected tower whether a badge is under the cursor; show its tip if so.
+func _update_badge_tooltip() -> void:
+	if badge_tip_panel == null:
+		return
+	var tip := ""
+	if _badged_tower != null and is_instance_valid(_badged_tower) and camera != null and not _mouse_over_pane():
+		tip = _badged_tower.badge_tip_at(camera, get_viewport().get_mouse_position())
+	if tip == "":
+		badge_tip_panel.visible = false
+		return
+	badge_tip_label.text = tip
+	badge_tip_panel.visible = true
+	badge_tip_panel.position = get_viewport().get_mouse_position() + Vector2(16, 16)
 
 # Same controls and layout as the 2D Main.
 # CanvasLayer floats the panel above the 3D viewport.
