@@ -32,22 +32,67 @@ var _beam_mat: StandardMaterial3D
 var _beam_impact: MeshInstance3D     # bright dot at the target end
 
 # --- ability badges (real world-space children of the tower) ---
-# A row of billboarded icons hung off the (unscaled) tower root at a fixed local
-# offset, with a fixed world scale. In 3D perspective a badge's on-screen size is
-# already proportional to 1/distance — exactly like the tower — so a fixed-scale
-# world child holds a constant size ratio to the tower at every camera distance
-# with no per-frame scaling. Billboarding only reorients them; it never resizes.
+# A row of billboarded hex "windows" hung off the (unscaled) tower root at a
+# fixed local offset, fixed world scale. Each badge is a quad with a parallax
+# shader: the hex frame is fixed, and the glyph inside reveals more/less of itself
+# with camera distance (zoom_t), scaled around a per-icon focal point. The frame
+# scales with the tower (perspective handles size); only zoom_t is set per frame.
 @export var badge_world_scale: float = 1.0
+@export var cam_dist_near: float = 150.0   # camera distance at full glyph reveal (zoomed in -> zoom_t = 1)
+@export var cam_dist_far: float = 900.0    # camera distance at minimum reveal (zoomed out -> zoom_t = 0)
 var _badge_anchor: Node3D = null
-# Display order; `prop` is the TowerData flag, art is art/<file>.png (PNG first).
+var _badge_mats: Array = []          # ShaderMaterial per live badge (zoom_t updated per frame)
+# Display order. `prop` is the TowerData flag; art is art/<file>_{glyph,backplate,rim}.png.
+# focal/reveal_* drive the per-icon parallax window (see ABILITY_BADGE_PARALLAX_SPEC).
 const ABILITY_BADGES := [
-	{"prop": "bit_corruption", "file": "bit_corruption"},
-	{"prop": "cipher", "file": "cipher"},
-	{"prop": "buffer_overflow", "file": "buffer_overflow"},
-	{"prop": "ignore_walls", "file": "tunneling"},
+	{"prop": "bit_corruption", "file": "bit_corruption", "focal_x": 0.50, "focal_y": 0.50, "reveal_out": 0.55, "reveal_in": 1.0, "reveal_rate": 1.0},
+	{"prop": "cipher", "file": "cipher", "focal_x": 0.48, "focal_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.0, "reveal_rate": 1.0},
+	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_x": 0.66, "focal_y": 0.34, "reveal_out": 0.50, "reveal_in": 1.0, "reveal_rate": 1.0},
+	{"prop": "ignore_walls", "file": "tunneling", "focal_x": 0.84, "focal_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.0, "reveal_rate": 1.0},
 ]
-const BADGE_BASE_WORLD := 30.0       # badge edge length (world units) at scale 1.0; sized to read at normal zoom (tune via badge_world_scale)
-static var _badge_tex := {}          # icon file base -> Texture2D (shared cache, caches misses)
+const BADGE_BASE_WORLD := 30.0       # frame edge length (world units) at scale 1.0; tune via badge_world_scale
+static var _badge_tex := {}          # texture file base -> Texture2D (shared cache, caches misses)
+static var _badge_shader_res: Shader = null
+const _BADGE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled;
+
+uniform sampler2D glyph_tex : source_color;
+uniform sampler2D backplate_tex : source_color;
+uniform sampler2D rim_tex : source_color;
+uniform vec2 focal_point = vec2(0.5, 0.5);
+uniform float reveal_out = 0.5;
+uniform float reveal_in = 1.0;
+uniform float reveal_rate = 1.0;
+uniform float zoom_t = 0.0;
+
+void vertex() {
+	// Billboard the quad to face the camera while preserving its world scale.
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
+		INV_VIEW_MATRIX[0] * length(MODEL_MATRIX[0]),
+		INV_VIEW_MATRIX[1] * length(MODEL_MATRIX[1]),
+		INV_VIEW_MATRIX[2] * length(MODEL_MATRIX[2]),
+		MODEL_MATRIX[3]);
+}
+
+void fragment() {
+	float k = pow(clamp(zoom_t, 0.0, 1.0), reveal_rate);
+	float w = mix(reveal_out, reveal_in, k);          // window width fraction
+	vec2 guv = focal_point + (UV - 0.5) * w;          // sample window around focal
+	vec4 glyph = texture(glyph_tex, guv);
+	if (guv.x < 0.0 || guv.x > 1.0 || guv.y < 0.0 || guv.y > 1.0) {
+		glyph.a = 0.0;
+	}
+	vec4 back = texture(backplate_tex, UV);
+	vec4 rim = texture(rim_tex, UV);
+	vec3 col = back.rgb;
+	float gin = glyph.a * back.a;                     // clip glyph to hex interior
+	col = mix(col, glyph.rgb, gin);
+	col = mix(col, rim.rgb, rim.a);
+	ALBEDO = col;
+	ALPHA = max(max(back.a, gin), rim.a);
+}
+"""
 
 const LASER_START_FRAC := 0.1
 const BEAM_GLOW := 2.2
@@ -226,6 +271,8 @@ func _process(delta: float) -> void:
 			_process_laser(delta)
 		_:
 			_process_targeted(delta)
+	if _badge_anchor != null and not _badge_mats.is_empty():
+		_update_badge_zoom()
 
 func _process_targeted(delta: float) -> void:
 	_cooldown -= delta
@@ -630,52 +677,92 @@ func _clear_badges() -> void:
 	if _badge_anchor != null and is_instance_valid(_badge_anchor):
 		_badge_anchor.queue_free()
 	_badge_anchor = null
+	_badge_mats.clear()
 
 func _build_badges() -> void:
 	if data == null:
 		return
-	# One badge per ability flag that is true (skip flags whose art is missing so
-	# the row stays gapless), in display order.
-	var texes: Array = []
+	# One badge per ability flag that is true; skip any whose textures are missing
+	# so the row stays gapless. Display order follows ABILITY_BADGES.
+	var mats: Array = []
 	for entry in ABILITY_BADGES:
 		var prop: String = entry["prop"]
 		if not bool(data.get(prop)):
 			continue
-		var tex := _badge_texture(str(entry["file"]))
-		if tex != null:
-			texes.append(tex)
-	if texes.is_empty():
+		var mat := _make_badge_material(entry)
+		if mat != null:
+			mats.append(mat)
+	if mats.is_empty():
 		return
-	# The anchor hangs off the tower ROOT (which is never scaled — only `_body`
-	# is), so it never inherits the tower's height/width scale. Its world scale is
-	# fixed once here; perspective does the rest, so there is no per-frame code.
+	# The anchor hangs off the tower ROOT (never scaled — only `_body` is), so it
+	# never inherits the tower's height/width scale. Its world scale is fixed once;
+	# the parallax shader only reads zoom_t each frame, so the badges never swim.
 	_badge_anchor = Node3D.new()
 	_badge_anchor.position = Vector3(0.0, 4.0, GameBoard3D.TOWER_RADIUS * 1.4)
 	_badge_anchor.scale = Vector3.ONE * badge_world_scale
 	add_child(_badge_anchor)
-	var n := texes.size()
+	var n := mats.size()
 	var spacing := BADGE_BASE_WORLD * 1.15
 	var start_x := -spacing * float(n - 1) * 0.5
 	for i in range(n):
-		var sp := Sprite3D.new()
-		sp.texture = texes[i]
-		# Self-contained art: just the PNG, billboarded, no panel/tint behind it.
-		sp.pixel_size = BADGE_BASE_WORLD / 512.0
-		sp.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		sp.shaded = false
-		sp.no_depth_test = true
-		sp.render_priority = 8
-		sp.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		sp.position = Vector3(start_x + spacing * float(i), 0.0, 0.0)
-		_badge_anchor.add_child(sp)
+		var mat: ShaderMaterial = mats[i]
+		var mesh := QuadMesh.new()
+		mesh.size = Vector2(BADGE_BASE_WORLD, BADGE_BASE_WORLD)
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.material_override = mat
+		mi.position = Vector3(start_x + spacing * float(i), 0.0, 0.0)
+		_badge_anchor.add_child(mi)
+		_badge_mats.append(mat)
 
-# Cached art lookup: art/<file>.png preferred, then .svg / .webp. Misses (null)
-# are cached too so a not-yet-added icon isn't re-probed.
+# Build the parallax material for one icon (null if any of its 3 layers is absent).
+func _make_badge_material(entry: Dictionary) -> ShaderMaterial:
+	var base: String = entry["file"]
+	var glyph := _badge_texture(base + "_glyph")
+	var backplate := _badge_texture(base + "_backplate")
+	var rim := _badge_texture(base + "_rim")
+	if glyph == null or backplate == null or rim == null:
+		return null
+	var mat := ShaderMaterial.new()
+	mat.shader = _badge_shader()
+	mat.set_shader_parameter("glyph_tex", glyph)
+	mat.set_shader_parameter("backplate_tex", backplate)
+	mat.set_shader_parameter("rim_tex", rim)
+	mat.set_shader_parameter("focal_point", Vector2(float(entry["focal_x"]), float(entry["focal_y"])))
+	mat.set_shader_parameter("reveal_out", float(entry["reveal_out"]))
+	mat.set_shader_parameter("reveal_in", float(entry["reveal_in"]))
+	mat.set_shader_parameter("reveal_rate", float(entry["reveal_rate"]))
+	mat.set_shader_parameter("zoom_t", 0.0)
+	return mat
+
+# Drive the parallax: set zoom_t (0 far .. 1 near) on every live badge material.
+# This is the only per-frame badge work and touches no transform, so nothing swims.
+func _update_badge_zoom() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var d: float = cam.global_position.distance_to(_badge_anchor.global_position)
+	var span: float = maxf(0.001, cam_dist_far - cam_dist_near)
+	var t: float = clampf((cam_dist_far - d) / span, 0.0, 1.0)
+	for m in _badge_mats:
+		m.set_shader_parameter("zoom_t", t)
+
+# Shared parallax shader, compiled once.
+static func _badge_shader() -> Shader:
+	if _badge_shader_res != null:
+		return _badge_shader_res
+	var sh := Shader.new()
+	sh.code = _BADGE_SHADER
+	_badge_shader_res = sh
+	return _badge_shader_res
+
+# Cached texture lookup: art/<file>.png (then .webp). Misses (null) are cached too
+# so a not-yet-added layer isn't re-probed.
 static func _badge_texture(file: String) -> Texture2D:
 	if _badge_tex.has(file):
 		return _badge_tex[file]
 	var tex: Texture2D = null
-	for ext in [".png", ".svg", ".webp"]:
+	for ext in [".png", ".webp"]:
 		var path := "res://art/%s%s" % [file, ext]
 		if ResourceLoader.exists(path):
 			tex = load(path)
