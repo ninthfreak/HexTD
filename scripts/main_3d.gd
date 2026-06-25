@@ -2,9 +2,9 @@ class_name Main3D
 extends Node3D
 ## 3D sandbox scene. Same game loop as the 2D Main — sandbox controls,
 ## drag-to-place towers, wave/spawn helpers — but with a 3D camera, directional
-## light, sky environment and a raycast-to-ground click model. Ability badges
-## (and their hover tooltip) are drawn as screen-space UI, projected from the
-## selected tower's world position.
+## light, sky environment and a raycast-to-ground click model. A selected tower's
+## ability badges float in a row below it, screen-projected from its world
+## position so they stay a constant on-screen size.
 
 # --- tunable game state ---
 var money := 200
@@ -69,16 +69,23 @@ var upgrade_buttons: Array = []
 var sell_button: Button
 var info_label: Label
 
-# --- ability badges (screen-space, projected from the selected tower) ---
+# --- ability badges (world-anchored, screen-projected under the selected tower) ---
+# Display-only: one self-contained PNG per ability flag that is true, in a row.
 var badge_layer: CanvasLayer
 var badge_root: Control
-var badge_tooltip: PanelContainer
-var badge_tooltip_label: Label
-var _badge_tex := {}                 # ability name -> Texture2D (cache)
-var _badge_hits: Array = []          # {center: Vector2, icon: String} for hover
-const BADGE_PX := 30.0               # badge diameter (screen px)
-const BADGE_GAP_PX := 6.0
-const BADGE_DROP_PX := 52.0          # below the tower's projected base
+var _badge_tex := {}                 # icon file base -> Texture2D (cache; stores null misses too)
+const BADGE_PX := 52.0               # on-screen badge size (px); detailed icons must stay legible
+const BADGE_GAP_PX := 8.0
+const BADGE_DROP_PX := 48.0          # below the tower's projected base
+# Ability badges in display order. `prop` is the TowerData flag; the icon is
+# art/<file>.png (PNG preferred, SVG fallback). A flag with no art is skipped,
+# and buffer_overflow lights up automatically wherever that flag is set.
+const ABILITY_BADGES := [
+	{"prop": "bit_corruption", "file": "bit_corruption"},
+	{"prop": "cipher", "file": "cipher"},
+	{"prop": "buffer_overflow", "file": "buffer_overflow"},
+	{"prop": "ignore_walls", "file": "tunneling"},
+]
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
@@ -612,7 +619,7 @@ func _mouse_over_pane() -> bool:
 # A large title that pops up and fades out when a wave starts, naming the wave.
 func _build_wave_banner() -> void:
 	var layer := CanvasLayer.new()
-	layer.layer = 4                       # above badges (3) and the pane (2)
+	layer.layer = 4                       # above the pane (2) and badges (1)
 	add_child(layer)
 	banner_label = Label.new()
 	banner_label.text = ""
@@ -648,150 +655,74 @@ func _update_banner(delta: float) -> void:
 	banner_label.modulate.a = clampf(_banner_time / BANNER_FADE, 0.0, 1.0)
 
 # ---------------------------------------------------------------- ability badges
-# The 2D BoardOverlay drew circular ability badges below the selected tower; in
-# 3D we keep them as screen-space UI (the icons are flat SVGs) and project the
-# tower's world position to the screen each frame so they track the camera.
+# When a tower is selected, its ability icons float in a centered row just below
+# it. Implemented as screen-projected UI so they always face the camera and hold a
+# constant on-screen size regardless of zoom/distance. Display only — no input.
 func _build_badge_layer() -> void:
 	badge_layer = CanvasLayer.new()
-	badge_layer.layer = 3                 # above the right-pane panel (layer 2)
+	badge_layer.layer = 1                 # over the 3D world, under the right pane (2)
 	add_child(badge_layer)
 	badge_root = Control.new()
 	badge_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	badge_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge_layer.add_child(badge_root)
-	# Tooltip lives above the badges (added after badge_root so it draws on top).
-	badge_tooltip = PanelContainer.new()
-	badge_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge_tooltip.visible = false
-	var tip_sb := StyleBoxFlat.new()
-	tip_sb.bg_color = Color(0.06, 0.08, 0.12, 0.95)
-	tip_sb.set_corner_radius_all(6)
-	tip_sb.set_content_margin_all(8)
-	badge_tooltip.add_theme_stylebox_override("panel", tip_sb)
-	badge_tooltip_label = Label.new()
-	badge_tooltip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge_tooltip_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	badge_tooltip.add_child(badge_tooltip_label)
-	badge_layer.add_child(badge_tooltip)
 
-# Rebuild the badge row for the selected tower (cleared + redrawn each frame so
-# the badges follow the tower as the camera pans/zooms).
+# Rebuild the badge row for the selected tower (cleared + rebuilt each frame so it
+# tracks the tower as the camera pans/zooms). Cleared and left empty on deselect.
 func _update_badges(sel_t) -> void:
 	if badge_root == null:
 		return
 	for c in badge_root.get_children():
 		c.queue_free()
-	_badge_hits.clear()
 	if sel_t == null:
-		badge_tooltip.visible = false
 		return
-	var icons := _tower_ability_icons(sel_t)
-	if icons.is_empty():
-		badge_tooltip.visible = false
+	# Collect a texture for each ability the tower has, in display order. Flags whose
+	# art is missing are skipped so the row stays gapless and centered.
+	var texes: Array = []
+	for entry in ABILITY_BADGES:
+		var prop: String = entry["prop"]
+		if not bool(sel_t.data.get(prop)):
+			continue
+		var tex := _badge_texture(str(entry["file"]))
+		if tex != null:
+			texes.append(tex)
+	if texes.is_empty():
 		return
+	# Anchor the row under the selected tower's base, projected to the screen.
 	var wc: Vector2 = board.cell_center_world(selected_cell)
 	var world := Vector3(wc.x, GameBoard3D.COPPER_TOP, wc.y)
 	if camera == null or camera.is_position_behind(world):
-		badge_tooltip.visible = false
 		return
 	var sp: Vector2 = camera.unproject_position(world)
-	var n := icons.size()
+	var n := texes.size()
 	var step := BADGE_PX + BADGE_GAP_PX
 	var start_x := sp.x - step * float(n - 1) * 0.5
 	var y := sp.y + BADGE_DROP_PX
 	for i in range(n):
-		var icon := str(icons[i])
-		var cx := start_x + step * float(i)
-		var b := _make_badge(icon)
-		b.position = Vector2(cx - BADGE_PX * 0.5, y - BADGE_PX * 0.5)
-		badge_root.add_child(b)
-		_badge_hits.append({"center": Vector2(cx, y), "icon": icon})
-	_update_badge_tooltip()
-
-# One circular badge: a light disc with a dark rim and the centred ability icon.
-func _make_badge(icon: String) -> Control:
-	var p := Panel.new()
-	p.custom_minimum_size = Vector2(BADGE_PX, BADGE_PX)
-	p.size = Vector2(BADGE_PX, BADGE_PX)
-	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.93, 0.95, 0.97, 0.95)
-	sb.set_corner_radius_all(int(BADGE_PX * 0.5))
-	sb.border_color = Color(0.04, 0.06, 0.09, 0.97)
-	sb.set_border_width_all(2)
-	p.add_theme_stylebox_override("panel", sb)
-	var tex := _badge_texture(icon)
-	if tex != null:
 		var tr := TextureRect.new()
-		tr.texture = tex
+		tr.texture = texes[i]
+		# Self-contained art: just downscale the PNG, no panel/frame/tint behind it.
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
-		var pad := BADGE_PX * 0.18
-		tr.offset_left = pad
-		tr.offset_top = pad
-		tr.offset_right = -pad
-		tr.offset_bottom = -pad
+		tr.custom_minimum_size = Vector2(BADGE_PX, BADGE_PX)
+		tr.size = Vector2(BADGE_PX, BADGE_PX)
+		tr.position = Vector2(start_x + step * float(i) - BADGE_PX * 0.5, y - BADGE_PX * 0.5)
 		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		p.add_child(tr)
-	return p
+		badge_root.add_child(tr)
 
-# Cached lookup of an ability icon. Mirrors BoardOverlay._icon_texture: drop a
-# file named <ability>.{png,webp,svg} into res://art/ (PNG wins).
-func _badge_texture(name: String) -> Texture2D:
-	if _badge_tex.has(name):
-		return _badge_tex[name]
+# Cached art lookup: art/<file>.png preferred, then .svg / .webp. Misses (null)
+# are cached too so a not-yet-added icon isn't re-probed every frame.
+func _badge_texture(file: String) -> Texture2D:
+	if _badge_tex.has(file):
+		return _badge_tex[file]
 	var tex: Texture2D = null
-	for ext in [".png", ".webp", ".svg"]:
-		var path := "res://art/%s%s" % [name, ext]
+	for ext in [".png", ".svg", ".webp"]:
+		var path := "res://art/%s%s" % [file, ext]
 		if ResourceLoader.exists(path):
 			tex = load(path)
 			break
-	if tex != null:
-		_badge_tex[name] = tex
+	_badge_tex[file] = tex
 	return tex
-
-# Which ability badges a tower should show, from its effective (upgraded) stats.
-func _tower_ability_icons(t) -> Array:
-	var out := []
-	if t.data.cipher:
-		out.append("cipher")
-	if t.data.bit_corruption:
-		out.append("bit_corruption")
-	if t.data.ignore_walls:
-		out.append("tunneling")
-	return out
-
-func _ability_text(icon: String) -> String:
-	match icon:
-		"cipher":
-			return "Cipher\nSees and targets encrypted enemies."
-		"bit_corruption":
-			return "Bit corruption\nBypasses ECC damage resistance."
-		"tunneling":
-			return "Tunneling\nShots pass through walls."
-		_:
-			return ""
-
-# Show a tooltip when the cursor is over one of the selected tower's badges.
-func _update_badge_tooltip() -> void:
-	if badge_tooltip == null:
-		return
-	if _badge_hits.is_empty() or _mouse_over_pane():
-		badge_tooltip.visible = false
-		return
-	var mp: Vector2 = get_viewport().get_mouse_position()
-	var hit := ""
-	for b in _badge_hits:
-		if mp.distance_to(b["center"]) <= BADGE_PX * 0.5:
-			hit = str(b["icon"])
-			break
-	if hit == "":
-		badge_tooltip.visible = false
-		return
-	badge_tooltip_label.text = _ability_text(hit)
-	badge_tooltip.visible = true
-	badge_tooltip.position = mp + Vector2(16, 16)
 
 # Same controls and layout as the 2D Main.
 # CanvasLayer floats the panel above the 3D viewport.
