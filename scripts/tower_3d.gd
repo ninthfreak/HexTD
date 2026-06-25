@@ -46,7 +46,7 @@ const ABILITY_BADGES := [
 	{"prop": "buffer_overflow", "file": "buffer_overflow"},
 	{"prop": "ignore_walls", "file": "tunneling"},
 ]
-const BADGE_BASE_WORLD := 8.0        # badge edge length (world units) at scale 1.0
+const BADGE_BASE_WORLD := 30.0       # badge edge length (world units) at scale 1.0; sized to read at normal zoom (tune via badge_world_scale)
 static var _badge_tex := {}          # icon file base -> Texture2D (shared cache, caches misses)
 
 const LASER_START_FRAC := 0.1
