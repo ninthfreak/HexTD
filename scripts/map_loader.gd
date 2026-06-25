@@ -31,19 +31,20 @@ static func from_json(text: String) -> HexMapData:
 	for c in path:
 		on_path[c] = true
 
-	# Trace = the copper region (any width). If a map predates this field, fall
-	# back to the route so old maps behave exactly as before.
-	var trace: Array[Vector2i] = []
-	var trace_set := {}
-	if data.has("trace") and data["trace"] is Array and not data["trace"].is_empty():
-		for c in data["trace"]:
+	# Bus = the route surface region (any width). A map with no "bus" field — an
+	# old "trace"-keyed map not yet re-saved from the editor, or one that never had
+	# the field — falls back to the path so it still loads.
+	var bus: Array[Vector2i] = []
+	var bus_set := {}
+	if data.has("bus") and data["bus"] is Array and not data["bus"].is_empty():
+		for c in data["bus"]:
 			var t := HexUtils.offset_to_axial(int(c[0]), int(c[1]))
-			trace.append(t)
-			trace_set[t] = true
+			bus.append(t)
+			bus_set[t] = true
 	else:
-		trace = path.duplicate()
-		trace_set = on_path.duplicate()
-	m.trace = trace
+		bus = path.duplicate()
+		bus_set = on_path.duplicate()
+	m.bus = bus
 
 	var blocking: Array[Vector2i] = []
 	var block_set := {}
@@ -64,7 +65,7 @@ static func from_json(text: String) -> HexMapData:
 
 	var buildable: Array[Vector2i] = []
 	for c in cells:
-		if not trace_set.has(c) and not block_set.has(c):
+		if not bus_set.has(c) and not block_set.has(c):
 			buildable.append(c)
 	m.buildable = buildable
 

@@ -9,7 +9,7 @@ hex grid (the loader converts them to axial internally).
 
 ```json
 {
-  "name": "Trace 01",
+  "name": "Level 01",
   "format": "hex-oddr-pointy-v1",
   "cols": 20,
   "rows": 14,
@@ -17,7 +17,7 @@ hex grid (the loader converts them to axial internally).
   "spawn": [0, 6],
   "goal": [19, 7],
   "path":     [[0,6],[1,6],[2,6], "...ordered spawn->goal..."],
-  "trace":    [[0,6],[1,6], "..."],
+  "bus":      [[0,6],[1,6], "..."],
   "blocking": [[5,3],[5,4]],
   "cells":    [[0,6],[1,6], "...every hex on the board..."]
 }
@@ -31,7 +31,7 @@ hex grid (the loader converts them to axial internally).
 | `spawn` | `[c, r]` | **yes** | Enemy entry cell (should be `path[0]`). |
 | `goal` | `[c, r]` | **yes** | Enemy exit cell (should be the last `path` entry). |
 | `name` | string | no (`"Map"`) | Display name in the map picker. |
-| `trace` | `[[c,r], …]` | no | The copper region (non-buildable), any width. Absent/empty → falls back to `path`. Include `spawn`/`goal` here so they read as copper. |
+| `bus` | `[[c,r], …]` | no | The route surface region (non-buildable), any width. Absent/empty → falls back to `path`. Include `spawn`/`goal` here so they read as bus. |
 | `blocking` | `[[c,r], …]` | no | Line-of-sight walls. Tower targeting can't see through them (unless the tower has Tunneling); radial spokes stop on them unless `ignore_walls`. |
 | `cells` | `[[c,r], …]` | no | Every valid hex on the board. Absent → falls back to `path`. |
 | `build_color` | `"#rrggbb"` | no | Tint of the frosted "frozen smoke" build area. Absent → the default purple (`#754799`). |
@@ -41,14 +41,18 @@ hex grid (the loader converts them to axial internally).
 ## Derived (not authored)
 
 `buildable` is computed by the loader, not stored: every cell in `cells` that is
-**not** in `trace` and **not** in `blocking`. So towers may be placed on board
-cells that are off the copper route and clear of walls.
+**not** in `bus` and **not** in `blocking`. So towers may be placed on board cells
+that are off the bus route and clear of walls.
 
 ## Notes
 
 - Missing any of `path` / `spawn` / `goal` → the map is rejected (loader returns null).
-- Backward compatibility is maintained: maps that predate `trace`, `cells`, or
-  `build_color` still load (those fields fall back as described). Keep map JSON
-  parsing backward compatible when extending it.
-- The editor writes `spawn`/`goal` into both `cells` and `trace` automatically, so
-  they render as copper and are never buildable.
+- Maps that omit `bus`, `cells`, or `build_color` still load (those fields fall back
+  as described). Keep map JSON parsing backward compatible when extending it.
+- The editor writes `spawn`/`goal` into both `cells` and `bus` automatically, so they
+  render as bus and are never buildable.
+- **Legacy `trace` key:** the route region was formerly called `trace` (a PCB-trace
+  metaphor that's been dropped). The editor still reads an old `trace` key on load
+  and re-writes it as `bus` on save, so re-saving an old map migrates it. The game
+  loader reads `bus` only — an un-migrated map loads, but its route shows at path
+  width until you re-save it from the editor.

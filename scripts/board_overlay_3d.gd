@@ -8,7 +8,7 @@ extends Node3D
 
 var board                          # GameBoard3D (untyped)
 
-const HOVER_LIFT := 0.6            # how far above the copper to float overlay tiles
+const HOVER_LIFT := 0.6            # how far above the bus to float overlay tiles
 
 const RANGE_FILL := Color(0.20, 0.55, 1.00, 0.28)
 const RANGE_LINE := Color(0.20, 0.55, 1.00, 0.85)
@@ -83,14 +83,14 @@ func _draw_footprint(cell: Vector2i, base: Color, validate: bool) -> void:
 		if validate and not board.cell_free(c):
 			_draw_invalid_mark(board.cell_center_world(c))
 
-# A single flat hex tile floating just above the copper, as an unshaded
+# A single flat hex tile floating just above the bus, as an unshaded
 # transparent polygon. Used for all three overlay categories.
 func _draw_tile(cell: Vector2i, col: Color) -> void:
 	var center: Vector2 = board.cell_center_world(cell)
 	var poly: PackedVector2Array = board.hex_polygon(center)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var y: float = GameBoard3D.COPPER_TOP + HOVER_LIFT
+	var y: float = GameBoard3D.BUS_TOP + HOVER_LIFT
 	var c3 := Vector3(center.x, y, center.y)
 	var m := poly.size()
 	for i in range(m):
@@ -107,7 +107,7 @@ func _draw_tile(cell: Vector2i, col: Color) -> void:
 
 # A red X marker, drawn as two flat strips above the cell.
 func _draw_invalid_mark(center: Vector2) -> void:
-	var y: float = GameBoard3D.COPPER_TOP + HOVER_LIFT * 1.5
+	var y: float = GameBoard3D.BUS_TOP + HOVER_LIFT * 1.5
 	var r: float = GameBoard3D.HEX_SIZE * 0.55
 	var w: float = 0.6
 	var col := Color(0.06, 0.08, 0.12, 0.95)
@@ -152,7 +152,7 @@ func _draw_tower_ghost(center: Vector2, mode: String, dirs: int) -> void:
 		world_poly.append(p + center)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_emit_prism_fan(st, world_poly, GameBoard3D.COPPER_TOP + 7.0, GameBoard3D.COPPER_TOP + HOVER_LIFT)
+	_emit_prism_fan(st, world_poly, GameBoard3D.BUS_TOP + 7.0, GameBoard3D.BUS_TOP + HOVER_LIFT)
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()

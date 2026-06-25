@@ -17,7 +17,7 @@ decision record, status, and open assumptions — start there.**
   (e.g. a restricted cloud sandbox), then GDScript is written and reasoned through
   but **NOT runtime-tested** — say so explicitly when delivering changes.
 - `node` and `python` are available for offline testing. Unit-test editor logic,
-  hex math, the copper clip-tile rule, and path smoothing that way rather than
+  hex math, the bus clip-tile rule, and path smoothing that way rather than
   guessing — these are pure functions and don't need Godot.
 
 ## GDScript rules
