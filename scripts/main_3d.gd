@@ -665,11 +665,12 @@ func _on_speed_pressed() -> void:
 	speed_button.icon = _load_icon("speed_%dx" % int(speed_steps[speed_index]))
 
 # Pause freezes everything by zeroing the engine time scale (all _process delta
-# is scaled by it). Resuming restores the current speed multiplier. Driven by the
-# toggle button's pressed state, which doubles as the paused/running indicator.
-func _on_pause_toggled(pressed: bool) -> void:
-	paused = pressed
+# is scaled by it). Resuming restores the current speed multiplier. The icon
+# swaps to the play glyph while paused so the button reads as "resume".
+func _on_pause_pressed() -> void:
+	paused = not paused
 	Engine.time_scale = 0.0 if paused else speed_steps[speed_index]
+	pause_button.icon = _load_icon("play" if paused else "pause")
 
 func _on_sound_pressed() -> void:
 	sound_on = not sound_on
@@ -1030,13 +1031,14 @@ func _build_ui() -> void:
 	vbox.add_child(transport)
 
 	pause_button = Button.new()
-	pause_button.toggle_mode = true     # stays "pressed" while paused (no separate resume art)
+	# Icon shows the action the button performs: pause while running, play while
+	# paused. Momentary (not toggle) so it doesn't sit visually depressed.
 	pause_button.icon = _load_icon("pause")
 	pause_button.expand_icon = true
 	pause_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pause_button.custom_minimum_size = Vector2(0, 48)
 	pause_button.tooltip_text = "Pause / Resume"
-	pause_button.toggled.connect(_on_pause_toggled)
+	pause_button.pressed.connect(_on_pause_pressed)
 	transport.add_child(pause_button)
 
 	speed_button = Button.new()
