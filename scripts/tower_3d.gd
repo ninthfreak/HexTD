@@ -32,14 +32,13 @@ var _beam_mat: StandardMaterial3D
 var _beam_impact: MeshInstance3D     # bright dot at the target end
 
 # --- ability badges (real world-space children of the tower) ---
-# A row of billboarded icons hung off an identity-scale anchor below the tower.
-# They ride the camera natively (no per-frame repositioning); only their scale is
-# soft-clamped so they never shrink to nothing when the camera pulls far back.
-@export var badge_world_scale: float = 1.0    # constant world scale while in the normal/zoomed-in band
-@export var clamp_distance: float = 600.0     # camera distance past which on-screen size freezes (3D analog of the spec's clamp_zoom)
+# A row of billboarded icons hung off the (unscaled) tower root at a fixed local
+# offset, with a fixed world scale. In 3D perspective a badge's on-screen size is
+# already proportional to 1/distance — exactly like the tower — so a fixed-scale
+# world child holds a constant size ratio to the tower at every camera distance
+# with no per-frame scaling. Billboarding only reorients them; it never resizes.
+@export var badge_world_scale: float = 1.0
 var _badge_anchor: Node3D = null
-var _badges_built := false
-var _last_cam_d := -1.0
 # Display order; `prop` is the TowerData flag, art is art/<file>.png (PNG first).
 const ABILITY_BADGES := [
 	{"prop": "bit_corruption", "file": "bit_corruption"},
@@ -227,8 +226,6 @@ func _process(delta: float) -> void:
 			_process_laser(delta)
 		_:
 			_process_targeted(delta)
-	if _badges_built:
-		_update_badge_scale()
 
 func _process_targeted(delta: float) -> void:
 	_cooldown -= delta
@@ -633,7 +630,6 @@ func _clear_badges() -> void:
 	if _badge_anchor != null and is_instance_valid(_badge_anchor):
 		_badge_anchor.queue_free()
 	_badge_anchor = null
-	_badges_built = false
 
 func _build_badges() -> void:
 	if data == null:
@@ -651,9 +647,11 @@ func _build_badges() -> void:
 	if texes.is_empty():
 		return
 	# The anchor hangs off the tower ROOT (which is never scaled — only `_body`
-	# is), so it inherits identity scale; its own scale is the soft clamp below.
+	# is), so it never inherits the tower's height/width scale. Its world scale is
+	# fixed once here; perspective does the rest, so there is no per-frame code.
 	_badge_anchor = Node3D.new()
 	_badge_anchor.position = Vector3(0.0, 4.0, GameBoard3D.TOWER_RADIUS * 1.4)
+	_badge_anchor.scale = Vector3.ONE * badge_world_scale
 	add_child(_badge_anchor)
 	var n := texes.size()
 	var spacing := BADGE_BASE_WORLD * 1.15
@@ -670,28 +668,6 @@ func _build_badges() -> void:
 		sp.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		sp.position = Vector3(start_x + spacing * float(i), 0.0, 0.0)
 		_badge_anchor.add_child(sp)
-	_badges_built = true
-	_last_cam_d = -1.0
-	_update_badge_scale()
-
-# Soft-clamp the badge anchor's scale (never its position). In the normal /
-# zoomed-in band the badges hold a constant world scale (ride the world 1:1); once
-# the camera is farther than `clamp_distance` the scale grows with distance so the
-# on-screen size freezes at a floor. Recomputed only when the distance changes.
-func _update_badge_scale() -> void:
-	if _badge_anchor == null:
-		return
-	var cam := get_viewport().get_camera_3d()
-	if cam == null:
-		return
-	var d := cam.global_position.distance_to(_badge_anchor.global_position)
-	if absf(d - _last_cam_d) < 0.5:
-		return
-	_last_cam_d = d
-	var s := badge_world_scale
-	if d > clamp_distance:
-		s = badge_world_scale * (d / clamp_distance)
-	_badge_anchor.scale = Vector3(s, s, s)
 
 # Cached art lookup: art/<file>.png preferred, then .svg / .webp. Misses (null)
 # are cached too so a not-yet-added icon isn't re-probed.
