@@ -39,9 +39,16 @@ var min_distance := 120.0
 var max_distance := 1600.0
 var pan_speed := 600.0
 
-# --- speed ---
+# --- mode ---
+# "game" plays the waves in order with a manual break between each (no cheats,
+# no free spawning, no camera readout); "sandbox" exposes the full toolbox.
+var is_game := false
+var game_wave_index := 0          # next wave to start in game mode (0-based)
+
+# --- speed / pause ---
 var speed_steps := [1.0, 2.0, 3.0]
 var speed_index := 0
+var paused := false
 
 # --- wave runtime (absolute-timeline) ---
 var _spawn_timeline: Array = []   # sorted {time, type} from WaveLoader.build_timeline
@@ -63,6 +70,8 @@ var enemy_select: OptionButton
 var spawn_count: SpinBox
 var _enemy_ids: Array = []
 var speed_button: Button
+var pause_button: Button
+var start_next_button: Button        # game mode: start the next wave
 var sound_button: Button
 var sound_on := true
 var target_button: Button
@@ -84,6 +93,7 @@ var _art_cache := {}                  # art file base -> Texture2D
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
+	is_game = GameState.mode == "game"
 	content = GameContent.new()
 	map = Levels.get_by_path(GameState.selected_path)
 
@@ -106,7 +116,10 @@ func _ready() -> void:
 	_build_wave_banner()
 	_build_badge_tooltip()
 	_update_labels()
-	_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
+	if is_game:
+		_set_info("Build towers, then start each wave when you're ready.")
+	else:
+		_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
 
 # ---------------------------------------------------------------- environment & camera
 # A directional sun + a procedural sky. The shiny bus / clearcoat-mask
@@ -226,6 +239,8 @@ func _process(delta: float) -> void:
 			_spawn_enemy(entry["type"])
 		if _spawn_timeline.is_empty():
 			_wave_running = false
+	if is_game:
+		_update_start_next_button()
 	_update_banner(delta)
 	_camera_keys(delta)
 	_update_preview()
@@ -589,6 +604,50 @@ func _on_start_pressed() -> void:
 	_show_wave_banner(banner_text)
 	_set_info("Started wave %s." % wname)
 
+# Game mode: waves run strictly in order with a manual break between each. The
+# next wave can only be started once the current one has finished spawning and
+# the board is clear of enemies.
+func _can_start_next() -> bool:
+	return not _wave_running and _spawn_timeline.is_empty() \
+		and board.enemies.is_empty() and game_wave_index < waves.size()
+
+func _on_start_next_pressed() -> void:
+	if not _can_start_next():
+		return
+	var wi: int = game_wave_index
+	var wave: Dictionary = waves[wi]
+	var timeline: Array = WaveLoader.build_timeline(wave, default_gap)
+	game_wave_index += 1
+	if timeline.is_empty():
+		return
+	_spawn_timeline = timeline
+	_wave_clock = 0.0
+	_wave_running = true
+	var wname: String = WaveLoader.wave_name(wave, wi)
+	var nm = wave.get("name", "")
+	var banner_text: String = wname if (nm is String and nm != "") else "Wave %d" % (wi + 1)
+	_show_wave_banner(banner_text)
+	_set_info("Started wave %s." % wname)
+
+# Reflect the current wave state in the button: ready between waves, locked while
+# a wave is live, and a terminal message once every wave has been cleared.
+func _update_start_next_button() -> void:
+	if start_next_button == null:
+		return
+	if game_wave_index >= waves.size():
+		start_next_button.disabled = true
+		if not _wave_running and _spawn_timeline.is_empty() and board.enemies.is_empty():
+			start_next_button.text = "All Waves Cleared!"
+		else:
+			start_next_button.text = "Final Wave…"
+		return
+	if _can_start_next():
+		start_next_button.disabled = false
+		start_next_button.text = "Start Wave %d" % (game_wave_index + 1)
+	else:
+		start_next_button.disabled = true
+		start_next_button.text = "Wave %d in progress…" % game_wave_index
+
 func _on_enemy_bounty(amount: int) -> void:
 	money += amount
 	_update_labels()
@@ -600,8 +659,21 @@ func _on_enemy_reached_goal() -> void:
 # ---------------------------------------------------------------- sandbox controls
 func _on_speed_pressed() -> void:
 	speed_index = (speed_index + 1) % speed_steps.size()
-	Engine.time_scale = speed_steps[speed_index]
+	# While paused, just remember the new speed; resuming applies it.
+	if not paused:
+		Engine.time_scale = speed_steps[speed_index]
 	speed_button.text = "Speed: %dx" % int(speed_steps[speed_index])
+
+# Pause freezes everything by zeroing the engine time scale (all _process delta
+# is scaled by it). Resuming restores the current speed multiplier.
+func _on_pause_pressed() -> void:
+	paused = not paused
+	if paused:
+		Engine.time_scale = 0.0
+		pause_button.text = "Resume"
+	else:
+		Engine.time_scale = speed_steps[speed_index]
+		pause_button.text = "Pause"
 
 func _on_sound_pressed() -> void:
 	sound_on = not sound_on
@@ -773,7 +845,7 @@ func _build_ui() -> void:
 	margin.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "HEX TD — SANDBOX (3D)"
+	title.text = "HEX TD (3D)" if is_game else "HEX TD — SANDBOX (3D)"
 	title.add_theme_font_size_override("font_size", 18)
 	vbox.add_child(title)
 
@@ -786,93 +858,110 @@ func _build_ui() -> void:
 	vbox.add_child(money_label)
 
 	# Lives on the left, a camera-position readout right-justified on the same line
-	# (handy for dialing in how things look at different zoom distances).
+	# (handy for dialing in how things look at different zoom distances). The camera
+	# readout is a sandbox-only diagnostic — game mode shows just the lives.
 	var stat_row := HBoxContainer.new()
 	lives_label = Label.new()
 	lives_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stat_row.add_child(lives_label)
-	cam_label = Label.new()
-	cam_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	cam_label.modulate = Color(1, 1, 1, 0.55)
-	cam_label.add_theme_font_size_override("font_size", 12)
-	stat_row.add_child(cam_label)
+	if not is_game:
+		cam_label = Label.new()
+		cam_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		cam_label.modulate = Color(1, 1, 1, 0.55)
+		cam_label.add_theme_font_size_override("font_size", 12)
+		stat_row.add_child(cam_label)
 	vbox.add_child(stat_row)
 
 	vbox.add_child(HSeparator.new())
 
-	# "Start wave" and "Spawn enemies" used to stack on top of each other; they
-	# now live in two tabs so only one set of controls shows at a time.
-	var sandbox_tabs := TabContainer.new()
-	# Fixed height (taller than either tab's content) so switching tabs doesn't
-	# resize the container and shove the controls below it up or down. Fill the
-	# pane width so the active tab's content can never widen the whole pane.
-	sandbox_tabs.custom_minimum_size = Vector2(0, 170)
-	sandbox_tabs.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	sandbox_tabs.size_flags_horizontal = Control.SIZE_FILL
-	sandbox_tabs.clip_contents = true
-	vbox.add_child(sandbox_tabs)
+	if is_game:
+		# Game mode: a single sequential control. Waves run in order with a manual
+		# break between each — no wave picker, no free spawning.
+		start_next_button = Button.new()
+		start_next_button.disabled = waves.is_empty()
+		start_next_button.text = "Start Wave 1" if not waves.is_empty() else "No waves"
+		start_next_button.custom_minimum_size = Vector2(0, 40)
+		start_next_button.pressed.connect(_on_start_next_pressed)
+		vbox.add_child(start_next_button)
+	else:
+		# "Start wave" and "Spawn enemies" used to stack on top of each other; they
+		# now live in two tabs so only one set of controls shows at a time.
+		var sandbox_tabs := TabContainer.new()
+		# Fixed height (taller than either tab's content) so switching tabs doesn't
+		# resize the container and shove the controls below it up or down. Fill the
+		# pane width so the active tab's content can never widen the whole pane.
+		sandbox_tabs.custom_minimum_size = Vector2(0, 170)
+		sandbox_tabs.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		sandbox_tabs.size_flags_horizontal = Control.SIZE_FILL
+		sandbox_tabs.clip_contents = true
+		vbox.add_child(sandbox_tabs)
 
-	var waves_tab := VBoxContainer.new()
-	waves_tab.name = "Waves"
-	waves_tab.add_theme_constant_override("separation", 8)
-	sandbox_tabs.add_child(waves_tab)
+		var waves_tab := VBoxContainer.new()
+		waves_tab.name = "Waves"
+		waves_tab.add_theme_constant_override("separation", 8)
+		sandbox_tabs.add_child(waves_tab)
 
-	wave_select = OptionButton.new()
-	# Fill the tab width and clip long names rather than letting the longest item
-	# stretch the control (which previously widened the whole pane).
-	wave_select.size_flags_horizontal = Control.SIZE_FILL
-	wave_select.clip_text = true
-	wave_select.custom_minimum_size = Vector2(0, 0)
-	for i in range(waves.size()):
-		var w: Dictionary = waves[i]
-		var wname: String = WaveLoader.wave_name(w, i)
-		wave_select.add_item(wname)
-	if waves.size() > 0:
-		wave_select.selected = 0
-	waves_tab.add_child(wave_select)
+		wave_select = OptionButton.new()
+		# Fill the tab width and clip long names rather than letting the longest item
+		# stretch the control (which previously widened the whole pane).
+		wave_select.size_flags_horizontal = Control.SIZE_FILL
+		wave_select.clip_text = true
+		wave_select.custom_minimum_size = Vector2(0, 0)
+		for i in range(waves.size()):
+			var w: Dictionary = waves[i]
+			var wname: String = WaveLoader.wave_name(w, i)
+			wave_select.add_item(wname)
+		if waves.size() > 0:
+			wave_select.selected = 0
+		waves_tab.add_child(wave_select)
 
-	var start_button := Button.new()
-	start_button.text = "Start Wave"
-	start_button.disabled = waves.is_empty()
-	start_button.pressed.connect(_on_start_pressed)
-	waves_tab.add_child(start_button)
+		var start_button := Button.new()
+		start_button.text = "Start Wave"
+		start_button.disabled = waves.is_empty()
+		start_button.pressed.connect(_on_start_pressed)
+		waves_tab.add_child(start_button)
 
-	var spawn_tab := VBoxContainer.new()
-	spawn_tab.name = "Spawn"
-	spawn_tab.add_theme_constant_override("separation", 8)
-	sandbox_tabs.add_child(spawn_tab)
+		var spawn_tab := VBoxContainer.new()
+		spawn_tab.name = "Spawn"
+		spawn_tab.add_theme_constant_override("separation", 8)
+		sandbox_tabs.add_child(spawn_tab)
 
-	enemy_select = OptionButton.new()
-	enemy_select.size_flags_horizontal = Control.SIZE_FILL
-	enemy_select.clip_text = true
-	enemy_select.custom_minimum_size = Vector2(0, 0)
-	_enemy_ids = content.enemy_ids()
-	for id in _enemy_ids:
-		enemy_select.add_item(content.enemy(str(id)).display_name)
-	if _enemy_ids.size() > 0:
-		enemy_select.selected = 0
-	spawn_tab.add_child(enemy_select)
+		enemy_select = OptionButton.new()
+		enemy_select.size_flags_horizontal = Control.SIZE_FILL
+		enemy_select.clip_text = true
+		enemy_select.custom_minimum_size = Vector2(0, 0)
+		_enemy_ids = content.enemy_ids()
+		for id in _enemy_ids:
+			enemy_select.add_item(content.enemy(str(id)).display_name)
+		if _enemy_ids.size() > 0:
+			enemy_select.selected = 0
+		spawn_tab.add_child(enemy_select)
 
-	var count_row := HBoxContainer.new()
-	count_row.size_flags_horizontal = Control.SIZE_FILL
-	var count_label := Label.new()
-	count_label.text = "Count"
-	count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	count_row.add_child(count_label)
-	spawn_count = SpinBox.new()
-	spawn_count.min_value = 1
-	spawn_count.max_value = 100
-	spawn_count.step = 1
-	spawn_count.value = 5
-	spawn_count.custom_minimum_size = Vector2(0, 0)
-	count_row.add_child(spawn_count)
-	spawn_tab.add_child(count_row)
+		var count_row := HBoxContainer.new()
+		count_row.size_flags_horizontal = Control.SIZE_FILL
+		var count_label := Label.new()
+		count_label.text = "Count"
+		count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		count_row.add_child(count_label)
+		spawn_count = SpinBox.new()
+		spawn_count.min_value = 1
+		spawn_count.max_value = 100
+		spawn_count.step = 1
+		spawn_count.value = 5
+		spawn_count.custom_minimum_size = Vector2(0, 0)
+		count_row.add_child(spawn_count)
+		spawn_tab.add_child(count_row)
 
-	var spawn_button := Button.new()
-	spawn_button.text = "Spawn"
-	spawn_button.disabled = _enemy_ids.is_empty()
-	spawn_button.pressed.connect(_on_spawn_pressed)
-	spawn_tab.add_child(spawn_button)
+		var spawn_button := Button.new()
+		spawn_button.text = "Spawn"
+		spawn_button.disabled = _enemy_ids.is_empty()
+		spawn_button.pressed.connect(_on_spawn_pressed)
+		spawn_tab.add_child(spawn_button)
+
+	pause_button = Button.new()
+	pause_button.text = "Pause"
+	pause_button.pressed.connect(_on_pause_pressed)
+	vbox.add_child(pause_button)
 
 	speed_button = Button.new()
 	speed_button.text = "Speed: 1x"
@@ -884,10 +973,11 @@ func _build_ui() -> void:
 	sound_button.pressed.connect(_on_sound_pressed)
 	vbox.add_child(sound_button)
 
-	var cheat_button := Button.new()
-	cheat_button.text = "Cheat: +%d funds" % cheat_amount
-	cheat_button.pressed.connect(_on_cheat_pressed)
-	vbox.add_child(cheat_button)
+	if not is_game:
+		var cheat_button := Button.new()
+		cheat_button.text = "Cheat: +%d funds" % cheat_amount
+		cheat_button.pressed.connect(_on_cheat_pressed)
+		vbox.add_child(cheat_button)
 
 	var exit_button := Button.new()
 	exit_button.text = "Exit to map select"
