@@ -9,7 +9,7 @@ signal reached_goal()
 signal split(lesser, placements)   # decayed into >1 lesser enemy: spawn the extras
 
 const TURN_RATE := 9.0         # how quickly the body swings to face travel
-const SPEED_MULT := 2.0        # global travel-speed multiplier applied to data.speed (JSON values stay as authored)
+const SPEED_MULT := 2.5        # global travel-speed multiplier applied to data.speed (JSON values stay as authored)
 const ECC_RESIST := 0.9        # ECC enemies block this fraction of damage (0.9 = 90%) unless the tower has Bit Corruption
 const GLOW_HDR_BOOST := 0.9    # body brightness = 1 + glow * this; >1.0 is what the HDR glow blooms
 

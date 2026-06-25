@@ -11,7 +11,7 @@ signal reached_goal()
 signal split(lesser, placements)
 
 const TURN_RATE := 9.0
-const SPEED_MULT := 2.0         # global travel-speed multiplier applied to data.speed (JSON values stay as authored)
+const SPEED_MULT := 2.5         # global travel-speed multiplier applied to data.speed (JSON values stay as authored)
 const ECC_RESIST := 0.9
 const GLOW_HDR_BOOST := 0.9
 const BODY_HEIGHT := 4.0
