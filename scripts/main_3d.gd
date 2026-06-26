@@ -51,6 +51,7 @@ const WAVE_ICON_PX := 150        # wave hex button — 50% larger than the other
 const TOWER_HEX_PX := 96         # hex build-button size
 const ICON_BTN_PX := 64          # height of the graphic-only sound/spawn/cheat hex buttons
 const TOOLTIP_BG := Color(0.02, 0.03, 0.05, 0.97)   # dark tooltip background (readability)
+const STAT_ICON_PX := 30         # money / lives glyph size in the top-left overlay
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -126,6 +127,7 @@ func _ready() -> void:
 	_frame_camera()
 	_build_ui()
 	_build_map_title()
+	_build_stats_overlay()
 	_build_wave_banner()
 	_build_badge_tooltip()
 	_update_labels()
@@ -757,6 +759,44 @@ func _mouse_over_pane() -> bool:
 	var mx := get_viewport().get_mouse_position().x
 	return mx > get_viewport().get_visible_rect().size.x - float(pane_width)
 
+# ---------------------------------------------------------------- stats overlay
+# Money and lives in the top-left corner: a glyph (money.png / lives.png) + the
+# number, outlined so they read over the board.
+func _build_stats_overlay() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 3
+	add_child(layer)
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	box.position = Vector2(14, 10)
+	box.add_theme_constant_override("separation", 4)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(box)
+	money_label = _build_stat_row(box, "money")
+	lives_label = _build_stat_row(box, "lives")
+
+func _build_stat_row(parent: Control, glyph: String) -> Label:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 7)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(row)
+	var icon := TextureRect.new()
+	icon.texture = _load_art(glyph)
+	icon.custom_minimum_size = Vector2(STAT_ICON_PX, STAT_ICON_PX)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(icon)
+	var lbl := Label.new()
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl.add_theme_constant_override("outline_size", 5)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lbl)
+	return lbl
+
 # ---------------------------------------------------------------- map title
 # The map name, bold and centred along the top of the play area (not the side bar).
 func _build_map_title() -> void:
@@ -965,23 +1005,13 @@ func _build_ui() -> void:
 	vbox.add_theme_constant_override("separation", 8)
 	margin.add_child(vbox)
 
-	money_label = Label.new()
-	vbox.add_child(money_label)
-
-	# Lives on the left, a camera-position readout right-justified on the same line
-	# (handy for dialing in how things look at different zoom distances). The camera
-	# readout is a sandbox-only diagnostic — game mode shows just the lives.
-	var stat_row := HBoxContainer.new()
-	lives_label = Label.new()
-	lives_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stat_row.add_child(lives_label)
+	# Money and lives now live in the top-left overlay (see _build_stats_overlay).
+	# The camera-position readout (a sandbox-only diagnostic) stays in the pane.
 	if not is_game:
 		cam_label = Label.new()
-		cam_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		cam_label.modulate = Color(1, 1, 1, 0.55)
 		cam_label.add_theme_font_size_override("font_size", 12)
-		stat_row.add_child(cam_label)
-	vbox.add_child(stat_row)
+		vbox.add_child(cam_label)
 
 	vbox.add_child(HSeparator.new())
 
@@ -1299,8 +1329,8 @@ func _on_tower_pressed(id: String) -> void:
 	_set_info("Placing %s — drop on a hex, or click a hex." % content.tower(id).display_name)
 
 func _update_labels() -> void:
-	money_label.text = "Money: %d" % money
-	lives_label.text = "Lives: %d" % lives
+	money_label.text = str(money)
+	lives_label.text = str(lives)
 	for b in _tower_buttons:
 		b.set_affordable(money >= b.cost)
 
