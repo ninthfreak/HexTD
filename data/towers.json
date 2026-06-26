@@ -620,7 +620,7 @@
   },
   "jammer": {
     "name": "Jammer",
-    "description": "Crowd control. Omni-Jam (360 board-wide slow), Total Lockdown (deeper, longer freeze), or Weaponized (AoE freeze + damage). Cipher at Signal T2 to jam Encrypted.",
+    "description": "Crowd control. Omni-Jam (360 board-wide reach), Throttle (deep continuous slow; Cipher at T2 to jam Encrypted), or Weaponized (AoE damage + slow).",
     "color": "#f24fbe",
     "range": 3,
     "fire_rate": 0.8,
@@ -672,7 +672,7 @@
         "tiers": [
           {
             "cost": 1500,
-            "fire_rate": 0.4,
+            "dos_slow_factor": -0.05,
             "width": 0.03,
             "height": 0.03
           },
@@ -684,22 +684,23 @@
           },
           {
             "cost": 9000,
-            "fire_rate": 0.4,
+            "dos_slow_factor": -0.1,
+            "dos_slow_time": 1.0,
             "width": 0.03,
             "height": 0.03
           },
           {
             "cost": 22500,
-            "fire_rate": 0.4,
+            "dos_slow_factor": -0.1,
+            "dos_slow_time": 1.0,
             "width": 0.03,
             "height": 0.03
           },
           {
             "cost": 50000,
-            "fire_rate": 1.0,
-            "dos_freeze": 0.5,
+            "dos_slow_factor": -0.1,
             "dos_slow_time": 2.0,
-            "dos_slow_factor": -0.25,
+            "dos_freeze": -0.5,
             "width": 0.1,
             "height": 0.1,
             "color": "#f753c4"
