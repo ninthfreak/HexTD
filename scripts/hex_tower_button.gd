@@ -79,7 +79,8 @@ func _draw() -> void:
 		outline.append(_verts[0])
 		draw_polyline(outline, base_color.lightened(0.25) if _hover else base_color, 2.5, true)
 	# Price along the bottom. The ¤ currency glyph is small in the default font, so
-	# draw it larger than the digits and centre the two as a pair.
+	# draw it larger than the digits and centre the two as a pair — vertically
+	# aligned by centring each glyph's font cell on a common line so they sit level.
 	var pcol := Color(1, 1, 1) if affordable else Color(1, 0.42, 0.42)
 	var font := get_theme_default_font()
 	var num := str(cost)
@@ -89,6 +90,8 @@ func _draw() -> void:
 	var num_w := font.get_string_size(num, HORIZONTAL_ALIGNMENT_LEFT, -1, num_fs).x
 	var gap := d * 0.02
 	var x0 := (d - (sym_w + gap + num_w)) * 0.5
-	var baseline := d * 0.88
-	draw_string(font, Vector2(x0, baseline), "¤", HORIZONTAL_ALIGNMENT_LEFT, -1, sym_fs, pcol)
-	draw_string(font, Vector2(x0 + sym_w + gap, baseline), num, HORIZONTAL_ALIGNMENT_LEFT, -1, num_fs, pcol)
+	var cy := d * 0.80
+	var sym_y := cy + (font.get_ascent(sym_fs) - font.get_descent(sym_fs)) * 0.5
+	var num_y := cy + (font.get_ascent(num_fs) - font.get_descent(num_fs)) * 0.5
+	draw_string(font, Vector2(x0, sym_y), "¤", HORIZONTAL_ALIGNMENT_LEFT, -1, sym_fs, pcol)
+	draw_string(font, Vector2(x0 + sym_w + gap, num_y), num, HORIZONTAL_ALIGNMENT_LEFT, -1, num_fs, pcol)
