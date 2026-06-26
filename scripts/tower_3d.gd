@@ -530,6 +530,9 @@ func _acquire_target():
 			"strongest":
 				key = e.data.rank
 				tie = e.progress()
+			"weakest":
+				key = -e.data.rank
+				tie = e.progress()
 			_:
 				key = e.progress()
 		if first or key > best_key or (key == best_key and tie > best_tie):
@@ -563,6 +566,9 @@ func _acquire_targets(n: int) -> Array:
 			"strongest":
 				key = e.data.rank
 				tie = e.progress()
+			"weakest":
+				key = -e.data.rank
+				tie = e.progress()
 			_:
 				key = e.progress()
 		cands.append({"e": e, "key": key, "tie": tie})
@@ -580,6 +586,8 @@ func cycle_target_priority() -> String:
 			target_priority = "last"
 		"last":
 			target_priority = "strongest"
+		"strongest":
+			target_priority = "weakest"
 		_:
 			target_priority = "first"
 	_laser_target = null

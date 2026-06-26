@@ -96,8 +96,9 @@ var wave_button: TextureButton       # honeycomb centre: starts the next wave
 var wave_num_label: Label            # next/current wave number drawn in the hex middle
 var sound_button: TextureButton
 var sound_on := true
-var target_button: Button
-var facing_button: Button
+var target_button: TextureButton
+var facing_button: TextureButton
+var _tower_control_row: HBoxContainer
 var upgrade_buttons: Array = []
 var _tower_buttons: Array = []       # HexTowerButton list (cost-affordability refresh)
 var sell_button: Button
@@ -333,8 +334,8 @@ func _update_preview() -> void:
 	overlay.refresh()
 	_set_badged_tower(sel_t)
 	_update_badge_tooltip()
+	_update_tower_control_row()
 	_update_target_button()
-	_update_facing_button()
 	_update_tower_buttons()
 
 # Cast a ray from the cursor through the camera onto the y=0 plane and
@@ -355,16 +356,16 @@ func _mouse_to_plane() -> Vector2:
 	var w := from + dir * t
 	return Vector2(w.x, w.z)
 
-func _update_target_button() -> void:
-	if not has_selected:
-		target_button.visible = false
-		return
-	var t = board.tower_at(selected_cell)
-	if t == null or t.data.fire_mode == "radial":
-		target_button.visible = false
-		return
-	target_button.visible = true
-	target_button.text = "Target: %s  (tap to change)" % _priority_label(t.target_priority)
+func _priority_art(p: String) -> String:
+	match p:
+		"last":
+			return "focus_last"
+		"strongest":
+			return "focus_strong"
+		"weakest":
+			return "focus_weak"
+		_:
+			return "focus_first"
 
 func _priority_label(p: String) -> String:
 	match p:
@@ -372,14 +373,22 @@ func _priority_label(p: String) -> String:
 			return "Last"
 		"strongest":
 			return "Strongest"
+		"weakest":
+			return "Weakest"
 		_:
 			return "First"
+
+func _update_target_button() -> void:
+	var t = board.tower_at(selected_cell) if has_selected else null
+	if t != null:
+		target_button.texture_normal = _load_art(_priority_art(t.target_priority))
+		target_button.tooltip_text = "Target: %s (tap to cycle)." % _priority_label(t.target_priority)
 
 func _on_target_pressed() -> void:
 	if not has_selected:
 		return
 	var t = board.tower_at(selected_cell)
-	if t == null or t.data.fire_mode == "radial":
+	if t == null:
 		return
 	var p: String = t.cycle_target_priority()
 	_update_target_button()
@@ -388,15 +397,11 @@ func _on_target_pressed() -> void:
 const FACING_LABELS := ["East", "South-East", "South-West", "West", "North-West", "North-East"]
 
 func _update_facing_button() -> void:
-	if not has_selected:
-		facing_button.visible = false
-		return
-	var t = board.tower_at(selected_cell)
-	if t == null:
-		facing_button.visible = false
-		return
-	facing_button.visible = true
-	facing_button.text = "Facing: %s  (tap to rotate)" % FACING_LABELS[t.facing]
+	pass
+
+func _update_tower_control_row() -> void:
+	var t = board.tower_at(selected_cell) if has_selected else null
+	_tower_control_row.visible = t != null
 
 func _on_facing_pressed() -> void:
 	if not has_selected:
@@ -405,7 +410,6 @@ func _on_facing_pressed() -> void:
 	if t == null:
 		return
 	var f: int = t.rotate_facing()
-	_update_facing_button()
 	_set_info("%s now facing: %s." % [t.data.display_name, FACING_LABELS[f]])
 
 # Upgrade/sell buttons carry a CostLabel overlay so the small ¤ glyph can be drawn
@@ -485,8 +489,8 @@ func _on_sell_pressed() -> void:
 	has_selected = false
 	_update_labels()
 	_update_tower_buttons()
+	_update_tower_control_row()
 	_update_target_button()
-	_update_facing_button()
 	_set_info("Sold %s for %d." % [nm, refund])
 
 # ---------------------------------------------------------------- input
@@ -1239,18 +1243,24 @@ func _build_ui() -> void:
 
 	vbox.add_child(HSeparator.new())
 
-	target_button = Button.new()
-	target_button.visible = false
-	target_button.custom_minimum_size = Vector2(0, 36)
-	target_button.pressed.connect(_on_target_pressed)
-	vbox.add_child(target_button)
+	_tower_control_row = HBoxContainer.new()
+	_tower_control_row.visible = false
+	_tower_control_row.add_theme_constant_override("separation", 4)
+	vbox.add_child(_tower_control_row)
 
-	facing_button = Button.new()
-	facing_button.visible = false
-	facing_button.custom_minimum_size = Vector2(0, 36)
+	target_button = TextureButton.new()
+	_style_icon_button(target_button, "focus_first")
+	target_button.tooltip_text = "Target: First (tap to cycle)."
+	target_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	target_button.pressed.connect(_on_target_pressed)
+	_tower_control_row.add_child(target_button)
+
+	facing_button = TextureButton.new()
+	_style_icon_button(facing_button, "rotate_footprint")
 	facing_button.tooltip_text = "Rotate tower facing by 60° (changes attack direction)."
+	facing_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	facing_button.pressed.connect(_on_facing_pressed)
-	vbox.add_child(facing_button)
+	_tower_control_row.add_child(facing_button)
 
 	upgrade_buttons = []
 	for s in range(3):

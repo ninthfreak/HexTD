@@ -8,13 +8,15 @@ extends RefCounted
 const _BADGES := ["bit_corruption", "buffer_overflow", "cipher", "dos", "tunneling"]
 const _LAYER_SUFFIXES := ["_glyph", "_backplate", "_rim"]
 const _HUD := ["lives", "money"]
+const _TOWER_PREFIXES := ["tower_", "focus_", "rotate_"]
 
 # Bare asset name (no extension) -> art subfolder, with trailing slash.
 # e.g. "pause" -> "ui/", "dos_glyph" -> "badges/", "tower_basic" -> "towers/",
 #      "money" -> "hud/".
 static func dir(asset: String) -> String:
-	if asset.begins_with("tower_"):
-		return "towers/"
+	for prefix in _TOWER_PREFIXES:
+		if asset.begins_with(prefix):
+			return "towers/"
 	var base: String = asset
 	for suffix in _LAYER_SUFFIXES:
 		if base.ends_with(suffix):
