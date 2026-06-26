@@ -51,7 +51,7 @@ const WAVE_ICON_PX := 150        # wave hex button — 50% larger than the other
 const TOWER_HEX_PX := 96         # hex build-button size
 const ICON_BTN_PX := 64          # height of the graphic-only sound/spawn/cheat hex buttons
 const TOOLTIP_BG := Color(0.02, 0.03, 0.05, 0.97)   # dark tooltip background (readability)
-const STAT_ICON_PX := 30         # money / lives glyph size in the top-left overlay
+const STAT_ICON_PX := 60         # money / lives glyph size in the top-left overlay
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -772,10 +772,10 @@ func _build_stats_overlay() -> void:
 	box.add_theme_constant_override("separation", 4)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(box)
-	money_label = _build_stat_row(box, "money")
-	lives_label = _build_stat_row(box, "lives")
+	lives_label = _build_stat_row(box, "lives", Color(0.93, 0.24, 0.24))
+	money_label = _build_stat_row(box, "money", Color(1.0, 0.82, 0.25))
 
-func _build_stat_row(parent: Control, glyph: String) -> Label:
+func _build_stat_row(parent: Control, glyph: String, text_col: Color) -> Label:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 7)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -789,10 +789,10 @@ func _build_stat_row(parent: Control, glyph: String) -> Label:
 	row.add_child(icon)
 	var lbl := Label.new()
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 22)
-	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+	lbl.add_theme_font_size_override("font_size", 44)
+	lbl.add_theme_color_override("font_color", text_col)
 	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl.add_theme_constant_override("outline_size", 5)
+	lbl.add_theme_constant_override("outline_size", 6)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(lbl)
 	return lbl
