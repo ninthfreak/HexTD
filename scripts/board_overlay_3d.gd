@@ -23,12 +23,14 @@ var preview_color := Color(0.4, 0.7, 1.0)
 var preview_mode := "single"
 var preview_dirs := 6
 var preview_ignore_walls := false   # Tunneling: wall-shadowed tiles are still reachable
+var preview_rotated := false        # 30° rotated hex range (taller than wide)
 
 var selected_active := false
 var selected_cell := Vector2i.ZERO
 var selected_range := 0
 var selected_color := Color(0.45, 0.75, 1.0)
 var selected_ignore_walls := false
+var selected_rotated := false
 
 var _scene_root: Node3D            # all generated meshes hang off here
 
@@ -45,10 +47,10 @@ func refresh() -> void:
 	for c in _scene_root.get_children():
 		c.queue_free()
 	if selected_active:
-		_draw_region(selected_cell, selected_range, selected_ignore_walls)
+		_draw_region(selected_cell, selected_range, selected_ignore_walls, selected_rotated)
 		_draw_footprint(selected_cell, selected_color, false)
 	if preview_active:
-		_draw_region(preview_cell, preview_range, preview_ignore_walls)
+		_draw_region(preview_cell, preview_range, preview_ignore_walls, preview_rotated)
 		_draw_footprint(preview_cell, preview_color, true)
 		var center: Vector2 = board.cell_center_world(preview_cell)
 		_draw_tower_ghost(center, preview_mode, preview_dirs)
@@ -58,8 +60,8 @@ func refresh() -> void:
 # Range disk, split by line-of-sight (visible / shadowed / blocked-by-wall).
 # Tunneling towers (ignore_walls) reach the wall-shadowed tiles too, so those are
 # drawn as in-range rather than hidden.
-func _draw_region(cell: Vector2i, n: int, ignore_walls := false) -> void:
-	var res: Dictionary = board.hexes_in_range(cell, n)
+func _draw_region(cell: Vector2i, n: int, ignore_walls := false, rotated := false) -> void:
+	var res: Dictionary = board.hexes_in_range(cell, n, rotated)
 	var fp := {}
 	for c in board.footprint(cell):
 		fp[c] = true

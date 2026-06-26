@@ -15,18 +15,11 @@ var board                            # GameBoard3D (untyped)
 var cell: Vector2i
 var pp := Vector2.ZERO               # plane position (the tower's center)
 var target_priority := "first"
-var facing := 0                      # hex-edge direction index 0–5 (E, SE, SW, W, NW, NE)
+var range_rotated := false            # false = standard (wider) hex range; true = 30° rotated (taller)
 
-# World-space angle (radians) of the facing direction, measured in the 2D pixel
-# plane (atan2(dy, dx)).  Direction 0 = East (0°), 1 = SE (60°), etc.
-func facing_angle() -> float:
-	return facing * TAU / 6.0
-
-# Rotate clockwise by one step (60°). Returns the new facing index.
-func rotate_facing() -> int:
-	facing = (facing + 1) % 6
-	_sync_transform()
-	return facing
+func toggle_range_rotation() -> bool:
+	range_rotated = not range_rotated
+	return range_rotated
 
 var _cooldown := 0.0
 var _laser_target = null
@@ -171,9 +164,6 @@ func setup(d: TowerData, b, pos_plane: Vector2) -> void:
 
 func _sync_transform() -> void:
 	position = Vector3(pp.x, GameBoard3D.BUS_TOP, pp.y)
-	# Hex pixel angle → Godot Y-axis rotation (positive Y-rot goes from +X toward -Z,
-	# so negate the plane angle).
-	rotation.y = -facing_angle()
 
 # ---------------------------------------------------------------- upgrades (ported)
 const SELL_REFUND := 0.75
@@ -380,21 +370,28 @@ func _fire_arc(t) -> void:
 	w.dos_slow_factor = data.dos_slow_factor
 	board.add_projectile(w)
 
+func _cell_in_range(target_cell: Vector2i) -> bool:
+	var reach: int = board.tower_reach(data.range_tiles)
+	if range_rotated:
+		var dq: int = target_cell.x - cell.x
+		var dr: int = target_cell.y - cell.y
+		return HexUtils.in_rotated_range(dq, dr, reach)
+	return HexUtils.axial_distance(cell, target_cell) <= reach
+
 func _any_enemy_in_range() -> bool:
 	for e in board.enemies:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
 			continue
-		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) <= board.tower_reach(data.range_tiles):
+		if _cell_in_range(board.world_cell(e.pp)):
 			return true
 	return false
 
 func _fire_volley() -> void:
 	var n: int = maxi(1, data.directions)
-	var base_ang := facing_angle()
 	for i in range(n):
-		var ang := base_ang + TAU * float(i) / float(n)
+		var ang := TAU * float(i) / float(n)
 		var p := RadialProjectile3D.new()
 		p.setup(pp, Vector2(cos(ang), sin(ang)), data.damage, data.projectile_speed,
 				cell, board.tower_reach(data.range_tiles), data.color, board)
@@ -484,7 +481,7 @@ func _fill_hum() -> void:
 func _target_still_valid(t) -> bool:
 	if t == null or not is_instance_valid(t):
 		return false
-	if HexUtils.axial_distance(cell, board.world_cell(t.pp)) > board.tower_reach(data.range_tiles):
+	if not _cell_in_range(board.world_cell(t.pp)):
 		return false
 	return data.ignore_walls or board.has_los(pp, t.pp)
 
@@ -504,7 +501,7 @@ func _acquire_target():
 			continue
 		if not _can_see(e):
 			continue
-		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
+		if not _cell_in_range(board.world_cell(e.pp)):
 			continue
 		if not data.ignore_walls and not board.has_los(pp, e.pp):
 			continue
@@ -538,7 +535,7 @@ func _acquire_targets(n: int) -> Array:
 			continue
 		if not _can_see(e):
 			continue
-		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
+		if not _cell_in_range(board.world_cell(e.pp)):
 			continue
 		if not data.ignore_walls and not board.has_los(pp, e.pp):
 			continue
