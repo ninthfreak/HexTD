@@ -52,6 +52,7 @@ const TOWER_HEX_PX := 96         # hex build-button size
 const ICON_BTN_PX := 64          # height of the graphic-only sound/spawn/cheat hex buttons
 const TOOLTIP_BG := Color(0.02, 0.03, 0.05, 0.97)   # dark tooltip background (readability)
 const STAT_ICON_PX := 60         # money / lives glyph size in the top-left overlay
+const COST_SYM_FS := 26          # enlarged ¤ size inside upgrade/sell button text
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -371,6 +372,34 @@ func _on_target_pressed() -> void:
 	_update_target_button()
 	_set_info("%s now targets: %s." % [t.data.display_name, _priority_label(p)])
 
+# Upgrade/sell buttons carry a centred RichTextLabel so the small ¤ glyph can be
+# drawn larger than the surrounding text (a plain Button can't size one glyph).
+func _attach_cost_label(btn: Button) -> void:
+	var rtl := RichTextLabel.new()
+	rtl.bbcode_enabled = true
+	rtl.fit_content = true
+	rtl.scroll_active = false
+	rtl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	rtl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rtl.anchor_left = 0.0
+	rtl.anchor_right = 1.0
+	rtl.anchor_top = 0.5
+	rtl.anchor_bottom = 0.5
+	rtl.grow_vertical = Control.GROW_DIRECTION_BOTH
+	rtl.offset_left = 6
+	rtl.offset_right = -6
+	btn.add_child(rtl)
+	btn.set_meta("rt", rtl)
+
+func _set_cost_label(btn: Button, body: String, dim: bool) -> void:
+	var rtl: RichTextLabel = btn.get_meta("rt")
+	rtl.text = "[center]%s[/center]" % body
+	rtl.modulate = Color(1, 1, 1, 0.5) if dim else Color(1, 1, 1)
+
+# Cost as bbcode with the ¤ enlarged relative to the digits.
+func _cost_bb(n: int) -> String:
+	return "[font_size=%d]¤[/font_size]%d" % [COST_SYM_FS, n]
+
 func _update_tower_buttons() -> void:
 	var t = (board.tower_at(selected_cell) if has_selected else null)
 	for s in range(upgrade_buttons.size()):
@@ -382,18 +411,18 @@ func _update_tower_buttons() -> void:
 		if t.can_upgrade(s):
 			var c: int = t.next_cost(s)
 			b.disabled = money < c
-			b.text = "%s → Tier %d  (¤%d)" % [t.slot_name(s), t.slot_level(s) + 1, c]
+			_set_cost_label(b, "%s → Tier %d  (%s)" % [t.slot_name(s), t.slot_level(s) + 1, _cost_bb(c)], money < c)
 			b.tooltip_text = t.tier_summary(s)
 		else:
 			b.disabled = true
-			b.text = "%s  (max %d)" % [t.slot_name(s), t.slot_level(s)]
+			_set_cost_label(b, "%s  (max %d)" % [t.slot_name(s), t.slot_level(s)], true)
 			b.tooltip_text = "Fully upgraded"
 	if t == null:
 		sell_button.visible = false
 	else:
 		sell_button.visible = true
 		sell_button.disabled = false
-		sell_button.text = "Sell  (+¤%d)" % t.sell_value()
+		_set_cost_label(sell_button, "Sell  (+%s)" % _cost_bb(t.sell_value()), false)
 		sell_button.tooltip_text = "Refund %d%% of everything spent on this tower." % t.refund_percent()
 
 func _on_upgrade_pressed(s: int) -> void:
@@ -1161,6 +1190,7 @@ func _build_ui() -> void:
 		ub.custom_minimum_size = Vector2(0, 36)
 		ub.pressed.connect(_on_upgrade_pressed.bind(s))
 		vbox.add_child(ub)
+		_attach_cost_label(ub)
 		upgrade_buttons.append(ub)
 
 	sell_button = Button.new()
@@ -1168,6 +1198,7 @@ func _build_ui() -> void:
 	sell_button.custom_minimum_size = Vector2(0, 36)
 	sell_button.pressed.connect(_on_sell_pressed)
 	vbox.add_child(sell_button)
+	_attach_cost_label(sell_button)
 
 	info_label = Label.new()
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD
