@@ -127,8 +127,6 @@ func _ready() -> void:
 	_update_labels()
 	if is_game:
 		_set_info("Build towers, then start each wave when you're ready.")
-	else:
-		_set_info("Sandbox (3D): start any wave, build towers, leave with Exit.")
 
 # ---------------------------------------------------------------- environment & camera
 # A directional sun + a procedural sky. The shiny bus / clearcoat-mask
@@ -1059,7 +1057,7 @@ func _build_ui() -> void:
 	var help := Label.new()
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD
 	help.modulate = Color(1, 1, 1, 0.7)
-	help.text = "Pan: middle-drag or WASD / arrows.\nZoom: scroll wheel.\nCancel: right-click or Esc.\nClick a placed tower to see its range."
+	help.text = "Pan: middle-drag or WASD / arrows.\nZoom: scroll wheel.\nCancel: right-click or Esc."
 	vbox.add_child(help)
 
 	# --- bottom transport honeycomb ---
