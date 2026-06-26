@@ -125,6 +125,7 @@ func _ready() -> void:
 	_build_camera()
 	_frame_camera()
 	_build_ui()
+	_build_map_title()
 	_build_wave_banner()
 	_build_badge_tooltip()
 	_update_labels()
@@ -756,6 +757,32 @@ func _mouse_over_pane() -> bool:
 	var mx := get_viewport().get_mouse_position().x
 	return mx > get_viewport().get_visible_rect().size.x - float(pane_width)
 
+# ---------------------------------------------------------------- map title
+# The map name, bold and centred along the top of the play area (not the side bar).
+func _build_map_title() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 3                       # above the board, below the wave banner (4)
+	add_child(layer)
+	var lbl := Label.new()
+	lbl.text = map.display_name
+	# Span the play area (left of the pane) and centre the text.
+	lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	lbl.offset_right = -float(pane_width)
+	lbl.offset_top = 10
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 26)
+	# Synthesised bold (no bold font asset needed) + a soft outline so it reads over
+	# the bright board.
+	var fv := FontVariation.new()
+	fv.base_font = ThemeDB.fallback_font
+	fv.variation_embolden = 0.6
+	lbl.add_theme_font_override("font", fv)
+	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl.add_theme_constant_override("outline_size", 6)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(lbl)
+
 # ---------------------------------------------------------------- wave banner
 # A large title that pops up and fades out when a wave starts, naming the wave.
 func _build_wave_banner() -> void:
@@ -937,16 +964,6 @@ func _build_ui() -> void:
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
 	margin.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "HEX TD (3D)" if is_game else "HEX TD — SANDBOX (3D)"
-	title.add_theme_font_size_override("font_size", 18)
-	vbox.add_child(title)
-
-	var map_label := Label.new()
-	map_label.text = map.display_name
-	map_label.modulate = Color(1, 1, 1, 0.6)
-	vbox.add_child(map_label)
 
 	money_label = Label.new()
 	vbox.add_child(money_label)
