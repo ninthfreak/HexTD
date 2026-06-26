@@ -20,11 +20,11 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `description` | string | `""` | Build-button tooltip body (the name is shown above it). Multi-line; `\n` for line breaks. |
 | `color` | `"#rrggbb"` | `"#59b2ff"` | Body / projectile / beam color. |
 | `range` | int | 3 | Attack radius in hex tiles (min 1). |
-| `fire_rate` | number | 1.5 | Shots per second (`single`) / volleys per second (`radial`). Ignored by `laser`. |
-| `damage` | number | 10 | Damage per hit. For `laser`, this is **max damage per second** at full charge. |
+| `fire_rate` | number | 1.5 | Shots per second (`single`) / volleys per second (`radial`) / waves per second (`arc`). Ignored by `laser`. |
+| `damage` | number | 10 | Damage per hit. For `laser`, this is **max damage per second** at full charge. For `arc`, 0 deals no damage (still applies ability effects). |
 | `cost` | int | 40 | Build cost. |
-| `projectile_speed` | number | 320 | Plane units/sec for `single`/`radial` shots (1 hex ≈ 11.3). |
-| `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` (see below). |
+| `projectile_speed` | number | 320 | Plane units/sec for `single`/`radial` shots and the `arc` wave front (1 hex ≈ 11.3). |
+| `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` \| `"arc"` (see below). |
 | `directions` | int | 6 | `radial` only: number of equally spaced spokes (min 1; 6 = hex flat sides). |
 | `ramp_time` | number | 2.0 | `laser` only: seconds of sustained fire to reach full power (min 0.05). |
 | `focus_time` | number | 0.0 | Seconds the tower is idle after **killing** a target (min 0). Taxes swarm clearing. |
