@@ -816,17 +816,18 @@ func _build_badge_tooltip() -> void:
 	row.add_theme_constant_override("separation", 10)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge_tip_panel.add_child(row)
-	badge_tip_label = Label.new()
-	badge_tip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge_tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	badge_tip_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	row.add_child(badge_tip_label)
+	# Glyph on the LEFT, text on the right.
 	badge_tip_glyph = TextureRect.new()
 	badge_tip_glyph.custom_minimum_size = Vector2(TIP_ICON_PX, TIP_ICON_PX)
 	badge_tip_glyph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	badge_tip_glyph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	badge_tip_glyph.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(badge_tip_glyph)
+	badge_tip_label = Label.new()
+	badge_tip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge_tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	badge_tip_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	row.add_child(badge_tip_label)
 	badge_tip_layer.add_child(badge_tip_panel)
 
 # Load a UI icon from art/<file>.svg (pause / speed_Nx). Returns null if the
