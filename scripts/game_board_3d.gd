@@ -929,30 +929,51 @@ func hexes_in_range(center: Vector2i, n: int, rotated := false) -> Dictionary:
 	var shadowed: Array[Vector2i] = []
 	var blocked: Array[Vector2i] = []
 	var c0 := cell_center_world(center)
-	var bound: int = ceili(float(4 * n) / 3.0) + 1 if rotated else n
-	for dq in range(-bound, bound + 1):
-		var lo: int
-		var hi: int
-		if rotated:
-			lo = -bound
-			hi = bound
+	var in_range: Dictionary
+	if rotated:
+		in_range = rotated_range_set(center, n)
+	else:
+		in_range = {}
+		for dq in range(-n, n + 1):
+			for dr in range(maxi(-n, -n - dq), mini(n, n - dq) + 1):
+				var c := center + Vector2i(dq, dr)
+				if has_cell(c):
+					in_range[c] = true
+	for c in in_range:
+		if blocking_set.has(c):
+			blocked.append(c)
+			continue
+		if has_los(c0, cell_center_world(c)):
+			visible.append(c)
 		else:
-			lo = maxi(-n, -n - dq)
-			hi = mini(n, n - dq)
-		for dr in range(lo, hi + 1):
-			if rotated and not HexUtils.in_rotated_range(dq, dr, n):
-				continue
-			var cell := center + Vector2i(dq, dr)
-			if not has_cell(cell):
-				continue
-			if blocking_set.has(cell):
-				blocked.append(cell)
-				continue
-			if has_los(c0, cell_center_world(cell)):
-				visible.append(cell)
-			else:
-				shadowed.append(cell)
+			shadowed.append(c)
 	return {"visible": visible, "shadowed": shadowed, "blocked": blocked}
+
+func rotated_range_set(center: Vector2i, n: int) -> Dictionary:
+	var target_count: int = 3 * n * n + 3 * n + 1
+	var bound: int = n + 2
+	var candidates: Array = []
+	for dq in range(-bound, bound + 1):
+		for dr in range(-bound, bound + 1):
+			var c := center + Vector2i(dq, dr)
+			if not has_cell(c):
+				continue
+			var a: int = absi(2 * dq + dr)
+			var b: int = absi(dq - dr)
+			var ci: int = absi(dq + 2 * dr)
+			var rot_dist: int = maxi(a, maxi(b, ci))
+			var dx: float = absf(HexUtils.SQRT3 * (float(dq) + float(dr) / 2.0))
+			candidates.append([rot_dist, dx, c])
+	candidates.sort_custom(func(x, y):
+		if x[0] != y[0]:
+			return x[0] < y[0]
+		return x[1] < y[1]
+	)
+	var result := {}
+	var count: int = mini(target_count, candidates.size())
+	for i in range(count):
+		result[candidates[i][2]] = true
+	return result
 
 func cell_set_outline(cells: Dictionary, smooth_iters: int) -> Array:
 	var pos := {}
