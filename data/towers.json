@@ -15,24 +15,35 @@
         "tiers": [
           {
             "cost": 200,
-            "damage": 15
+            "damage": 15,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 500,
-            "damage": 38
+            "damage": 38,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1200,
-            "damage": 90
+            "damage": 90,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "damage": 225
+            "damage": 225,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
             "damage": 250,
-            "buffer_overflow": "on"
+            "buffer_overflow": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#9393bb"
           }
         ]
       },
@@ -41,24 +52,35 @@
         "tiers": [
           {
             "cost": 200,
-            "fire_rate": 1.0
+            "fire_rate": 1.0,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 500,
-            "fire_rate": 1.4
+            "fire_rate": 1.4,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1200,
-            "fire_rate": 1.5
+            "fire_rate": 1.5,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "fire_rate": 1.5
+            "fire_rate": 1.5,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
             "fire_rate": 2.0,
-            "targets": 3
+            "targets": 3,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#93c2c1"
           }
         ]
       },
@@ -67,24 +89,35 @@
         "tiers": [
           {
             "cost": 200,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 500,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1200,
-            "cipher": "on"
+            "cipher": "on",
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
             "range": 1,
-            "ignore_walls": "on"
+            "ignore_walls": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#55bcff"
           }
         ]
       }
@@ -106,24 +139,35 @@
         "tiers": [
           {
             "cost": 200,
-            "damage": 3
+            "damage": 3,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 500,
-            "damage": 8
+            "damage": 8,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1200,
-            "damage": 18
+            "damage": 18,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "damage": 45
+            "damage": 45,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
             "damage": 30,
-            "bit_corruption": "on"
+            "bit_corruption": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#b84a85"
           }
         ]
       },
@@ -132,24 +176,35 @@
         "tiers": [
           {
             "cost": 200,
-            "fire_rate": 4
+            "fire_rate": 4,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 500,
-            "fire_rate": 6
+            "fire_rate": 6,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1200,
-            "fire_rate": 6
+            "fire_rate": 6,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "fire_rate": 6
+            "fire_rate": 6,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
             "fire_rate": 6,
-            "targets": 3
+            "targets": 3,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#b8798b"
           }
         ]
       },
@@ -158,24 +213,35 @@
         "tiers": [
           {
             "cost": 200,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 500,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1200,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
             "range": 1,
-            "ignore_walls": "on"
+            "ignore_walls": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#7973c9"
           }
         ]
       }
@@ -197,24 +263,35 @@
         "tiers": [
           {
             "cost": 500,
-            "damage": 100
+            "damage": 100,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1250,
-            "damage": 250
+            "damage": 250,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "damage": 600
+            "damage": 600,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 7500,
-            "damage": 1500
+            "damage": 1500,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 23000,
             "damage": 1500,
-            "buffer_overflow": "on"
+            "buffer_overflow": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ff9747"
           }
         ]
       },
@@ -223,24 +300,35 @@
         "tiers": [
           {
             "cost": 500,
-            "fire_rate": 0.3
+            "fire_rate": 0.3,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1250,
-            "fire_rate": 0.4
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "fire_rate": 0.5
+            "fire_rate": 0.5,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 7500,
-            "fire_rate": 0.6
+            "fire_rate": 0.6,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 23000,
             "fire_rate": 0.5,
-            "targets": 3
+            "targets": 3,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ffc64d"
           }
         ]
       },
@@ -249,24 +337,35 @@
         "tiers": [
           {
             "cost": 500,
-            "damage": 150
+            "damage": 150,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1250,
-            "bit_corruption": "on"
+            "bit_corruption": "on",
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3000,
-            "damage": 500
+            "damage": 500,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 7500,
-            "damage": 1200
+            "damage": 1200,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 23000,
             "damage": 1500,
-            "buffer_overflow": "on"
+            "buffer_overflow": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#c6c557"
           }
         ]
       }
@@ -289,23 +388,34 @@
         "tiers": [
           {
             "cost": 300,
-            "damage": 9
+            "damage": 9,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 750,
-            "damage": 23
+            "damage": 23,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1800,
-            "damage": 54
+            "damage": 54,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 4500,
-            "damage": 135
+            "damage": 135,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 16000,
-            "damage": 180
+            "damage": 180,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#6a5d8a"
           }
         ]
       },
@@ -314,24 +424,35 @@
         "tiers": [
           {
             "cost": 300,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 750,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1800,
-            "directions": 3
+            "directions": 3,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 4500,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 16000,
             "directions": 3,
-            "ignore_walls": "on"
+            "ignore_walls": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#2c87ce"
           }
         ]
       },
@@ -340,23 +461,34 @@
         "tiers": [
           {
             "cost": 300,
-            "fire_rate": 0.6
+            "fire_rate": 0.6,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 750,
-            "bit_corruption": "on"
+            "bit_corruption": "on",
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 1800,
-            "fire_rate": 0.8
+            "fire_rate": 0.8,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 4500,
-            "fire_rate": 0.8
+            "fire_rate": 0.8,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 16000,
-            "fire_rate": 1.6
+            "fire_rate": 1.6,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#318b9a"
           }
         ]
       }
@@ -380,23 +512,34 @@
         "tiers": [
           {
             "cost": 800,
-            "damage": 120
+            "damage": 120,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 2000,
-            "damage": 300
+            "damage": 300,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 4800,
-            "damage": 700
+            "damage": 700,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
-            "damage": 1400
+            "damage": 1400,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 32000,
-            "damage": 1150
+            "damage": 1150,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#f3413b"
           }
         ]
       },
@@ -405,24 +548,35 @@
         "tiers": [
           {
             "cost": 800,
-            "ramp_time": -2.0
+            "ramp_time": -2.0,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 2000,
-            "ramp_time": -2.0
+            "ramp_time": -2.0,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 4800,
             "range": 1,
-            "focus_time": -0.2
+            "focus_time": -0.2,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
-            "ramp_time": -1.0
+            "ramp_time": -1.0,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 32000,
-            "ramp_time": -0.5
+            "ramp_time": -0.5,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#f37041"
           }
         ]
       },
@@ -431,23 +585,34 @@
         "tiers": [
           {
             "cost": 800,
-            "cipher": "on"
+            "cipher": "on",
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 2000,
-            "bit_corruption": "on"
+            "bit_corruption": "on",
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 4800,
-            "damage": 300
+            "damage": 300,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 12000,
-            "damage": 700
+            "damage": 700,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 32000,
-            "damage": 500
+            "damage": 500,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#bb6e4b"
           }
         ]
       }
@@ -470,24 +635,35 @@
         "tiers": [
           {
             "cost": 1500,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3750,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 9000,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 22500,
-            "range": 1
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 50000,
             "range": 1,
-            "arc_angle": 290
+            "arc_angle": 290,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#b87cd5"
           }
         ]
       },
@@ -496,26 +672,37 @@
         "tiers": [
           {
             "cost": 1500,
-            "fire_rate": 0.4
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3750,
-            "cipher": "on"
+            "cipher": "on",
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 9000,
-            "fire_rate": 0.4
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 22500,
-            "fire_rate": 0.4
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 50000,
             "fire_rate": 1.0,
             "dos_freeze": 0.5,
             "dos_slow_time": 2.0,
-            "dos_slow_factor": -0.25
+            "dos_slow_factor": -0.25,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#f753c4"
           }
         ]
       },
@@ -524,24 +711,35 @@
         "tiers": [
           {
             "cost": 1500,
-            "damage": 3
+            "damage": 3,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 3750,
-            "damage": 6
+            "damage": 6,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 9000,
-            "damage": 12
+            "damage": 12,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 22500,
-            "damage": 24
+            "damage": 24,
+            "width": 0.03,
+            "height": 0.03
           },
           {
             "cost": 50000,
             "damage": 60,
-            "bit_corruption": "on"
+            "bit_corruption": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#f75390"
           }
         ]
       }
