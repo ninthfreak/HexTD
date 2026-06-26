@@ -26,6 +26,8 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `projectile_speed` | number | 320 | Plane units/sec for `single`/`radial` shots and the `arc` wave front (1 hex ≈ 11.3). |
 | `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` \| `"arc"` (see below). |
 | `directions` | int | 6 | `radial` only: number of equally spaced spokes (min 1; 6 = hex flat sides). |
+| `targets` | int | 1 | `single` only: distinct enemies engaged per fire cycle (one shot each, no overkill), furthest-along first (min 1). |
+| `arc_angle` | number | 70 | `arc` only: aimed wedge width in degrees (clamped 1–360; ≥360 = all directions). |
 | `ramp_time` | number | 2.0 | `laser` only: seconds of sustained fire to reach full power (min 0.05). |
 | `focus_time` | number | 0.0 | Seconds the tower is idle after **killing** a target (min 0). Taxes swarm clearing. |
 | `bit_corruption` | bool | false | Ignores enemy ECC 90% damage resist. |
@@ -33,6 +35,9 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `buffer_overflow` | bool | false | Single-hit surplus damage spills into the target's decay children. Single-target only. |
 | `ignore_walls` | bool | false | "Tunneling": attack through blocking tiles (LOS ignored; `radial` spokes pass through walls). |
 | `dos` | bool | false | "Denial of Service": a hit freezes the enemy briefly, then slows it for a short window. `single`/`radial` only (laser ignores it). |
+| `dos_freeze` | number | 0.5 | DoS: seconds the enemy is fully stopped (min 0). |
+| `dos_slow_time` | number | 2.0 | DoS: seconds slowed after the stop (min 0). |
+| `dos_slow_factor` | number | 0.5 | DoS: speed multiplier while slowed (clamped 0.05–1.0; lower = stronger jam). Re-hits take the stronger (lower) factor. |
 | `height_scale` | number | 1.0 | Body height multiplier, 3D view (min 0.05). |
 | `width_scale` | number | 1.0 | Body width / footprint multiplier (min 0.05; also scales the 2D body). |
 | `upgrades` | array | `[]` | Up to 3 upgrade slots — see below. |
@@ -65,6 +70,11 @@ is a per-tower in-game toggle, not a JSON field.
 `upgrades` is an array of **slots** (max 3). Each slot is an independent path the
 player buys level-by-level in-game; tiers within a slot are sequential.
 
+**Crosspathing (BTD6 rule):** at most **two** of the three paths may rise above
+tier 0, and only **one** of those may rise above tier 2 (the second is capped at
+tier 2). The game enforces this — a path blocked by the rule shows as *locked*
+rather than purchasable.
+
 ```json
 "upgrades": [
   { "name": "Caliber", "tiers": [ { "...tier..." }, { "...tier..." } ] },
@@ -88,8 +98,13 @@ change".
 | `range` | number | Add to `range` (rounded). |
 | `fire_rate` | number | Add to `fire_rate`. |
 | `directions` | number | Add to `directions` (rounded). |
+| `targets` | number | Add to `targets` (rounded, floored at 1). |
+| `arc_angle` | number | Add to `arc_angle` (clamped 1–360). |
 | `ramp_time` | number | Add to `ramp_time` (floored at 0). |
 | `focus_time` | number | Add to `focus_time` (floored at 0.1). |
+| `dos_freeze` | number | Add to `dos_freeze` (floored at 0). |
+| `dos_slow_time` | number | Add to `dos_slow_time` (floored at 0). |
+| `dos_slow_factor` | number | Add to `dos_slow_factor` (clamped 0.05–1.0). |
 | `height` | number | Add to `height_scale` (floored at 0.05). |
 | `width` | number | Add to `width_scale` (floored at 0.05). |
 | `color` | `"#rrggbb"` | Replace `color` (omit / `""` = no change). |

@@ -399,6 +399,11 @@ func _update_tower_buttons() -> void:
 			b.disabled = money < c
 			_set_cost_label(b, "%s → Tier %d  (" % [t.slot_name(s), t.slot_level(s) + 1], c, ")", money < c)
 			b.tooltip_text = t.tier_summary(s)
+		elif t.has_next_tier(s):
+			# Has a tier left, but the BTD6 crosspath rule forbids buying it now.
+			b.disabled = true
+			_set_plain_label(b, "%s — locked" % t.slot_name(s), true)
+			b.tooltip_text = "Crosspath limit: at most two paths upgraded, and only one above tier 2."
 		else:
 			b.disabled = true
 			_set_plain_label(b, "%s  (max %d)" % [t.slot_name(s), t.slot_level(s)], true)
@@ -830,11 +835,14 @@ func _build_map_title() -> void:
 	add_child(layer)
 	var lbl := Label.new()
 	lbl.text = map.display_name
-	# Span the full viewport and centre the text on screen.
-	lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl.offset_left = 0
-	lbl.offset_right = 0
+	# Give the label a real rect (a zero-height anchor band collapses to the top-left
+	# and breaks horizontal centring) spanning the play area, and centre within it.
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	lbl.offset_right = -float(pane_width)
+	lbl.anchor_bottom = 0.0
+	lbl.offset_bottom = 50
 	lbl.offset_top = 10
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_size_override("font_size", 26)
 	# Synthesised bold (no bold font asset needed) + a soft outline so it reads over

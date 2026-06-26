@@ -12,6 +12,9 @@ var col: Color
 var pierces_ecc := false
 var buffer_overflow := false   # tower had Buffer Overflow: surplus spills into decay children
 var applies_dos := false       # tower had Denial of Service: freeze-then-slow the enemy on hit
+var dos_freeze := 0.5          # per-tower DoS timing (used when applies_dos)
+var dos_slow_time := 2.0
+var dos_slow_factor := 0.5
 var pp := Vector2.ZERO
 
 const GLOW := 1.7              # over-bright factor that the env's bloom picks up
@@ -64,7 +67,7 @@ func _process(delta: float) -> void:
 	if step >= dist:
 		target.take_damage(damage, pierces_ecc, buffer_overflow)
 		if applies_dos and is_instance_valid(target):
-			target.apply_dos()
+			target.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 		var am = get_node_or_null("/root/AudioManager")
 		if am:
 			am.play_sfx("projectile_hit")

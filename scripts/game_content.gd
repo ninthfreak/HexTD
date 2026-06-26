@@ -50,6 +50,8 @@ func _tower_from_dict(d: Dictionary) -> TowerData:
 	t.projectile_speed = float(d.get("projectile_speed", 320))
 	t.fire_mode = str(d.get("fire_mode", "single"))
 	t.directions = maxi(1, int(d.get("directions", 6)))
+	t.targets = maxi(1, int(d.get("targets", 1)))
+	t.arc_angle = clampf(float(d.get("arc_angle", 70.0)), 1.0, 360.0)
 	t.ignore_walls = bool(d.get("ignore_walls", false))
 	t.ramp_time = maxf(0.05, float(d.get("ramp_time", 2.0)))
 	t.focus_time = maxf(0.0, float(d.get("focus_time", 0.0)))
@@ -57,6 +59,9 @@ func _tower_from_dict(d: Dictionary) -> TowerData:
 	t.cipher = bool(d.get("cipher", false))
 	t.buffer_overflow = bool(d.get("buffer_overflow", false))
 	t.dos = bool(d.get("dos", false))
+	t.dos_freeze = maxf(0.0, float(d.get("dos_freeze", 0.5)))
+	t.dos_slow_time = maxf(0.0, float(d.get("dos_slow_time", 2.0)))
+	t.dos_slow_factor = clampf(float(d.get("dos_slow_factor", 0.5)), 0.05, 1.0)
 	t.height_scale = maxf(0.05, float(d.get("height_scale", 1.0)))
 	t.width_scale = maxf(0.05, float(d.get("width_scale", 1.0)))
 	t.upgrades = _parse_upgrades(d.get("upgrades", []))
@@ -81,7 +86,7 @@ func _parse_upgrades(arr) -> Array:
 				if typeof(u) != TYPE_DICTIONARY:
 					continue
 				var tier := {"cost": int(u.get("cost", 0))}
-				for stat in ["damage", "range", "fire_rate", "directions", "ramp_time", "focus_time", "height", "width"]:
+				for stat in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "dos_freeze", "dos_slow_time", "dos_slow_factor", "height", "width"]:
 					if u.has(stat):
 						tier[stat] = float(u[stat])
 				for flag in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos"]:

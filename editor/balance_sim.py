@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """HexTD balance sim — throughput model (non-spatial: no LOS/placement/overkill-waste).
-Run from the repo root (reads ./data/*.json), or pass a data dir:
+Runs from anywhere (defaults to the repo's data/ found relative to this script — so
+it works from the editor/ directory or the repo root), or pass an explicit data dir:
     python3 balance_sim.py [path/to/data]
 Models: ECC-aware effective HP across full decay trees, per-fire-mode DPS incl. the
 laser ramp integral, time-to-kill, per-tower DPS/$, and a wave-pressure vs income curve.
 Edit TOWERS below to match data/towers.json after you change numbers.
 """
-import json, sys, math
-DATA = sys.argv[1] if len(sys.argv) > 1 else "data"
+import json, sys, math, os
+# Default to <repo>/data resolved from this file's location (editor/ -> repo root),
+# so the script is CWD-independent; an explicit path arg still overrides it.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA = sys.argv[1] if len(sys.argv) > 1 else os.path.join(_ROOT, "data")
 E = json.load(open(f"{DATA}/enemies.json")); W = json.load(open(f"{DATA}/waves.json"))
 SPEED_MULT, HEX, ECC_RESIST = 2.5, 11.34, 0.9
 tps = lambda e: E[e]["speed"]*SPEED_MULT/HEX
