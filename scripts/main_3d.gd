@@ -52,7 +52,6 @@ const TOWER_HEX_PX := 96         # hex build-button size
 const ICON_BTN_PX := 64          # height of the graphic-only sound/spawn/cheat hex buttons
 const TOOLTIP_BG := Color(0.02, 0.03, 0.05, 0.97)   # dark tooltip background (readability)
 const STAT_ICON_PX := 60         # money / lives glyph size in the top-left overlay
-const COST_SYM_FS := 26          # enlarged ¤ size inside upgrade/sell button text
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -372,33 +371,20 @@ func _on_target_pressed() -> void:
 	_update_target_button()
 	_set_info("%s now targets: %s." % [t.data.display_name, _priority_label(p)])
 
-# Upgrade/sell buttons carry a centred RichTextLabel so the small ¤ glyph can be
-# drawn larger than the surrounding text (a plain Button can't size one glyph).
+# Upgrade/sell buttons carry a CostLabel overlay so the small ¤ glyph can be drawn
+# larger than the surrounding text and still sit aligned with the digits.
 func _attach_cost_label(btn: Button) -> void:
-	var rtl := RichTextLabel.new()
-	rtl.bbcode_enabled = true
-	rtl.fit_content = true
-	rtl.scroll_active = false
-	rtl.autowrap_mode = TextServer.AUTOWRAP_OFF
-	rtl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rtl.anchor_left = 0.0
-	rtl.anchor_right = 1.0
-	rtl.anchor_top = 0.5
-	rtl.anchor_bottom = 0.5
-	rtl.grow_vertical = Control.GROW_DIRECTION_BOTH
-	rtl.offset_left = 6
-	rtl.offset_right = -6
-	btn.add_child(rtl)
-	btn.set_meta("rt", rtl)
+	var cl := CostLabel.new()
+	cl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	cl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(cl)
+	btn.set_meta("cl", cl)
 
-func _set_cost_label(btn: Button, body: String, dim: bool) -> void:
-	var rtl: RichTextLabel = btn.get_meta("rt")
-	rtl.text = "[center]%s[/center]" % body
-	rtl.modulate = Color(1, 1, 1, 0.5) if dim else Color(1, 1, 1)
+func _set_cost_label(btn: Button, prefix: String, value: int, suffix: String, dim: bool) -> void:
+	(btn.get_meta("cl") as CostLabel).set_cost(prefix, value, suffix, dim)
 
-# Cost as bbcode with the ¤ enlarged relative to the digits.
-func _cost_bb(n: int) -> String:
-	return "[font_size=%d]¤[/font_size]%d" % [COST_SYM_FS, n]
+func _set_plain_label(btn: Button, text: String, dim: bool) -> void:
+	(btn.get_meta("cl") as CostLabel).set_plain(text, dim)
 
 func _update_tower_buttons() -> void:
 	var t = (board.tower_at(selected_cell) if has_selected else null)
@@ -411,18 +397,18 @@ func _update_tower_buttons() -> void:
 		if t.can_upgrade(s):
 			var c: int = t.next_cost(s)
 			b.disabled = money < c
-			_set_cost_label(b, "%s → Tier %d  (%s)" % [t.slot_name(s), t.slot_level(s) + 1, _cost_bb(c)], money < c)
+			_set_cost_label(b, "%s → Tier %d  (" % [t.slot_name(s), t.slot_level(s) + 1], c, ")", money < c)
 			b.tooltip_text = t.tier_summary(s)
 		else:
 			b.disabled = true
-			_set_cost_label(b, "%s  (max %d)" % [t.slot_name(s), t.slot_level(s)], true)
+			_set_plain_label(b, "%s  (max %d)" % [t.slot_name(s), t.slot_level(s)], true)
 			b.tooltip_text = "Fully upgraded"
 	if t == null:
 		sell_button.visible = false
 	else:
 		sell_button.visible = true
 		sell_button.disabled = false
-		_set_cost_label(sell_button, "Sell  (+%s)" % _cost_bb(t.sell_value()), false)
+		_set_cost_label(sell_button, "Sell  (+", t.sell_value(), ")", false)
 		sell_button.tooltip_text = "Refund %d%% of everything spent on this tower." % t.refund_percent()
 
 func _on_upgrade_pressed(s: int) -> void:
