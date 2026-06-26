@@ -675,11 +675,10 @@ func _update_wave_button() -> void:
 			wave_num_label.text = str(game_wave_index)
 			wave_num_label.add_theme_color_override("font_color", WAVE_RUN_COL)
 	else:
+		# Sandbox: a plain wave_start hex (no number overlay); the dropdown names the
+		# wave. Can always start (stacks onto a running wave) unless there are none.
 		wave_button.disabled = waves.is_empty()
-		var sel: int = (wave_select.selected if wave_select != null else 0)
 		wave_button.texture_normal = _load_icon("wave_start")
-		wave_num_label.text = str(sel + 1) if not waves.is_empty() else ""
-		wave_num_label.add_theme_color_override("font_color", WAVE_START_COL)
 
 # The pause/play control only makes sense during combat — gray it out and lock it
 # between waves. Its icon shows the action it performs (pause while running, play
@@ -983,6 +982,18 @@ func _build_ui() -> void:
 			wave_select.selected = 0
 		waves_tab.add_child(wave_select)
 
+		# Sandbox start-wave button: same hex-icon styling/size as the spawn button on
+		# the other tab. (Game mode keeps its wave hex in the bottom transport instead.)
+		wave_button = TextureButton.new()
+		wave_button.ignore_texture_size = true
+		wave_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		wave_button.custom_minimum_size = Vector2(0, ICON_BTN_PX)
+		wave_button.texture_normal = _load_icon("wave_start")
+		wave_button.tooltip_text = "Start the selected wave"
+		wave_button.disabled = waves.is_empty()
+		wave_button.pressed.connect(_on_wave_button_pressed)
+		waves_tab.add_child(wave_button)
+
 		var spawn_tab := VBoxContainer.new()
 		spawn_tab.name = "Spawn"
 		spawn_tab.add_theme_constant_override("separation", 8)
@@ -1102,6 +1113,20 @@ func _build_ui() -> void:
 # edge when its right/left point meets the big hex's bottom corner, so the offsets
 # below are derived straight from those vertex coordinates and hold at any size.
 func _build_transport(parent: Control) -> void:
+	if not is_game:
+		# Sandbox: only pause + speed here, side by side — the start-wave button lives
+		# under the Waves tab. (Game mode builds the full wave/pause/speed honeycomb.)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		parent.add_child(row)
+		pause_button = _make_row_hex(row, "pause")
+		pause_button.tooltip_text = "Pause / Resume"
+		pause_button.pressed.connect(_on_pause_pressed)
+		speed_button = _make_row_hex(row, "speed_%dx" % int(speed_steps[speed_index]))
+		speed_button.tooltip_text = "Game speed"
+		speed_button.pressed.connect(_on_speed_pressed)
+		_update_pause_button()
+		return
 	var d := float(BAR_ICON_PX)
 	var dw := float(WAVE_ICON_PX)
 	var fs := d / 240.0
@@ -1143,6 +1168,18 @@ func _build_transport(parent: Control) -> void:
 
 	_update_pause_button()
 	_update_wave_button()
+
+# A graphic-only hex button sized for an HBox row (expands to fill its share,
+# aspect-centred at the transport icon height). Used for the sandbox pause/speed row.
+func _make_row_hex(parent: Control, icon: String) -> TextureButton:
+	var b := TextureButton.new()
+	b.ignore_texture_size = true
+	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0, BAR_ICON_PX)
+	b.texture_normal = _load_icon(icon)
+	parent.add_child(b)
+	return b
 
 # A square TextureButton whose SVG art is the whole button (no chrome), placed at
 # an explicit position inside a non-container parent.
