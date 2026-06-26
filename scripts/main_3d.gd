@@ -1016,23 +1016,32 @@ func _build_ui() -> void:
 
 		spawn_button = TextureButton.new()
 		_style_icon_button(spawn_button, "spawn_enemies")
+		spawn_button.tooltip_text = "Spawn enemies"
 		spawn_button.disabled = _enemy_ids.is_empty()
 		spawn_button.pressed.connect(_on_spawn_pressed)
 		spawn_tab.add_child(spawn_button)
 		spawn_count.value_changed.connect(func(_v): _update_spawn_icon())
 		_update_spawn_icon()
 
+	# Sound and (in sandbox) the money cheat sit side-by-side on one row.
+	var util_row := HBoxContainer.new()
+	util_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(util_row)
+
 	sound_button = TextureButton.new()
 	_style_icon_button(sound_button, "sound_on")
+	sound_button.tooltip_text = "Toggle sound"
+	sound_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sound_button.pressed.connect(_on_sound_pressed)
-	vbox.add_child(sound_button)
+	util_row.add_child(sound_button)
 
 	if not is_game:
 		var cheat_button := TextureButton.new()
 		_style_icon_button(cheat_button, "cheat_money")
 		cheat_button.tooltip_text = "Add $%d." % cheat_amount
+		cheat_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cheat_button.pressed.connect(_on_cheat_pressed)
-		vbox.add_child(cheat_button)
+		util_row.add_child(cheat_button)
 
 	var exit_button := Button.new()
 	exit_button.text = "Exit to map select"
