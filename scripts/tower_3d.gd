@@ -482,7 +482,7 @@ func _shoot(t) -> void:
 
 # ---------------------------------------------------------------- body (3D)
 # One colour-coded, FLAT-SHADED low-poly primitive per fire mode (no base/caps):
-#   single -> octagonal cylinder; radial -> polyhedral toroid; laser -> cone;
+#   single -> octagonal cylinder; radial -> stellated torus; laser -> cone;
 #   arc -> flared horn / bell (the inverse of the laser cone — opens upward).
 # Built by hand with per-face normals so they read as faceted low-poly (Godot's
 # CylinderMesh/TorusMesh use smooth normals, which looked round / "high poly").
@@ -500,12 +500,14 @@ func _rebuild_body() -> void:
 	# small margin so the body never reads as crossing into a neighbour cell.
 	match data.fire_mode:
 		"radial":
-			# polyhedral torus: thick tube (small middle opening), low-poly quad net.
-			# Midway between the footprint-filling size and the 20%-larger size;
-			# inner/outer scaled together to keep the dialed-in opening ratio.
-			var inner := r * 0.3475
-			var outer := r * 0.99
-			_part(_low_poly_torus(inner, outer, 8, 6), mat, (outer - inner) * 0.5)
+			# stellated torus: a polyhedral torus with a spike raised from every face,
+			# bristling outward in all directions — echoing the all-directions burst.
+			# Sized so the spike tips still sit inside the hex footprint.
+			var inner := r * 0.30
+			var outer := r * 0.72
+			var tube := (outer - inner) * 0.5
+			var spike := tube * 1.15
+			_part(_low_poly_stellated_torus(inner, outer, 8, 6, spike), mat, tube + spike)
 		"laser":
 			_part(_low_poly_cone(r * 0.9, 60.0, 6), mat, 0.0)
 		"arc":
@@ -626,6 +628,36 @@ func _torus_pt(rr: float, tt: float, u: float, v: float) -> Vector3:
 
 func _torus_nrm(u: float, v: float) -> Vector3:
 	return Vector3(cos(u) * cos(v), sin(v), sin(u) * cos(v)).normalized()
+
+# Flat-shaded stellated torus: the same polyhedral torus, but every quad face is
+# raised into a 4-sided pyramid whose apex is pushed out along the face normal by
+# `spike`, so the body bristles with points in all directions. Each pyramid side is
+# oriented outward from that spike's own axis (not the global centre), so spikes on
+# the inner rim point inward correctly.
+func _low_poly_stellated_torus(inner_r: float, outer_r: float, rings: int, tube_sides: int, spike: float) -> ArrayMesh:
+	var rr := (inner_r + outer_r) * 0.5
+	var tt := (outer_r - inner_r) * 0.5
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in range(rings):
+		var u0 := TAU * float(i) / float(rings)
+		var u1 := TAU * float(i + 1) / float(rings)
+		for j in range(tube_sides):
+			var v0 := TAU * float(j) / float(tube_sides)
+			var v1 := TAU * float(j + 1) / float(tube_sides)
+			var a := _torus_pt(rr, tt, u0, v0)
+			var b := _torus_pt(rr, tt, u1, v0)
+			var c := _torus_pt(rr, tt, u1, v1)
+			var d := _torus_pt(rr, tt, u0, v1)
+			var um := (u0 + u1) * 0.5
+			var vm := (v0 + v1) * 0.5
+			var base_c := _torus_pt(rr, tt, um, vm)
+			var apex := base_c + _torus_nrm(um, vm) * spike
+			var mid := (base_c + apex) * 0.5    # orient each side face away from the spike axis
+			_tri(st, a, b, apex, mid)
+			_tri(st, b, c, apex, mid)
+			_tri(st, c, d, apex, mid)
+			_tri(st, d, a, apex, mid)
+	return st.commit()
 
 # Colour-coded body material: the tower's own colour, lit + a soft self-glow.
 # Low metallic so it reads as colour, not a dark mirror; two-sided so the hand-
