@@ -28,14 +28,6 @@ func rotate_facing() -> int:
 	_sync_transform()
 	return facing
 
-# True if `target_pp` (plane coords) lies within the forward 180° hemisphere of
-# this tower's facing direction.
-func _in_fov(target_pp: Vector2) -> bool:
-	var d: Vector2 = target_pp - pp
-	if d.length_squared() < 0.001:
-		return true
-	var to_ang := atan2(d.y, d.x)
-	return absf(angle_difference(facing_angle(), to_ang)) <= PI * 0.5
 var _cooldown := 0.0
 var _laser_target = null
 var _charge := 0.0
@@ -394,8 +386,6 @@ func _any_enemy_in_range() -> bool:
 			continue
 		if not _can_see(e):
 			continue
-		if not _in_fov(e.pp):
-			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) <= board.tower_reach(data.range_tiles):
 			return true
 	return false
@@ -494,8 +484,6 @@ func _fill_hum() -> void:
 func _target_still_valid(t) -> bool:
 	if t == null or not is_instance_valid(t):
 		return false
-	if not _in_fov(t.pp):
-		return false
 	if HexUtils.axial_distance(cell, board.world_cell(t.pp)) > board.tower_reach(data.range_tiles):
 		return false
 	return data.ignore_walls or board.has_los(pp, t.pp)
@@ -515,8 +503,6 @@ func _acquire_target():
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
-			continue
-		if not _in_fov(e.pp):
 			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
 			continue
@@ -551,8 +537,6 @@ func _acquire_targets(n: int) -> Array:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
-			continue
-		if not _in_fov(e.pp):
 			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
 			continue
