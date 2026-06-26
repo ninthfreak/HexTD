@@ -21,9 +21,12 @@ var col := Color(1, 1, 1)
 # Effects carried through, identical to what the radial spoke passes.
 var pierces_ecc := false        # Bit Corruption
 var applies_dos := false        # Denial of Service
+var dos_freeze := 0.5           # per-tower DoS timing (used when applies_dos)
+var dos_slow_time := 2.0
+var dos_slow_factor := 0.5
 var can_see_encrypted := false  # Cipher
+var arc_angle := 70.0           # aimed wedge width in degrees (>=360 -> no angular gate)
 
-const HALF_ANGLE := deg_to_rad(35.0)   # aimed wedge half-width (70° total); tune for a wider/tighter sweep
 const GLOW := 1.6
 const BAND := 6.0               # visual front thickness (world units)
 const HIT_PAD := 8.0            # slack added to the enemy radius when the front "crosses" it
@@ -87,7 +90,9 @@ func _check_hits() -> void:
 		var dist := to_e.length()
 		if dist < 0.001:
 			continue
-		if absf(angle_difference(aim, to_e.angle())) > HALF_ANGLE:
+		# half = pi at 360° (clamped), so the gate then admits every direction.
+		var half := deg_to_rad(minf(arc_angle, 360.0) * 0.5)
+		if absf(angle_difference(aim, to_e.angle())) > half:
 			continue
 		if HexUtils.axial_distance(origin_cell, board.world_cell(e.pp)) > range_tiles:
 			continue
@@ -99,7 +104,7 @@ func _check_hits() -> void:
 		_hit[e] = true
 		e.take_damage(damage, pierces_ecc)
 		if applies_dos:
-			e.apply_dos()
+			e.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 
 # Redraw the front as a curved band at the current radius, fading as it expands.
 func _update_visual() -> void:
@@ -108,10 +113,11 @@ func _update_visual() -> void:
 	_im.clear_surfaces()
 	var inner: float = maxf(0.0, _radius - BAND)
 	var outer: float = _radius + BAND
+	var half := deg_to_rad(minf(arc_angle, 360.0) * 0.5)   # pi at 360° -> a full ring
 	var segs := 28
 	_im.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
 	for i in range(segs + 1):
-		var a: float = aim - HALF_ANGLE + (2.0 * HALF_ANGLE) * float(i) / float(segs)
+		var a: float = aim - half + (2.0 * half) * float(i) / float(segs)
 		var d := Vector2(cos(a), sin(a))
 		_im.surface_add_vertex(Vector3(d.x * inner, 0.0, d.y * inner))
 		_im.surface_add_vertex(Vector3(d.x * outer, 0.0, d.y * outer))

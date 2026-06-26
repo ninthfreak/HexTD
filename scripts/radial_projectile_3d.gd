@@ -15,6 +15,9 @@ var col := Color(1, 1, 1)
 var ignore_walls := false       # false: walls stop the shot
 var pierces_ecc := false        # tower had Bit Corruption
 var applies_dos := false        # tower had Denial of Service: freeze-then-slow each enemy hit
+var dos_freeze := 0.5           # per-tower DoS timing (used when applies_dos)
+var dos_slow_time := 2.0
+var dos_slow_factor := 0.5
 var can_see_encrypted := false  # tower had Cipher
 var pp := Vector2.ZERO
 
@@ -94,6 +97,6 @@ func _check_hits() -> void:
 			_hit[e] = true
 			e.take_damage(damage, pierces_ecc)
 			if applies_dos:
-				e.apply_dos()
+				e.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 			if am:
 				am.play_sfx("projectile_hit")

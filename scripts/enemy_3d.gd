@@ -74,6 +74,7 @@ var _alive := true
 # DoS debuff state
 var _freeze_time := 0.0
 var _slow_time := 0.0
+var _slow_factor := 1.0         # active slow multiplier (set per-tower by apply_dos)
 var _tint_mats: Array = []      # {mat, alb, emi, emi_on} for body materials we can frost-tint
 var _dos_vis_k := -1.0          # last-applied tint strength (avoid per-frame churn)
 var _body_root: Node3D         # rotates with heading (body only — bar stays upright)
@@ -597,7 +598,7 @@ func _process(delta: float) -> void:
 	if _freeze_time > 0.0:
 		step = 0.0
 	elif _slow_time > 0.0:
-		step *= DOS_SLOW_FACTOR
+		step *= _slow_factor
 	if step >= dist:
 		pp = target
 		_index += 1
@@ -609,11 +610,15 @@ func _process(delta: float) -> void:
 # Apply (or refresh) the freeze-then-slow debuff. Re-hits take the longer remaining
 # of each phase rather than stacking. The slow timer only counts down once the
 # freeze has elapsed, so the full slow window always follows the stop.
-func apply_dos() -> void:
+func apply_dos(freeze := DOS_STOP, slow_time := DOS_SLOW_TIME, slow_factor := DOS_SLOW_FACTOR) -> void:
 	if not _alive:
 		return
-	_freeze_time = maxf(_freeze_time, DOS_STOP)
-	_slow_time = maxf(_slow_time, DOS_SLOW_TIME)
+	# Re-application takes the stronger of each: longer freeze/slow, and the lower
+	# (stronger) slow factor. A fresh hit on an un-debuffed enemy takes its factor.
+	var active := _freeze_time > 0.0 or _slow_time > 0.0
+	_freeze_time = maxf(_freeze_time, freeze)
+	_slow_time = maxf(_slow_time, slow_time)
+	_slow_factor = slow_factor if not active else minf(_slow_factor, slow_factor)
 
 func _tick_dos(delta: float) -> void:
 	if _freeze_time > 0.0:

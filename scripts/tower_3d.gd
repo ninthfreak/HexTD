@@ -175,11 +175,36 @@ func slot_max(s: int) -> int:
 func slot_level(s: int) -> int:
 	return slot_levels[s]
 
-func can_upgrade(s: int) -> bool:
+# True if path s simply has a tier left to buy (ignores the crosspath rule).
+func has_next_tier(s: int) -> bool:
 	return s >= 0 and s < slot_count() and slot_levels[s] < slot_max(s)
 
+# BTD6 crosspathing: at most two of the three paths may rise above tier 0, and
+# only one of those may rise above tier 2 (the other is capped at tier 2).
+func can_upgrade(s: int) -> bool:
+	if not has_next_tier(s):
+		return false
+	var nonzero := 0
+	var above2 := 0
+	var s_above2 := false
+	for i in range(slot_count()):
+		var lv: int = slot_levels[i]
+		if lv > 0:
+			nonzero += 1
+		if lv > 2:
+			above2 += 1
+			if i == s:
+				s_above2 = true
+	# rule 1: opening a third path is illegal
+	if slot_levels[s] == 0 and nonzero >= 2:
+		return false
+	# rules 2 & 3: reaching tier 3 requires being the sole path above tier 2
+	if slot_levels[s] + 1 >= 3 and above2 >= 1 and not s_above2:
+		return false
+	return true
+
 func next_cost(s: int) -> int:
-	if not can_upgrade(s):
+	if not has_next_tier(s):
 		return -1
 	return int(base_data.upgrades[s]["tiers"][slot_levels[s]].get("cost", 0))
 
@@ -198,12 +223,12 @@ func refund_percent() -> int:
 	return int(round(SELL_REFUND * 100.0))
 
 func tier_summary(s: int) -> String:
-	if not can_upgrade(s):
+	if not has_next_tier(s):
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "ramp_time": "Ramp time", "focus_time": "Focus delay", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "ramp_time", "focus_time", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "dos_freeze", "dos_slow_time", "dos_slow_factor", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
@@ -222,12 +247,16 @@ func tier_summary(s: int) -> String:
 func _delta_str(key: String, v: float) -> String:
 	var sgn := "+" if v > 0.0 else ""
 	match key:
-		"range", "directions":
+		"range", "directions", "targets":
 			return "%s%d" % [sgn, int(round(v))]
 		"fire_rate":
 			return "%s%s/s" % [sgn, _trim(v)]
-		"ramp_time", "focus_time":
+		"ramp_time", "focus_time", "dos_freeze", "dos_slow_time":
 			return "%s%ss" % [sgn, _trim(v)]
+		"arc_angle":
+			return "%s%s°" % [sgn, _trim(v)]
+		"dos_slow_factor":
+			return "%s%s×" % [sgn, _trim(v)]
 		_:
 			return "%s%s" % [sgn, _trim(v)]
 
@@ -251,6 +280,11 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.range_tiles += int(round(float(tier.get("range", 0.0))))
 	data.fire_rate += float(tier.get("fire_rate", 0.0))
 	data.directions += int(round(float(tier.get("directions", 0.0))))
+	data.targets = maxi(1, data.targets + int(round(float(tier.get("targets", 0.0)))))
+	data.arc_angle = clampf(data.arc_angle + float(tier.get("arc_angle", 0.0)), 1.0, 360.0)
+	data.dos_freeze = maxf(0.0, data.dos_freeze + float(tier.get("dos_freeze", 0.0)))
+	data.dos_slow_time = maxf(0.0, data.dos_slow_time + float(tier.get("dos_slow_time", 0.0)))
+	data.dos_slow_factor = clampf(data.dos_slow_factor + float(tier.get("dos_slow_factor", 0.0)), 0.05, 1.0)
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
 	if tier.has("focus_time"):
 		data.focus_time = maxf(0.1, data.focus_time + float(tier["focus_time"]))
@@ -291,9 +325,12 @@ func _process(delta: float) -> void:
 func _process_targeted(delta: float) -> void:
 	_cooldown -= delta
 	if _cooldown <= 0.0:
-		var t = _find_target()
-		if t != null:
-			_shoot(t)
+		# `targets` lets one fire cycle engage that many DISTINCT enemies (one shot
+		# each, no overkill), furthest-along first; default 1 = the classic single shot.
+		var ts := _acquire_targets(maxi(1, data.targets))
+		if not ts.is_empty():
+			for tt in ts:
+				_shoot(tt)
 			_cooldown = 1.0 / data.fire_rate
 
 func _process_radial(delta: float) -> void:
@@ -318,9 +355,13 @@ func _fire_arc(t) -> void:
 	var w := ArcWave3D.new()
 	w.setup(pp, t.pp - pp, data.damage, data.projectile_speed,
 			cell, board.tower_reach(data.range_tiles), data.color, board)
+	w.arc_angle = data.arc_angle
 	w.pierces_ecc = data.bit_corruption
 	w.applies_dos = data.dos
 	w.can_see_encrypted = data.cipher
+	w.dos_freeze = data.dos_freeze
+	w.dos_slow_time = data.dos_slow_time
+	w.dos_slow_factor = data.dos_slow_factor
 	board.add_projectile(w)
 
 func _any_enemy_in_range() -> bool:
@@ -344,6 +385,9 @@ func _fire_volley() -> void:
 		p.pierces_ecc = data.bit_corruption
 		p.can_see_encrypted = data.cipher
 		p.applies_dos = data.dos
+		p.dos_freeze = data.dos_freeze
+		p.dos_slow_time = data.dos_slow_time
+		p.dos_slow_factor = data.dos_slow_factor
 		board.add_projectile(p)
 
 func _process_laser(delta: float) -> void:
@@ -466,6 +510,39 @@ func _acquire_target():
 			best = e
 	return best
 
+# Up to `n` distinct valid enemies, ordered by the current target priority
+# (furthest-along / last / strongest first). Same range/LOS/Cipher gates as
+# _acquire_target. Used by single mode's multi-target fire.
+func _acquire_targets(n: int) -> Array:
+	var cands: Array = []
+	for e in board.enemies:
+		if not is_instance_valid(e):
+			continue
+		if not _can_see(e):
+			continue
+		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
+			continue
+		if not data.ignore_walls and not board.has_los(pp, e.pp):
+			continue
+		var key: int
+		var tie := 0
+		match target_priority:
+			"last":
+				key = -e.progress()
+			"strongest":
+				key = e.data.rank
+				tie = e.progress()
+			_:
+				key = e.progress()
+		cands.append({"e": e, "key": key, "tie": tie})
+	cands.sort_custom(func(a, b): return a["key"] > b["key"] or (a["key"] == b["key"] and a["tie"] > b["tie"]))
+	var out: Array = []
+	for c in cands:
+		out.append(c["e"])
+		if out.size() >= n:
+			break
+	return out
+
 func cycle_target_priority() -> String:
 	match target_priority:
 		"first":
@@ -481,6 +558,9 @@ func cycle_target_priority() -> String:
 func _shoot(t) -> void:
 	var p := Projectile3D.new()
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
+	p.dos_freeze = data.dos_freeze
+	p.dos_slow_time = data.dos_slow_time
+	p.dos_slow_factor = data.dos_slow_factor
 	board.add_projectile(p)
 
 # ---------------------------------------------------------------- body (3D)
