@@ -8,7 +8,7 @@ extends Node3D
 
 # --- tunable game state ---
 var money := 200
-var lives := 20
+var lives := 100
 var waves: Array = []
 var default_gap := 0.7
 var cheat_amount := 500
@@ -53,6 +53,7 @@ var pan_speed := 600.0
 # "game" plays the waves in order with a manual break between each (no cheats,
 # no free spawning, no camera readout); "sandbox" exposes the full toolbox.
 var is_game := false
+var game_over := false
 var game_wave_index := 0          # next wave to start in game mode (0-based)
 
 # --- speed / pause ---
@@ -119,6 +120,7 @@ var _art_cache := {}                  # art file base -> Texture2D
 func _ready() -> void:
 	Engine.time_scale = 1.0
 	is_game = GameState.mode == "game"
+	lives = 100 if is_game else 99999
 	content = GameContent.new()
 	map = Levels.get_by_path(GameState.selected_path)
 
@@ -679,7 +681,7 @@ func _on_start_pressed() -> void:
 # next wave can only be started once the current one has finished spawning and
 # the board is clear of enemies.
 func _can_start_next() -> bool:
-	return not _wave_running and _spawn_timeline.is_empty() \
+	return not game_over and not _wave_running and _spawn_timeline.is_empty() \
 		and board.enemies.is_empty() and game_wave_index < waves.size()
 
 func _on_start_next_pressed() -> void:
@@ -764,6 +766,18 @@ func _on_enemy_bounty(amount: int) -> void:
 func _on_enemy_reached_goal() -> void:
 	lives = maxi(0, lives - 1)
 	_update_labels()
+	if lives <= 0 and is_game and not game_over:
+		_trigger_defeat()
+
+func _trigger_defeat() -> void:
+	game_over = true
+	_wave_running = false
+	_spawn_timeline.clear()
+	Engine.time_scale = 0.0
+	paused = true
+	_show_wave_banner("DEFEAT")
+	banner_label.modulate.a = 1.0
+	_banner_time = 0.0
 
 # ---------------------------------------------------------------- sandbox controls
 func _on_speed_pressed() -> void:
@@ -777,6 +791,8 @@ func _on_speed_pressed() -> void:
 # is scaled by it). Resuming restores the current speed multiplier. The icon
 # swaps to the play glyph while paused so the button reads as "resume".
 func _on_pause_pressed() -> void:
+	if game_over:
+		return
 	if not _combat_active():
 		return                       # nothing to pause between waves
 	paused = not paused
