@@ -382,7 +382,7 @@ func _update_tower_buttons() -> void:
 		if t.can_upgrade(s):
 			var c: int = t.next_cost(s)
 			b.disabled = money < c
-			b.text = "%s → Tier %d  ($%d)" % [t.slot_name(s), t.slot_level(s) + 1, c]
+			b.text = "%s → Tier %d  (¤%d)" % [t.slot_name(s), t.slot_level(s) + 1, c]
 			b.tooltip_text = t.tier_summary(s)
 		else:
 			b.disabled = true
@@ -393,7 +393,7 @@ func _update_tower_buttons() -> void:
 	else:
 		sell_button.visible = true
 		sell_button.disabled = false
-		sell_button.text = "Sell  (+$%d)" % t.sell_value()
+		sell_button.text = "Sell  (+¤%d)" % t.sell_value()
 		sell_button.tooltip_text = "Refund %d%% of everything spent on this tower." % t.refund_percent()
 
 func _on_upgrade_pressed(s: int) -> void:
@@ -1129,7 +1129,7 @@ func _build_ui() -> void:
 	if not is_game:
 		var cheat_button := TextureButton.new()
 		_style_icon_button(cheat_button, "cheat_money")
-		cheat_button.tooltip_text = "Add $%d." % cheat_amount
+		cheat_button.tooltip_text = "Add ¤%d." % cheat_amount
 		cheat_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cheat_button.pressed.connect(_on_cheat_pressed)
 		util_row.add_child(cheat_button)

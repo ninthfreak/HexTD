@@ -229,7 +229,7 @@ func _update_tower_buttons() -> void:
 		if t.can_upgrade(s):
 			var c: int = t.next_cost(s)
 			b.disabled = money < c
-			b.text = "%s \u2192 Tier %d  ($%d)" % [t.slot_name(s), t.slot_level(s) + 1, c]
+			b.text = "%s \u2192 Tier %d  (\u00a4%d)" % [t.slot_name(s), t.slot_level(s) + 1, c]
 			b.tooltip_text = t.tier_summary(s)
 		else:
 			b.disabled = true
@@ -240,7 +240,7 @@ func _update_tower_buttons() -> void:
 	else:
 		sell_button.visible = true
 		sell_button.disabled = false
-		sell_button.text = "Sell  (+$%d)" % t.sell_value()
+		sell_button.text = "Sell  (+¤%d)" % t.sell_value()
 		sell_button.tooltip_text = "Refund %d%% of everything spent on this tower." % t.refund_percent()
 
 func _on_upgrade_pressed(s: int) -> void:
@@ -644,7 +644,7 @@ func _build_ui() -> void:
 	for id in content.tower_ids():
 		var td := content.tower(id)
 		var b := Button.new()
-		b.text = "%s    $%d" % [td.display_name, td.cost]
+		b.text = "%s    ¤%d" % [td.display_name, td.cost]
 		b.custom_minimum_size = Vector2(0, 40)
 		b.gui_input.connect(_on_tower_button_input.bind(id))
 		vbox.add_child(b)

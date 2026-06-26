@@ -80,5 +80,5 @@ func _draw() -> void:
 		draw_polyline(outline, base_color.lightened(0.25) if _hover else base_color, 2.5, true)
 	# Price along the bottom (drawn over the art's dark base).
 	var pcol := Color(1, 1, 1) if affordable else Color(1, 0.42, 0.42)
-	draw_string(get_theme_default_font(), Vector2(0, d * 0.87), "$%d" % cost,
+	draw_string(get_theme_default_font(), Vector2(0, d * 0.87), "¤%d" % cost,
 		HORIZONTAL_ALIGNMENT_CENTER, d, int(d * 0.17), pcol)
