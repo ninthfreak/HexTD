@@ -482,7 +482,8 @@ func _shoot(t) -> void:
 
 # ---------------------------------------------------------------- body (3D)
 # One colour-coded, FLAT-SHADED low-poly primitive per fire mode (no base/caps):
-#   single -> octagonal cylinder; radial -> polyhedral toroid; laser -> cone.
+#   single -> octagonal cylinder; radial -> stellated torus; laser -> cone;
+#   arc -> flared horn / bell (the inverse of the laser cone — opens upward).
 # Built by hand with per-face normals so they read as faceted low-poly (Godot's
 # CylinderMesh/TorusMesh use smooth normals, which looked round / "high poly").
 func _rebuild_body() -> void:
@@ -499,14 +500,19 @@ func _rebuild_body() -> void:
 	# small margin so the body never reads as crossing into a neighbour cell.
 	match data.fire_mode:
 		"radial":
-			# polyhedral torus: thick tube (small middle opening), low-poly quad net.
-			# Midway between the footprint-filling size and the 20%-larger size;
-			# inner/outer scaled together to keep the dialed-in opening ratio.
-			var inner := r * 0.3475
-			var outer := r * 0.99
-			_part(_low_poly_torus(inner, outer, 8, 6), mat, (outer - inner) * 0.5)
+			# stellated torus: a polyhedral torus with a spike raised from every face,
+			# bristling outward in all directions — echoing the all-directions burst.
+			# Sized so the spike tips still sit inside the hex footprint.
+			var inner := r * 0.30
+			var outer := r * 0.72
+			var tube := (outer - inner) * 0.5
+			var spike := tube * 1.15
+			_part(_low_poly_stellated_torus(inner, outer, 8, 6, spike), mat, tube + spike)
 		"laser":
 			_part(_low_poly_cone(r * 0.9, 60.0, 6), mat, 0.0)
+		"arc":
+			# Flared emitter: narrow base, concave flare to a wide open mouth on top.
+			_part(_low_poly_horn(r * 0.26, r * 0.95, 52.0, 8, 6), mat, 0.0)
 		_:
 			_part(_low_poly_cylinder(r * 0.9, 40.0, 8), mat, 0.0)
 	# Upgrades can reshape the body: scale width in the plane (X/Z) and height in Y.
@@ -563,6 +569,39 @@ func _low_poly_cone(base_r: float, height: float, sides: int) -> ArrayMesh:
 		_tri(st, Vector3.ZERO, b1, b0, ctr)      # base cap
 	return st.commit()
 
+# Flat-shaded flared horn / bell — a body of revolution opening upward. Rings of
+# an N-gon are lofted from `base_r` at the bottom to `rim_r` at the top, with the
+# radius following a concave curve (radius grows faster near the top, FLARE_POW),
+# so the wall bows outward like a trumpet bell. The mouth is left open (no top
+# cap); a small bottom cap closes the base where it meets the turret.
+func _low_poly_horn(base_r: float, rim_r: float, height: float, sides: int, segs: int) -> ArrayMesh:
+	const FLARE_POW := 2.4
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ctr := Vector3(0, height * 0.5, 0)
+	for s in range(segs):
+		var f0 := float(s) / float(segs)
+		var f1 := float(s + 1) / float(segs)
+		var y0 := height * f0
+		var y1 := height * f1
+		var r0: float = base_r + (rim_r - base_r) * pow(f0, FLARE_POW)
+		var r1: float = base_r + (rim_r - base_r) * pow(f1, FLARE_POW)
+		for i in range(sides):
+			var a0 := TAU * float(i) / float(sides)
+			var a1 := TAU * float(i + 1) / float(sides)
+			var p00 := Vector3(cos(a0) * r0, y0, sin(a0) * r0)
+			var p10 := Vector3(cos(a1) * r0, y0, sin(a1) * r0)
+			var p01 := Vector3(cos(a0) * r1, y1, sin(a0) * r1)
+			var p11 := Vector3(cos(a1) * r1, y1, sin(a1) * r1)
+			_tri(st, p00, p10, p11, ctr); _tri(st, p00, p11, p01, ctr)   # flared side quad
+	# Bottom cap (small octagon) so the base reads solid where it mounts.
+	for i in range(sides):
+		var a0 := TAU * float(i) / float(sides)
+		var a1 := TAU * float(i + 1) / float(sides)
+		var b0 := Vector3(cos(a0) * base_r, 0, sin(a0) * base_r)
+		var b1 := Vector3(cos(a1) * base_r, 0, sin(a1) * base_r)
+		_tri(st, Vector3.ZERO, b1, b0, ctr)
+	return st.commit()
+
 # Flat-shaded polyhedral torus lying flat (major ring in XZ), centred at y=0.
 # `rings` faces around the main ring, `tube_sides` quads around the tube.
 func _low_poly_torus(inner_r: float, outer_r: float, rings: int, tube_sides: int) -> ArrayMesh:
@@ -589,6 +628,36 @@ func _torus_pt(rr: float, tt: float, u: float, v: float) -> Vector3:
 
 func _torus_nrm(u: float, v: float) -> Vector3:
 	return Vector3(cos(u) * cos(v), sin(v), sin(u) * cos(v)).normalized()
+
+# Flat-shaded stellated torus: the same polyhedral torus, but every quad face is
+# raised into a 4-sided pyramid whose apex is pushed out along the face normal by
+# `spike`, so the body bristles with points in all directions. Each pyramid side is
+# oriented outward from that spike's own axis (not the global centre), so spikes on
+# the inner rim point inward correctly.
+func _low_poly_stellated_torus(inner_r: float, outer_r: float, rings: int, tube_sides: int, spike: float) -> ArrayMesh:
+	var rr := (inner_r + outer_r) * 0.5
+	var tt := (outer_r - inner_r) * 0.5
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in range(rings):
+		var u0 := TAU * float(i) / float(rings)
+		var u1 := TAU * float(i + 1) / float(rings)
+		for j in range(tube_sides):
+			var v0 := TAU * float(j) / float(tube_sides)
+			var v1 := TAU * float(j + 1) / float(tube_sides)
+			var a := _torus_pt(rr, tt, u0, v0)
+			var b := _torus_pt(rr, tt, u1, v0)
+			var c := _torus_pt(rr, tt, u1, v1)
+			var d := _torus_pt(rr, tt, u0, v1)
+			var um := (u0 + u1) * 0.5
+			var vm := (v0 + v1) * 0.5
+			var base_c := _torus_pt(rr, tt, um, vm)
+			var apex := base_c + _torus_nrm(um, vm) * spike
+			var mid := (base_c + apex) * 0.5    # orient each side face away from the spike axis
+			_tri(st, a, b, apex, mid)
+			_tri(st, b, c, apex, mid)
+			_tri(st, c, d, apex, mid)
+			_tri(st, d, a, apex, mid)
+	return st.commit()
 
 # Colour-coded body material: the tower's own colour, lit + a soft self-glow.
 # Low metallic so it reads as colour, not a dark mirror; two-sided so the hand-
