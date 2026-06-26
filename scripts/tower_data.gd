@@ -3,6 +3,7 @@ extends Resource
 ## Stat block for a tower type. Make a new one to add a new tower.
 
 @export var display_name: String = "Tower"
+@export var description: String = ""          # build-button tooltip body (name is shown separately)
 @export var color: Color = Color(0.4, 0.7, 1.0)
 @export var range_tiles: int = 3              # view/attack radius measured in hex tiles
 @export var fire_rate: float = 1.5            # shots per second
