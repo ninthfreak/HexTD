@@ -17,6 +17,7 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `name` | string | `"Tower"` | Display name. |
+| `description` | string | `""` | Build-button tooltip body (the name is shown above it). Multi-line; `\n` for line breaks. |
 | `color` | `"#rrggbb"` | `"#59b2ff"` | Body / projectile / beam color. |
 | `range` | int | 3 | Attack radius in hex tiles (min 1). |
 | `fire_rate` | number | 1.5 | Shots per second (`single`) / volleys per second (`radial`). Ignored by `laser`. |

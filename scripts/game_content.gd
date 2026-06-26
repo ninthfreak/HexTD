@@ -41,6 +41,7 @@ func _load_towers() -> void:
 func _tower_from_dict(d: Dictionary) -> TowerData:
 	var t := TowerData.new()
 	t.display_name = str(d.get("name", "Tower"))
+	t.description = str(d.get("description", ""))
 	t.color = _color(str(d.get("color", "#59b2ff")))
 	t.range_tiles = maxi(1, int(d.get("range", 3)))
 	t.fire_rate = float(d.get("fire_rate", 1.5))

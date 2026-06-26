@@ -48,6 +48,7 @@ var game_wave_index := 0          # next wave to start in game mode (0-based)
 # --- speed / pause ---
 const BAR_ICON_PX := 100         # pause / speed hex button size
 const WAVE_ICON_PX := 150        # wave hex button — 50% larger than the others
+const TOWER_HEX_PX := 96         # hex build-button size
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -83,6 +84,7 @@ var sound_button: Button
 var sound_on := true
 var target_button: Button
 var upgrade_buttons: Array = []
+var _tower_buttons: Array = []       # HexTowerButton list (cost-affordability refresh)
 var sell_button: Button
 var info_label: Label
 
@@ -1025,14 +1027,7 @@ func _build_ui() -> void:
 	var towers_header := Label.new()
 	towers_header.text = "Towers"
 	vbox.add_child(towers_header)
-
-	for id in content.tower_ids():
-		var td := content.tower(id)
-		var b := Button.new()
-		b.text = "%s    $%d" % [td.display_name, td.cost]
-		b.custom_minimum_size = Vector2(0, 40)
-		b.gui_input.connect(_on_tower_button_input.bind(id))
-		vbox.add_child(b)
+	_build_tower_honeycomb(vbox)
 
 	vbox.add_child(HSeparator.new())
 
@@ -1148,16 +1143,65 @@ func _apply_hex_click_mask(b: TextureButton) -> void:
 	bm.create_from_image_alpha(img, 0.25)
 	b.texture_click_mask = bm
 
-func _on_tower_button_input(event: InputEvent, id: String) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		placing_id = id
-		dragging = true
-		has_selected = false
-		_set_info("Placing %s — drop on a hex, or click a hex." % content.tower(id).display_name)
+# Hex build buttons in a honeycomb: pointy-left/right hexes laid out in up to 3
+# columns, each odd column dropped half a hex so they interlock. Offsets come from
+# the 240-unit hex art (diagonal neighbour +168/+97, vertical stack +194), scaled
+# to the button size, so the hexes pack flush.
+func _build_tower_honeycomb(parent: Control) -> void:
+	_tower_buttons.clear()
+	var ids: Array = content.tower_ids()
+	var n := ids.size()
+	if n == 0:
+		return
+	var d := float(TOWER_HEX_PX)
+	var f := d / 240.0
+	var xoff := 168.0 * f
+	var yoff := 194.0 * f
+	var drop := 97.0 * f
+	var cols := mini(3, n)
+	var hc := Control.new()
+	hc.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	parent.add_child(hc)
+	var maxw := 0.0
+	var maxh := 0.0
+	for i in range(n):
+		var col := i % cols
+		var row := i / cols
+		var x := float(col) * xoff
+		var y := float(row) * yoff + float(col % 2) * drop
+		var id := str(ids[i])
+		var td := content.tower(id)
+		var b := HexTowerButton.new()
+		b.setup(id, td, _load_tower_pic(id), d)
+		b.position = Vector2(x, y)
+		b.tower_pressed.connect(_on_tower_pressed)
+		hc.add_child(b)
+		_tower_buttons.append(b)
+		maxw = maxf(maxw, x + d)
+		maxh = maxf(maxh, y + d)
+	hc.custom_minimum_size = Vector2(maxw, maxh)
+
+func _load_tower_pic(id: String) -> Texture2D:
+	var path := "res://art/tower_%s.png" % id
+	if _art_cache.has(path):
+		return _art_cache[path]
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	_art_cache[path] = tex
+	return tex
+
+func _on_tower_pressed(id: String) -> void:
+	placing_id = id
+	dragging = true
+	has_selected = false
+	_set_info("Placing %s — drop on a hex, or click a hex." % content.tower(id).display_name)
 
 func _update_labels() -> void:
 	money_label.text = "Money: %d" % money
 	lives_label.text = "Lives: %d" % lives
+	for b in _tower_buttons:
+		b.set_affordable(money >= b.cost)
 
 func _set_info(text: String) -> void:
 	if info_label != null:

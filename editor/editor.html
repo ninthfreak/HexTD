@@ -260,6 +260,7 @@ function towersToJSON(towers, order){
     const mode=(t.fire_mode==='radial'||t.fire_mode==='laser'||t.fire_mode==='arc')?t.fire_mode:'single';
     const o={ name:t.name, color:t.color, range:+t.range, fire_rate:+t.fire_rate,
       damage:+t.damage, cost:+t.cost, projectile_speed:+t.projectile_speed, fire_mode:mode };
+    if(t.description) o.description=t.description;
     if(mode==='radial') o.directions=Math.max(1,Math.round(+t.directions||6));
     if(mode==='laser') o.ramp_time=Math.max(0.05,+t.ramp_time||2);
     if(+t.focus_time) o.focus_time=+t.focus_time;
@@ -286,7 +287,7 @@ function towersToJSON(towers, order){
 function towersFromJSON(obj){
   const order=Object.keys(obj), towers={};
   for(const id of order){ const d=obj[id]||{};
-    towers[id]={ name:d.name??id, color:d.color??'#59b2ff', range:+(d.range??3),
+    towers[id]={ name:d.name??id, description:d.description??'', color:d.color??'#59b2ff', range:+(d.range??3),
       fire_rate:+(d.fire_rate??1.5), damage:+(d.damage??10), cost:+(d.cost??40),
       projectile_speed:+(d.projectile_speed??320),
       fire_mode:(d.fire_mode==='radial'||d.fire_mode==='laser'||d.fire_mode==='arc')?d.fire_mode:'single',
@@ -344,7 +345,7 @@ const DEF_ENEMIES={
   byte:{name:'byte',shape:'octagon',color:'#b06ae8',health:116,speed:60,reward:16,side:16,length:32,width:16,radius:22,sides:8,reduces_to:'nybble'},
 };
 const DEF_ENEMY_ORDER=['bit','2bit','nybble','byte'];
-const DEF_TOWERS={ basic:{name:'Basic Tower',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,dos:false,height_scale:1,width_scale:1} };
+const DEF_TOWERS={ basic:{name:'Basic Tower',description:'',color:'#59b2ff',range:3,fire_rate:1.6,damage:9,cost:40,projectile_speed:340,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,dos:false,height_scale:1,width_scale:1} };
 const DEF_TOWER_ORDER=['basic'];
 const DEF_WAVES={ spawn_interval_default:0.7, waves:[
   {groups:[{type:'bit',count:12,gap:0.55}]},
@@ -756,6 +757,7 @@ function renderTowerEditor(){
   const grid=[
     ...field('id',idInput),
     ...field('name',el('input',{type:'text',value:t.name,oninput:ev=>upd('name',ev.target.value)})),
+    ...field('description (tooltip)',el('textarea',{rows:5,value:(t.description||''),style:'width:100%;box-sizing:border-box;resize:vertical;font:inherit',oninput:ev=>upd('description',ev.target.value)})),
     ...field('color',el('input',{type:'color',value:t.color,oninput:ev=>upd('color',ev.target.value)})),
     ...field('fire mode',modeSel),
     ...field('range (tiles)',num('range')),
@@ -849,7 +851,7 @@ function deleteTower(id){
 }
 document.getElementById('tw_add').onclick=()=>{
   const id=uniqueId('tower',MODEL.towerOrder);
-  MODEL.towers[id]={name:id,color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,dos:false,height_scale:1,width_scale:1};
+  MODEL.towers[id]={name:id,description:'',color:'#ffb84d',range:3,fire_rate:1.2,damage:12,cost:50,projectile_speed:320,fire_mode:'single',directions:6,ramp_time:2,focus_time:0,buffer_overflow:false,ignore_walls:false,dos:false,height_scale:1,width_scale:1};
   MODEL.towerOrder.push(id); selTower=id; setDirty('towers'); renderTowers();
 };
 document.getElementById('tw_save').onclick=async ()=>{
