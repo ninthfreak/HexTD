@@ -199,14 +199,14 @@ func _draw_badge(center: Vector2, icon: String) -> void:
 	if tex != null:
 		draw_texture_rect(tex, Rect2(center - Vector2(d, d) * 0.5, Vector2(d, d)), false, Color(1, 1, 1, 1))
 
-# Cached lookup of an ability's icon. Drop a file named <ability> into res://art/ in any
-# of these formats (PNG wins, so it can override an SVG). No code changes needed to swap art.
+# Cached lookup of an ability's icon. Drop a file named <ability> into res://art/badges/
+# in any of these formats (PNG wins, so it can override an SVG). No code changes needed to swap art.
 func _icon_texture(name: String) -> Texture2D:
 	if _icon_tex.has(name):
 		return _icon_tex[name]
 	var tex: Texture2D = null
 	for ext in [".png", ".webp", ".svg"]:
-		var path := "res://art/%s%s" % [name, ext]
+		var path := "res://art/%s%s%s" % [ArtPaths.dir(name), name, ext]
 		if ResourceLoader.exists(path):
 			tex = load(path)
 			break
