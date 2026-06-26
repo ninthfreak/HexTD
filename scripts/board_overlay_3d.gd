@@ -29,6 +29,9 @@ var selected_cell := Vector2i.ZERO
 var selected_range := 0
 var selected_color := Color(0.45, 0.75, 1.0)
 var selected_ignore_walls := false
+var selected_facing := 0              # hex-edge direction index 0–5
+
+var preview_facing := 0
 
 var _scene_root: Node3D            # all generated meshes hang off here
 
@@ -45,36 +48,50 @@ func refresh() -> void:
 	for c in _scene_root.get_children():
 		c.queue_free()
 	if selected_active:
-		_draw_region(selected_cell, selected_range, selected_ignore_walls)
+		_draw_region(selected_cell, selected_range, selected_ignore_walls, selected_facing)
 		_draw_footprint(selected_cell, selected_color, false)
 	if preview_active:
-		_draw_region(preview_cell, preview_range, preview_ignore_walls)
+		_draw_region(preview_cell, preview_range, preview_ignore_walls, preview_facing)
 		_draw_footprint(preview_cell, preview_color, true)
 		var center: Vector2 = board.cell_center_world(preview_cell)
 		_draw_tower_ghost(center, preview_mode, preview_dirs)
 		if not preview_valid and board.is_buildable(preview_cell):
 			_draw_invalid_mark(center)
 
-# Range disk, split by line-of-sight (visible / shadowed / blocked-by-wall).
-# Tunneling towers (ignore_walls) reach the wall-shadowed tiles too, so those are
-# drawn as in-range rather than hidden.
-func _draw_region(cell: Vector2i, n: int, ignore_walls := false) -> void:
+# Range disk, split by line-of-sight and facing. Tiles outside the tower's
+# forward 180° hemisphere are drawn with HIDDEN_FILL (the tower can't target
+# them). Tunneling towers still reach wall-shadowed tiles within the FOV.
+const BEHIND_FILL := Color(0.45, 0.45, 0.55, 0.18)
+
+func _draw_region(cell: Vector2i, n: int, ignore_walls := false, facing := 0) -> void:
 	var res: Dictionary = board.hexes_in_range(cell, n)
 	var fp := {}
 	for c in board.footprint(cell):
 		fp[c] = true
+	var origin: Vector2 = board.cell_center_world(cell)
+	var fang := facing * TAU / 6.0
 	for c in res["visible"]:
 		if fp.has(c):
 			continue
-		_draw_tile(c, RANGE_FILL)
+		_draw_tile(c, RANGE_FILL if _hex_in_fov(origin, c, fang) else BEHIND_FILL)
 	for c in res["shadowed"]:
 		if fp.has(c):
 			continue
-		_draw_tile(c, RANGE_FILL if ignore_walls else HIDDEN_FILL)
+		if not _hex_in_fov(origin, c, fang):
+			_draw_tile(c, BEHIND_FILL)
+		else:
+			_draw_tile(c, RANGE_FILL if ignore_walls else HIDDEN_FILL)
 	for c in res["blocked"]:
 		if fp.has(c):
 			continue
-		_draw_tile(c, HIDDEN_FILL)
+		_draw_tile(c, BEHIND_FILL if not _hex_in_fov(origin, c, fang) else HIDDEN_FILL)
+
+func _hex_in_fov(origin: Vector2, hex_cell: Vector2i, fang: float) -> bool:
+	var hc: Vector2 = board.cell_center_world(hex_cell)
+	var d: Vector2 = hc - origin
+	if d.length_squared() < 0.001:
+		return true
+	return absf(angle_difference(fang, atan2(d.y, d.x))) <= PI * 0.5
 
 func _draw_footprint(cell: Vector2i, base: Color, validate: bool) -> void:
 	var fill := Color(base.r, base.g, base.b, 0.35)

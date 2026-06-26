@@ -15,6 +15,27 @@ var board                            # GameBoard3D (untyped)
 var cell: Vector2i
 var pp := Vector2.ZERO               # plane position (the tower's center)
 var target_priority := "first"
+var facing := 0                      # hex-edge direction index 0–5 (E, SE, SW, W, NW, NE)
+
+# World-space angle (radians) of the facing direction, measured in the 2D pixel
+# plane (atan2(dy, dx)).  Direction 0 = East (0°), 1 = SE (60°), etc.
+func facing_angle() -> float:
+	return facing * TAU / 6.0
+
+# Rotate clockwise by one step (60°). Returns the new facing index.
+func rotate_facing() -> int:
+	facing = (facing + 1) % 6
+	_sync_transform()
+	return facing
+
+# True if `target_pp` (plane coords) lies within the forward 180° hemisphere of
+# this tower's facing direction.
+func _in_fov(target_pp: Vector2) -> bool:
+	var d: Vector2 = target_pp - pp
+	if d.length_squared() < 0.001:
+		return true
+	var to_ang := atan2(d.y, d.x)
+	return absf(angle_difference(facing_angle(), to_ang)) <= PI * 0.5
 var _cooldown := 0.0
 var _laser_target = null
 var _charge := 0.0
@@ -158,6 +179,9 @@ func setup(d: TowerData, b, pos_plane: Vector2) -> void:
 
 func _sync_transform() -> void:
 	position = Vector3(pp.x, GameBoard3D.BUS_TOP, pp.y)
+	# Hex pixel angle → Godot Y-axis rotation (positive Y-rot goes from +X toward -Z,
+	# so negate the plane angle).
+	rotation.y = -facing_angle()
 
 # ---------------------------------------------------------------- upgrades (ported)
 const SELL_REFUND := 0.75
@@ -370,14 +394,17 @@ func _any_enemy_in_range() -> bool:
 			continue
 		if not _can_see(e):
 			continue
+		if not _in_fov(e.pp):
+			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) <= board.tower_reach(data.range_tiles):
 			return true
 	return false
 
 func _fire_volley() -> void:
 	var n: int = maxi(1, data.directions)
+	var base_ang := facing_angle()
 	for i in range(n):
-		var ang := TAU * float(i) / float(n)
+		var ang := base_ang + TAU * float(i) / float(n)
 		var p := RadialProjectile3D.new()
 		p.setup(pp, Vector2(cos(ang), sin(ang)), data.damage, data.projectile_speed,
 				cell, board.tower_reach(data.range_tiles), data.color, board)
@@ -467,10 +494,10 @@ func _fill_hum() -> void:
 func _target_still_valid(t) -> bool:
 	if t == null or not is_instance_valid(t):
 		return false
+	if not _in_fov(t.pp):
+		return false
 	if HexUtils.axial_distance(cell, board.world_cell(t.pp)) > board.tower_reach(data.range_tiles):
 		return false
-	# Tunneling (ignore_walls) lets the tower fire through blocking tiles, so LOS
-	# is only required when the tower lacks it.
 	return data.ignore_walls or board.has_los(pp, t.pp)
 
 func _find_target():
@@ -488,6 +515,8 @@ func _acquire_target():
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
+			continue
+		if not _in_fov(e.pp):
 			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
 			continue
@@ -519,6 +548,8 @@ func _acquire_targets(n: int) -> Array:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
+			continue
+		if not _in_fov(e.pp):
 			continue
 		if HexUtils.axial_distance(cell, board.world_cell(e.pp)) > board.tower_reach(data.range_tiles):
 			continue
