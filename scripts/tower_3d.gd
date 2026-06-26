@@ -482,7 +482,8 @@ func _shoot(t) -> void:
 
 # ---------------------------------------------------------------- body (3D)
 # One colour-coded, FLAT-SHADED low-poly primitive per fire mode (no base/caps):
-#   single -> octagonal cylinder; radial -> polyhedral toroid; laser -> cone.
+#   single -> octagonal cylinder; radial -> polyhedral toroid; laser -> cone;
+#   arc -> flared horn / bell (the inverse of the laser cone — opens upward).
 # Built by hand with per-face normals so they read as faceted low-poly (Godot's
 # CylinderMesh/TorusMesh use smooth normals, which looked round / "high poly").
 func _rebuild_body() -> void:
@@ -507,6 +508,9 @@ func _rebuild_body() -> void:
 			_part(_low_poly_torus(inner, outer, 8, 6), mat, (outer - inner) * 0.5)
 		"laser":
 			_part(_low_poly_cone(r * 0.9, 60.0, 6), mat, 0.0)
+		"arc":
+			# Flared emitter: narrow base, concave flare to a wide open mouth on top.
+			_part(_low_poly_horn(r * 0.26, r * 0.95, 52.0, 8, 6), mat, 0.0)
 		_:
 			_part(_low_poly_cylinder(r * 0.9, 40.0, 8), mat, 0.0)
 	# Upgrades can reshape the body: scale width in the plane (X/Z) and height in Y.
@@ -561,6 +565,39 @@ func _low_poly_cone(base_r: float, height: float, sides: int) -> ArrayMesh:
 		var b1 := Vector3(cos(a1) * base_r, 0, sin(a1) * base_r)
 		_tri(st, apex, b0, b1, ctr)              # side face
 		_tri(st, Vector3.ZERO, b1, b0, ctr)      # base cap
+	return st.commit()
+
+# Flat-shaded flared horn / bell — a body of revolution opening upward. Rings of
+# an N-gon are lofted from `base_r` at the bottom to `rim_r` at the top, with the
+# radius following a concave curve (radius grows faster near the top, FLARE_POW),
+# so the wall bows outward like a trumpet bell. The mouth is left open (no top
+# cap); a small bottom cap closes the base where it meets the turret.
+func _low_poly_horn(base_r: float, rim_r: float, height: float, sides: int, segs: int) -> ArrayMesh:
+	const FLARE_POW := 2.4
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ctr := Vector3(0, height * 0.5, 0)
+	for s in range(segs):
+		var f0 := float(s) / float(segs)
+		var f1 := float(s + 1) / float(segs)
+		var y0 := height * f0
+		var y1 := height * f1
+		var r0: float = base_r + (rim_r - base_r) * pow(f0, FLARE_POW)
+		var r1: float = base_r + (rim_r - base_r) * pow(f1, FLARE_POW)
+		for i in range(sides):
+			var a0 := TAU * float(i) / float(sides)
+			var a1 := TAU * float(i + 1) / float(sides)
+			var p00 := Vector3(cos(a0) * r0, y0, sin(a0) * r0)
+			var p10 := Vector3(cos(a1) * r0, y0, sin(a1) * r0)
+			var p01 := Vector3(cos(a0) * r1, y1, sin(a0) * r1)
+			var p11 := Vector3(cos(a1) * r1, y1, sin(a1) * r1)
+			_tri(st, p00, p10, p11, ctr); _tri(st, p00, p11, p01, ctr)   # flared side quad
+	# Bottom cap (small octagon) so the base reads solid where it mounts.
+	for i in range(sides):
+		var a0 := TAU * float(i) / float(sides)
+		var a1 := TAU * float(i + 1) / float(sides)
+		var b0 := Vector3(cos(a0) * base_r, 0, sin(a0) * base_r)
+		var b1 := Vector3(cos(a1) * base_r, 0, sin(a1) * base_r)
+		_tri(st, Vector3.ZERO, b1, b0, ctr)
 	return st.commit()
 
 # Flat-shaded polyhedral torus lying flat (major ring in XZ), centred at y=0.
