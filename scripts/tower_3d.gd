@@ -898,7 +898,7 @@ static func _badge_texture(file: String) -> Texture2D:
 		return _badge_tex[file]
 	var tex: Texture2D = null
 	for ext in [".png", ".webp"]:
-		var path := "res://art/%s%s" % [file, ext]
+		var path := "res://art/%s%s%s" % [ArtPaths.dir(file), file, ext]
 		if ResourceLoader.exists(path):
 			tex = load(path)
 			break

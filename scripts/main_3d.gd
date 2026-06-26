@@ -947,7 +947,7 @@ func _load_icon(file: String) -> Texture2D:
 	if _art_cache.has(file):
 		return _art_cache[file]
 	var tex: Texture2D = null
-	var path := "res://art/%s.svg" % file
+	var path := "res://art/%s%s.svg" % [ArtPaths.dir(file), file]
 	if ResourceLoader.exists(path):
 		tex = load(path)
 	_art_cache[file] = tex
@@ -957,7 +957,7 @@ func _load_art(file: String) -> Texture2D:
 	if _art_cache.has(file):
 		return _art_cache[file]
 	var tex: Texture2D = null
-	var path := "res://art/%s.png" % file
+	var path := "res://art/%s%s.png" % [ArtPaths.dir(file), file]
 	if ResourceLoader.exists(path):
 		tex = load(path)
 	_art_cache[file] = tex
@@ -1344,7 +1344,7 @@ func _build_tower_honeycomb(parent: Control) -> void:
 	hc.custom_minimum_size = Vector2(maxw, maxh)
 
 func _load_tower_pic(id: String) -> Texture2D:
-	var path := "res://art/tower_%s.png" % id
+	var path := "res://art/towers/tower_%s.png" % id
 	if _art_cache.has(path):
 		return _art_cache[path]
 	var tex: Texture2D = null
