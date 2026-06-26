@@ -924,15 +924,24 @@ func cell_center_world(cell: Vector2i) -> Vector2:
 func hex_polygon(center: Vector2) -> PackedVector2Array:
 	return _hex_plane_polygon(center)
 
-func hexes_in_range(center: Vector2i, n: int) -> Dictionary:
+func hexes_in_range(center: Vector2i, n: int, rotated := false) -> Dictionary:
 	var visible: Array[Vector2i] = []
 	var shadowed: Array[Vector2i] = []
 	var blocked: Array[Vector2i] = []
 	var c0 := cell_center_world(center)
-	for dq in range(-n, n + 1):
-		var lo: int = maxi(-n, -n - dq)
-		var hi: int = mini(n, n - dq)
+	var bound: int = ceili(float(4 * n) / 3.0) + 1 if rotated else n
+	for dq in range(-bound, bound + 1):
+		var lo: int
+		var hi: int
+		if rotated:
+			lo = -bound
+			hi = bound
+		else:
+			lo = maxi(-n, -n - dq)
+			hi = mini(n, n - dq)
 		for dr in range(lo, hi + 1):
+			if rotated and not HexUtils.in_rotated_range(dq, dr, n):
+				continue
 			var cell := center + Vector2i(dq, dr)
 			if not has_cell(cell):
 				continue

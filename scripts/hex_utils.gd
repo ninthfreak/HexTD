@@ -27,6 +27,15 @@ static func axial_distance(a: Vector2i, b: Vector2i) -> int:
 	var dr := a.y - b.y
 	return (absi(dq) + absi(dq + dr) + absi(dr)) / 2
 
+## True when the delta (dq, dr) from a center cell falls inside the 30-degree
+## rotated hex range of radius n.  The rotated hex is taller than wide (pointy
+## top/bottom) vs the standard hex disk (wider, flat top/bottom).
+static func in_rotated_range(dq: int, dr: int, n: int) -> bool:
+	var a: int = absi(2 * dq + dr)
+	var b: int = absi(dq - dr)
+	var c: int = absi(dq + 2 * dr)
+	return maxi(a, maxi(b, c)) <= 2 * n
+
 ## Round fractional axial coords to the nearest hex (cube rounding).
 static func axial_round(qf: float, rf: float) -> Vector2i:
 	var xf := qf

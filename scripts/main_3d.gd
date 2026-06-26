@@ -330,6 +330,7 @@ func _update_preview() -> void:
 	if sel_t != null:
 		overlay.selected_color = sel_t.data.color
 		overlay.selected_ignore_walls = sel_t.data.ignore_walls
+		overlay.selected_rotated = sel_t.range_rotated
 	overlay.refresh()
 	_set_badged_tower(sel_t)
 	_update_badge_tooltip()
@@ -393,11 +394,6 @@ func _on_target_pressed() -> void:
 	_update_target_button()
 	_set_info("%s now targets: %s." % [t.data.display_name, _priority_label(p)])
 
-const FACING_LABELS := ["East", "South-East", "South-West", "West", "North-West", "North-East"]
-
-func _update_facing_button() -> void:
-	pass
-
 func _update_tower_control_row() -> void:
 	var t = board.tower_at(selected_cell) if has_selected else null
 	_tower_control_row.visible = t != null
@@ -408,8 +404,9 @@ func _on_facing_pressed() -> void:
 	var t = board.tower_at(selected_cell)
 	if t == null:
 		return
-	var f: int = t.rotate_facing()
-	_set_info("%s now facing: %s." % [t.data.display_name, FACING_LABELS[f]])
+	var rotated: bool = t.toggle_range_rotation()
+	var shape: String = "rotated" if rotated else "standard"
+	_set_info("%s range shape: %s." % [t.data.display_name, shape])
 
 # Upgrade/sell buttons carry a CostLabel overlay so the small ¤ glyph can be drawn
 # larger than the surrounding text and still sit aligned with the digits.
@@ -1256,7 +1253,7 @@ func _build_ui() -> void:
 
 	facing_button = TextureButton.new()
 	_style_icon_button(facing_button, "rotate_footprint")
-	facing_button.tooltip_text = "Rotate tower facing by 60° (changes attack direction)."
+	facing_button.tooltip_text = "Toggle range shape between standard (wider) and rotated (taller)."
 	facing_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	facing_button.pressed.connect(_on_facing_pressed)
 	_tower_control_row.add_child(facing_button)
