@@ -1,0 +1,358 @@
+{
+  "basic": {
+    "name": "Basic",
+    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage.\nWeak: swarms, and large health pools late-game.",
+    "color": "#59b2ff",
+    "range": 4,
+    "fire_rate": 1.6,
+    "damage": 10,
+    "cost": 40,
+    "projectile_speed": 512,
+    "fire_mode": "single",
+    "upgrades": [
+      {
+        "name": "Caliber",
+        "tiers": [
+          {
+            "cost": 25,
+            "damage": 6
+          },
+          {
+            "cost": 45,
+            "damage": 10
+          },
+          {
+            "cost": 85,
+            "damage": 18
+          },
+          {
+            "cost": 150,
+            "buffer_overflow": "on"
+          }
+        ]
+      },
+      {
+        "name": "Optics",
+        "tiers": [
+          {
+            "cost": 40,
+            "range": 1
+          },
+          {
+            "cost": 60,
+            "range": 1
+          },
+          {
+            "cost": 130,
+            "cipher": "on"
+          }
+        ]
+      },
+      {
+        "name": "Action",
+        "tiers": [
+          {
+            "cost": 25,
+            "fire_rate": 1
+          },
+          {
+            "cost": 35,
+            "fire_rate": 1.4
+          }
+        ]
+      }
+    ]
+  },
+  "machinegun": {
+    "name": "Machine Gun",
+    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters.\nWeak: tanky or armored foes; short range; can't pierce ECC or see Encrypted.",
+    "color": "#9141ac",
+    "range": 3,
+    "fire_rate": 8,
+    "damage": 2,
+    "cost": 40,
+    "projectile_speed": 768,
+    "fire_mode": "single",
+    "upgrades": [
+      {
+        "name": "Caliber",
+        "tiers": [
+          {
+            "cost": 20,
+            "damage": 1
+          },
+          {
+            "cost": 40,
+            "damage": 2
+          },
+          {
+            "cost": 60,
+            "damage": 3
+          }
+        ]
+      },
+      {
+        "name": "Overdrive",
+        "tiers": [
+          {
+            "cost": 20,
+            "fire_rate": 4
+          },
+          {
+            "cost": 30,
+            "fire_rate": 6
+          }
+        ]
+      },
+      {
+        "name": "Optics",
+        "tiers": [
+          {
+            "cost": 50,
+            "range": 1
+          },
+          {
+            "cost": 80,
+            "range": 1
+          }
+        ]
+      }
+    ]
+  },
+  "slow": {
+    "name": "Heavy",
+    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses (upgradable to pierce ECC).\nWeak: swarms slip past its slow fire; overkills weak enemies.",
+    "color": "#ffb84d",
+    "range": 4,
+    "fire_rate": 0.6,
+    "damage": 100,
+    "cost": 150,
+    "projectile_speed": 384,
+    "fire_mode": "single",
+    "upgrades": [
+      {
+        "name": "Caliber",
+        "tiers": [
+          {
+            "cost": 90,
+            "damage": 60
+          },
+          {
+            "cost": 180,
+            "damage": 120
+          },
+          {
+            "cost": 360,
+            "damage": 240
+          }
+        ]
+      },
+      {
+        "name": "Optics",
+        "tiers": [
+          {
+            "cost": 70,
+            "range": 1
+          },
+          {
+            "cost": 110,
+            "range": 1
+          }
+        ]
+      },
+      {
+        "name": "Corruption",
+        "tiers": [
+          {
+            "cost": 180,
+            "bit_corruption": "on"
+          },
+          {
+            "cost": 300,
+            "buffer_overflow": "on"
+          }
+        ]
+      }
+    ]
+  },
+  "radial": {
+    "name": "Splitter",
+    "description": "Area tower that fires six spokes at once.\nGood at: cheaply hitting clustered or lined-up enemies.\nWeak: single targets; coverage depends on the path layout.",
+    "color": "#1a5fb4",
+    "range": 3,
+    "fire_rate": 1.2,
+    "damage": 3,
+    "cost": 75,
+    "projectile_speed": 384,
+    "fire_mode": "radial",
+    "directions": 6,
+    "upgrades": [
+      {
+        "name": "Caliber",
+        "tiers": [
+          {
+            "cost": 75,
+            "damage": 3
+          },
+          {
+            "cost": 125,
+            "damage": 5
+          },
+          {
+            "cost": 200,
+            "damage": 8
+          }
+        ]
+      },
+      {
+        "name": "Spread",
+        "tiers": [
+          {
+            "cost": 60,
+            "range": 1
+          },
+          {
+            "cost": 40,
+            "directions": 3
+          },
+          {
+            "cost": 130,
+            "ignore_walls": "on"
+          }
+        ]
+      },
+      {
+        "name": "Corruption",
+        "tiers": [
+          {
+            "cost": 40,
+            "fire_rate": 0.6
+          },
+          {
+            "cost": 150,
+            "bit_corruption": "on"
+          }
+        ]
+      }
+    ]
+  },
+  "laser": {
+    "name": "Beam",
+    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused; longest reach on the board.\nWeak: swarms and fast movers reset its ramp.",
+    "color": "#ed333b",
+    "range": 8,
+    "fire_rate": 1.2,
+    "damage": 90,
+    "cost": 200,
+    "projectile_speed": 320,
+    "fire_mode": "laser",
+    "ramp_time": 6,
+    "focus_time": 0.3,
+    "upgrades": [
+      {
+        "name": "Focus",
+        "tiers": [
+          {
+            "cost": 100,
+            "damage": 40
+          },
+          {
+            "cost": 175,
+            "damage": 70
+          },
+          {
+            "cost": 300,
+            "damage": 120
+          }
+        ]
+      },
+      {
+        "name": "Lens",
+        "tiers": [
+          {
+            "cost": 80,
+            "range": 1
+          },
+          {
+            "cost": 150,
+            "focus_time": -0.2
+          },
+          {
+            "cost": 160,
+            "cipher": "on"
+          }
+        ]
+      },
+      {
+        "name": "Decrypt",
+        "tiers": [
+          {
+            "cost": 200,
+            "bit_corruption": "on"
+          }
+        ]
+      }
+    ]
+  },
+  "jammer": {
+    "name": "Jammer",
+    "description": "Support tower that freezes, then slows, enemies its wave touches.\nGood at: locking down groups so your other towers hit them longer.\nWeak: no damage alone; short range; steep price.",
+    "color": "#f24fbe",
+    "range": 3,
+    "fire_rate": 0.8,
+    "damage": 0,
+    "cost": 1000,
+    "projectile_speed": 360,
+    "fire_mode": "arc",
+    "dos": true,
+    "upgrades": [
+      {
+        "name": "Bandwidth",
+        "tiers": [
+          {
+            "cost": 250,
+            "range": 1
+          },
+          {
+            "cost": 450,
+            "range": 1
+          },
+          {
+            "cost": 800,
+            "range": 2
+          }
+        ]
+      },
+      {
+        "name": "Signal",
+        "tiers": [
+          {
+            "cost": 200,
+            "fire_rate": 0.4
+          },
+          {
+            "cost": 350,
+            "cipher": "on"
+          }
+        ]
+      },
+      {
+        "name": "Payload",
+        "tiers": [
+          {
+            "cost": 150,
+            "damage": 3
+          },
+          {
+            "cost": 250,
+            "damage": 5
+          },
+          {
+            "cost": 400,
+            "damage": 8
+          }
+        ]
+      }
+    ]
+  }
+}
