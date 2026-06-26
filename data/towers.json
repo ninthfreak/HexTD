@@ -1,7 +1,7 @@
 {
   "basic": {
     "name": "Basic",
-    "description": "All-rounder. Pick one path: Railgun (single-target boss-killer), Auto-loader (multi-target swarm-clear), or Overwatch (long range, sees Encrypted, fires through walls).",
+    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage.\nWeak: at base, swarms and big late-game health pools; never pierces ECC.",
     "color": "#59b2ff",
     "range": 4,
     "fire_rate": 1.6,
@@ -125,7 +125,7 @@
   },
   "machinegun": {
     "name": "Machine Gun",
-    "description": "Rapid swarm gun. AP Rounds (pierces ECC armor), Overclock (multi-target spray), or Sentry (long-range, wall-piercing coverage).",
+    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; AP Rounds chew through ECC-armored swarms.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
     "color": "#9141ac",
     "range": 3,
     "fire_rate": 8,
@@ -249,7 +249,7 @@
   },
   "slow": {
     "name": "Heavy",
-    "description": "Single big-hit boss-killer. Siege (raw deletion + overkill cascade), Salvo (multi-target one-shots a cluster), or Logic Bomb (pierces ECC + cascades \u2014 the ECC-boss deleter).",
+    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses, and piercing ECC armor (Logic Bomb).\nWeak: slow fire overkills weak enemies and lets swarms slip past; can't see Encrypted.",
     "color": "#ffb84d",
     "range": 4,
     "fire_rate": 0.6,
@@ -373,7 +373,7 @@
   },
   "radial": {
     "name": "Splitter",
-    "description": "Radial AoE. Frag (heavy per-spoke damage), Omni (12 wall-piercing spokes), or Spool (rapid fire). Bit Corruption available at Spread/Corruption T2 to shred ECC swarms.",
+    "description": "Area tower that fires a ring of straight spokes.\nGood at: cheaply shredding clustered or lined-up enemies; widens to twelve wall-piercing spokes.\nWeak: poor against lone targets; coverage depends on the path layout.",
     "color": "#1a5fb4",
     "range": 3,
     "fire_rate": 1.2,
@@ -496,7 +496,7 @@
   },
   "laser": {
     "name": "Beam",
-    "description": "Long-range ramping laser. Overcharge (max boss DPS), Prefocus (near-instant ramp \u2014 fixes the swarm weakness), or Cryptanalysis (full TLS pierce). Lens/Decrypt T1-2 splash ramp or the TLS flags.",
+    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused, the longest reach on the board, and countering TLS.\nWeak: swarms and fast movers reset its ramp until Prefocus is unlocked.",
     "color": "#ed333b",
     "range": 8,
     "fire_rate": 1.2,
@@ -620,7 +620,7 @@
   },
   "jammer": {
     "name": "Jammer",
-    "description": "Crowd control. Omni-Jam (360 board-wide reach), Throttle (deep continuous slow; Cipher at T2 to jam Encrypted), or Weaponized (AoE damage + slow).",
+    "description": "Support tower whose wave slows everything it touches.\nGood at: throttling groups to a crawl so your other towers hit them far longer; can blanket the whole board.\nWeak: little damage of its own; short range and a steep price until upgraded.",
     "color": "#f24fbe",
     "range": 3,
     "fire_rate": 0.8,
@@ -748,7 +748,7 @@
   },
   "quantum": {
     "name": "Quantum",
-    "description": "Apex arc tower. Native Cipher + Bit Corruption damages ECC, Encrypted, and TLS alike with zero upgrades. Amplitude -> Collapse (execute low-HP enemies whole), Field -> Superposition (360 board-wide pulse), Phase -> Phase Array (rapid pulses). Deals damage, no DoS.",
+    "description": "Apex arc tower that breaks all cryptography natively.\nGood at: AoE damage that ignores ECC, Encrypted, and TLS alike, deleting low-health bosses outright (Collapse) and blanketing the board (Superposition).\nWeak: enormous cost; weaker raw single-target damage than the Beam or Heavy.",
     "color": "#2fe3d0",
     "range": 5,
     "fire_rate": 1.2,
