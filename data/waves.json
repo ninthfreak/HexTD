@@ -1,0 +1,2649 @@
+{
+  "spawn_interval_default": 0.7,
+  "waves": [
+    {
+      "name": "1 - First Contact",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 20,
+          "gap": 0.92,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "2 - Bit Trickle",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 35,
+          "gap": 0.56,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "3 - Bit Stream",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 10,
+          "gap": 0.57,
+          "start": 0
+        },
+        {
+          "type": "crumb",
+          "count": 5,
+          "gap": 0.56,
+          "start": 5.7
+        },
+        {
+          "type": "bit",
+          "count": 15,
+          "gap": 0.5,
+          "start": 9.71
+        }
+      ]
+    },
+    {
+      "name": "4 - Crumb Flood",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 25,
+          "gap": 0.5,
+          "start": 0
+        },
+        {
+          "type": "crumb",
+          "count": 18,
+          "gap": 0.15,
+          "start": 7.9
+        },
+        {
+          "type": "bit",
+          "count": 10,
+          "gap": 0.31,
+          "start": 14.51
+        }
+      ]
+    },
+    {
+      "name": "5 - Crumb Scatter",
+      "groups": [
+        {
+          "type": "crumb",
+          "count": 12,
+          "gap": 0.47,
+          "start": 0
+        },
+        {
+          "type": "bit",
+          "count": 5,
+          "gap": 0.57,
+          "start": 5.7
+        },
+        {
+          "type": "crumb",
+          "count": 15,
+          "gap": 0.56,
+          "start": 8.6
+        }
+      ]
+    },
+    {
+      "name": "6 - Crumblanche",
+      "groups": [
+        {
+          "type": "nybble",
+          "count": 4,
+          "gap": 0.57,
+          "start": 0
+        },
+        {
+          "type": "bit",
+          "count": 15,
+          "gap": 0.36,
+          "start": 5.33
+        },
+        {
+          "type": "crumb",
+          "count": 15,
+          "gap": 0.56,
+          "start": 10.8
+        }
+      ]
+    },
+    {
+      "name": "7 - Crumb Drift",
+      "groups": [
+        {
+          "type": "crumb",
+          "count": 10,
+          "gap": 0.57,
+          "start": 0
+        },
+        {
+          "type": "nybble",
+          "count": 5,
+          "gap": 1.24,
+          "start": 5.7
+        },
+        {
+          "type": "bit",
+          "count": 20,
+          "gap": 0.57,
+          "start": 11.81
+        },
+        {
+          "type": "crumb",
+          "count": 10,
+          "gap": 0.44,
+          "start": 22.81
+        }
+      ]
+    },
+    {
+      "name": "8 - Crumb Spill",
+      "groups": [
+        {
+          "type": "crumb",
+          "count": 20,
+          "gap": 0.57,
+          "start": 0
+        },
+        {
+          "type": "nybble",
+          "count": 2,
+          "gap": 0.57,
+          "start": 11.42
+        },
+        {
+          "type": "bit",
+          "count": 10,
+          "gap": 0.22,
+          "start": 14.03
+        },
+        {
+          "type": "nybble",
+          "count": 12,
+          "gap": 0.96,
+          "start": 18.27
+        }
+      ]
+    },
+    {
+      "name": "9 - Nybble Swarm",
+      "groups": [
+        {
+          "type": "nybble",
+          "count": 30,
+          "gap": 0.65,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "10 - Crumb Cascade",
+      "groups": [
+        {
+          "type": "crumb",
+          "count": 60,
+          "gap": 0.59,
+          "start": 0
+        },
+        {
+          "type": "crumb",
+          "count": 20,
+          "gap": 0.47,
+          "start": 35.0
+        },
+        {
+          "type": "crumb",
+          "count": 22,
+          "gap": 0.19,
+          "start": 44.0
+        }
+      ]
+    },
+    {
+      "name": "11 - Mixed Assault",
+      "groups": [
+        {
+          "type": "byte",
+          "count": 3,
+          "gap": 0.5,
+          "start": 0
+        },
+        {
+          "type": "nybble",
+          "count": 12,
+          "gap": 0.57,
+          "start": 4.47
+        },
+        {
+          "type": "crumb",
+          "count": 10,
+          "gap": 0.42,
+          "start": 10.87
+        },
+        {
+          "type": "bit",
+          "count": 10,
+          "gap": 0.51,
+          "start": 14.59
+        }
+      ]
+    },
+    {
+      "name": "12 - Byte Rush",
+      "groups": [
+        {
+          "type": "nybble",
+          "count": 10,
+          "gap": 0.57,
+          "start": 0
+        },
+        {
+          "type": "crumb",
+          "count": 15,
+          "gap": 0.43,
+          "start": 5.7
+        },
+        {
+          "type": "byte",
+          "count": 5,
+          "gap": 0.78,
+          "start": 14.27
+        }
+      ]
+    },
+    {
+      "name": "13 - Relentless Crumb Flood",
+      "groups": [
+        {
+          "type": "crumb",
+          "count": 50,
+          "gap": 0.61,
+          "start": 0
+        },
+        {
+          "type": "nybble",
+          "count": 23,
+          "gap": 1.36,
+          "start": 2.21
+        }
+      ]
+    },
+    {
+      "name": "14 - Layered Attack",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 18,
+          "gap": 0.57,
+          "start": 0
+        },
+        {
+          "type": "crumb",
+          "count": 5,
+          "gap": 0.28,
+          "start": 2.85
+        },
+        {
+          "type": "nybble",
+          "count": 5,
+          "gap": 0.28,
+          "start": 5.71
+        },
+        {
+          "type": "byte",
+          "count": 4,
+          "gap": 0.32,
+          "start": 8.56
+        },
+        {
+          "type": "bit",
+          "count": 31,
+          "gap": 0.57,
+          "start": 9.5
+        },
+        {
+          "type": "crumb",
+          "count": 10,
+          "gap": 0.15,
+          "start": 15.96
+        },
+        {
+          "type": "nybble",
+          "count": 5,
+          "gap": 0.34,
+          "start": 19.84
+        },
+        {
+          "type": "byte",
+          "count": 5,
+          "gap": 0.39,
+          "start": 23.71
+        }
+      ]
+    },
+    {
+      "name": "15 - The Full Spectrum",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 20,
+          "gap": 1.32,
+          "start": 0
+        },
+        {
+          "type": "crumb",
+          "count": 15,
+          "gap": 1.43,
+          "start": 2.78
+        },
+        {
+          "type": "nybble",
+          "count": 12,
+          "gap": 1.36,
+          "start": 5.68
+        },
+        {
+          "type": "byte",
+          "count": 10,
+          "gap": 1.33,
+          "start": 8.87
+        },
+        {
+          "type": "doublet",
+          "count": 5,
+          "gap": 0.75,
+          "start": 17.55
+        }
+      ]
+    },
+    {
+      "name": "16 - Nybble Tide",
+      "groups": [
+        {
+          "type": "nybble",
+          "count": 20,
+          "gap": 0.57,
+          "start": 0
+        },
+        {
+          "type": "nybble",
+          "count": 20,
+          "gap": 0.57,
+          "start": 0.2
+        },
+        {
+          "type": "byte",
+          "count": 8,
+          "gap": 0.2,
+          "start": 14.59
+        }
+      ]
+    },
+    {
+      "name": "17 - Byte Blitz",
+      "groups": [
+        {
+          "type": "byte",
+          "count": 12,
+          "gap": 0.45,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "18 - Green Tide",
+      "groups": [
+        {
+          "type": "nybble",
+          "count": 60,
+          "gap": 0.42,
+          "start": 0
+        },
+        {
+          "type": "nybble",
+          "count": 20,
+          "gap": 0.1,
+          "start": 25.0
+        }
+      ]
+    },
+    {
+      "name": "19 - Doublet Push",
+      "groups": [
+        {
+          "type": "nybble",
+          "count": 10,
+          "gap": 0.32,
+          "start": 0
+        },
+        {
+          "type": "byte",
+          "count": 5,
+          "gap": 0.59,
+          "start": 2.85
+        },
+        {
+          "type": "doublet",
+          "count": 15,
+          "gap": 0.54,
+          "start": 5.96
+        },
+        {
+          "type": "byte",
+          "count": 4,
+          "gap": 0.76,
+          "start": 13.48
+        }
+      ]
+    },
+    {
+      "name": "20 - Armored Doublet",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 6,
+          "gap": 1.05,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "21 - Byte Barrage",
+      "groups": [
+        {
+          "type": "byte",
+          "count": 40,
+          "gap": 0.26,
+          "start": 0.09
+        },
+        {
+          "type": "doublet",
+          "count": 10,
+          "gap": 0.57,
+          "start": 10.84
+        },
+        {
+          "type": "doublet",
+          "count": 4,
+          "gap": 0.48,
+          "start": 16.68
+        }
+      ]
+    },
+    {
+      "name": "22 - Hardened Doublet",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 16,
+          "gap": 0.53,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "23 - Shielded Doublet",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 7,
+          "gap": 0.42,
+          "start": 0
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 7,
+          "gap": 0.33,
+          "start": 4.82
+        }
+      ]
+    },
+    {
+      "name": "24 - Relentless Crumb Scatter",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 1,
+          "gap": 0.5,
+          "start": 0.5
+        },
+        {
+          "type": "crumb",
+          "count": 20,
+          "gap": 0.32,
+          "start": 3.0
+        }
+      ]
+    },
+    {
+      "name": "25 - Byte Surge",
+      "groups": [
+        {
+          "type": "byte",
+          "count": 25,
+          "gap": 0.58,
+          "start": 0
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 10,
+          "gap": 0.44,
+          "start": 17.14
+        }
+      ]
+    },
+    {
+      "name": "26 - Doublet Press",
+      "groups": [
+        {
+          "type": "doublet",
+          "count": 23,
+          "gap": 0.4,
+          "start": 0
+        },
+        {
+          "type": "quadlet",
+          "count": 4,
+          "gap": 1.14,
+          "start": 11.08
+        }
+      ]
+    },
+    {
+      "name": "27 - The Great Rush",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 100,
+          "gap": 0.12,
+          "start": 0.02
+        },
+        {
+          "type": "crumb",
+          "count": 60,
+          "gap": 0.14,
+          "start": 11.54
+        },
+        {
+          "type": "nybble",
+          "count": 45,
+          "gap": 0.17,
+          "start": 19.05
+        },
+        {
+          "type": "byte",
+          "count": 45,
+          "gap": 0.18,
+          "start": 26.53
+        }
+      ]
+    },
+    {
+      "name": "28 - Reinforced Doublet",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 6,
+          "gap": 1.0,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "29 - Byte Sprint",
+      "groups": [
+        {
+          "type": "byte",
+          "count": 50,
+          "gap": 0.22,
+          "start": 0
+        },
+        {
+          "type": "byte",
+          "count": 15,
+          "gap": 0.18,
+          "start": 12.75
+        }
+      ]
+    },
+    {
+      "name": "30 - Plated Doublet",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 9,
+          "gap": 1.63,
+          "start": 0
+        }
+      ]
+    },
+    {
+      "name": "31 - Quadlet Wave",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 8,
+          "gap": 0.73,
+          "start": 0
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 8,
+          "gap": 0.73,
+          "start": 0.35
+        },
+        {
+          "type": "quadlet",
+          "count": 8,
+          "gap": 0.73,
+          "start": 6.16
+        },
+        {
+          "type": "quadlet",
+          "count": 2,
+          "gap": 1.71,
+          "start": 14.2
+        }
+      ]
+    },
+    {
+      "name": "32 - Parity Doublet",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 15,
+          "gap": 0.64,
+          "start": 0
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 20,
+          "gap": 0.58,
+          "start": 10.34
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 10,
+          "gap": 0.67,
+          "start": 21.96
+        }
+      ]
+    },
+    {
+      "name": "33 - Hidden Doublet",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 20,
+          "gap": 0.63,
+          "start": 0
+        },
+        {
+          "type": "enc_doublet",
+          "count": 13,
+          "gap": 0.75,
+          "start": 13.0
+        }
+      ]
+    },
+    {
+      "name": "34 - Relentless Byte Rush",
+      "groups": [
+        {
+          "type": "byte",
+          "count": 160,
+          "gap": 0.22,
+          "start": 0.0
+        },
+        {
+          "type": "quadlet",
+          "count": 6,
+          "gap": 0.42,
+          "start": 16.03
+        }
+      ]
+    },
+    {
+      "name": "35 - Doublet March",
+      "groups": [
+        {
+          "type": "doublet",
+          "count": 35,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 55,
+          "gap": 0.38,
+          "start": 5.81
+        },
+        {
+          "type": "octlet",
+          "count": 5,
+          "gap": 0.5,
+          "start": 15.04
+        }
+      ]
+    },
+    {
+      "name": "36 - Doublet Drive",
+      "groups": [
+        {
+          "type": "doublet",
+          "count": 140,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "enc_doublet",
+          "count": 20,
+          "gap": 0.38,
+          "start": 23.77
+        }
+      ]
+    },
+    {
+      "name": "37 - Doublet Column",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 65,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "enc_doublet",
+          "count": 7,
+          "gap": 0.38,
+          "start": 10.94
+        },
+        {
+          "type": "quadlet",
+          "count": 10,
+          "gap": 0.42,
+          "start": 12.14
+        }
+      ]
+    },
+    {
+      "name": "38 - Relentless Doublet Push",
+      "groups": [
+        {
+          "type": "doublet",
+          "count": 42,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 31,
+          "gap": 0.38,
+          "start": 7.01
+        },
+        {
+          "type": "quadlet",
+          "count": 10,
+          "gap": 0.42,
+          "start": 12.14
+        },
+        {
+          "type": "octaword",
+          "count": 2,
+          "gap": 0.6,
+          "start": 13.84
+        }
+      ]
+    },
+    {
+      "name": "39 - Octlet Surge",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 20,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "quadlet",
+          "count": 20,
+          "gap": 0.42,
+          "start": 3.25
+        },
+        {
+          "type": "octlet",
+          "count": 20,
+          "gap": 0.5,
+          "start": 6.84
+        }
+      ]
+    },
+    {
+      "name": "40 - First Kibibyte",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 1,
+          "gap": 1.8,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "41 - Quadlet Roll",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 60,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "quadlet",
+          "count": 60,
+          "gap": 0.42,
+          "start": 10.09
+        }
+      ]
+    },
+    {
+      "name": "42 - Octlet Spike",
+      "groups": [
+        {
+          "type": "octlet",
+          "count": 6,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "enc_octlet",
+          "count": 5,
+          "gap": 0.5,
+          "start": 1.2
+        }
+      ]
+    },
+    {
+      "name": "43 - Octaword Wall",
+      "groups": [
+        {
+          "type": "octlet",
+          "count": 10,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "octaword",
+          "count": 7,
+          "gap": 0.6,
+          "start": 2.02
+        }
+      ]
+    },
+    {
+      "name": "44 - Quadlet Crush",
+      "groups": [
+        {
+          "type": "quadlet",
+          "count": 50,
+          "gap": 0.42,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "45 - Relentless Doublet Press",
+      "groups": [
+        {
+          "type": "doublet",
+          "count": 140,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "enc_doublet",
+          "count": 10,
+          "gap": 0.38,
+          "start": 23.77
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 4,
+          "gap": 0.38,
+          "start": 25.31
+        },
+        {
+          "type": "octlet",
+          "count": 25,
+          "gap": 0.5,
+          "start": 26.51
+        }
+      ]
+    },
+    {
+      "name": "46 - Armored Octaword",
+      "groups": [
+        {
+          "type": "ecc_octaword",
+          "count": 6,
+          "gap": 0.6,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "47 - Octaword Bulwark",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 70,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "octaword",
+          "count": 12,
+          "gap": 0.6,
+          "start": 11.8
+        }
+      ]
+    },
+    {
+      "name": "48 - Octlet Burst",
+      "groups": [
+        {
+          "type": "doublet",
+          "count": 40,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "enc_doublet",
+          "count": 30,
+          "gap": 0.38,
+          "start": 6.67
+        },
+        {
+          "type": "octlet",
+          "count": 40,
+          "gap": 0.5,
+          "start": 11.63
+        },
+        {
+          "type": "ecc_octaword",
+          "count": 3,
+          "gap": 0.6,
+          "start": 20.41
+        }
+      ]
+    },
+    {
+      "name": "49 - Nybble Storm",
+      "groups": [
+        {
+          "type": "nybble",
+          "count": 343,
+          "gap": 0.2,
+          "start": 0.0
+        },
+        {
+          "type": "quadlet",
+          "count": 20,
+          "gap": 0.42,
+          "start": 30.16
+        },
+        {
+          "type": "octlet",
+          "count": 30,
+          "gap": 0.5,
+          "start": 33.75
+        },
+        {
+          "type": "octaword",
+          "count": 18,
+          "gap": 0.6,
+          "start": 40.27
+        }
+      ]
+    },
+    {
+      "name": "50 - Total Onslaught",
+      "groups": [
+        {
+          "type": "bit",
+          "count": 20,
+          "gap": 0.22,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_doublet",
+          "count": 8,
+          "gap": 0.38,
+          "start": 1.88
+        },
+        {
+          "type": "octaword",
+          "count": 20,
+          "gap": 0.6,
+          "start": 3.08
+        },
+        {
+          "type": "kibibyte",
+          "count": 2,
+          "gap": 1.8,
+          "start": 8.21
+        }
+      ]
+    },
+    {
+      "name": "51 - Hidden Octaword",
+      "groups": [
+        {
+          "type": "octlet",
+          "count": 10,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "enc_octaword",
+          "count": 15,
+          "gap": 0.6,
+          "start": 2.02
+        }
+      ]
+    },
+    {
+      "name": "52 - Octlet Lance",
+      "groups": [
+        {
+          "type": "octlet",
+          "count": 25,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "octaword",
+          "count": 10,
+          "gap": 0.6,
+          "start": 5.4
+        },
+        {
+          "type": "kibibyte",
+          "count": 2,
+          "gap": 1.8,
+          "start": 7.83
+        }
+      ]
+    },
+    {
+      "name": "53 - Kibibyte Strike",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 80,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 3,
+          "gap": 1.8,
+          "start": 13.51
+        }
+      ]
+    },
+    {
+      "name": "54 - Octaword Block",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 35,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 2,
+          "gap": 1.8,
+          "start": 9.18
+        }
+      ]
+    },
+    {
+      "name": "55 - Octaword Slab",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 45,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 1,
+          "gap": 1.8,
+          "start": 11.88
+        }
+      ]
+    },
+    {
+      "name": "56 - Hidden Octlet",
+      "groups": [
+        {
+          "type": "enc_octlet",
+          "count": 40,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 1,
+          "gap": 1.8,
+          "start": 8.78
+        }
+      ]
+    },
+    {
+      "name": "57 - Octlet Volley",
+      "groups": [
+        {
+          "type": "octlet",
+          "count": 40,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 4,
+          "gap": 1.8,
+          "start": 8.78
+        }
+      ]
+    },
+    {
+      "name": "58 - Kibibyte Hammer",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 15,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_octaword",
+          "count": 10,
+          "gap": 0.6,
+          "start": 3.78
+        },
+        {
+          "type": "kibibyte",
+          "count": 5,
+          "gap": 1.8,
+          "start": 6.21
+        }
+      ]
+    },
+    {
+      "name": "59 - Octaword Rampart",
+      "groups": [
+        {
+          "type": "tls_quadlet",
+          "count": 50,
+          "gap": 0.42,
+          "start": 0.0
+        },
+        {
+          "type": "octaword",
+          "count": 30,
+          "gap": 0.6,
+          "start": 9.26
+        }
+      ]
+    },
+    {
+      "name": "60 - First Mebibyte",
+      "groups": [
+        {
+          "type": "mebibyte",
+          "count": 1,
+          "gap": 2.6,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "61 - Quadlet Line",
+      "groups": [
+        {
+          "type": "quadlet",
+          "count": 140,
+          "gap": 0.42,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 5,
+          "gap": 1.8,
+          "start": 26.27
+        }
+      ]
+    },
+    {
+      "name": "62 - Purple Deluge",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 140,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "enc_octlet",
+          "count": 15,
+          "gap": 0.5,
+          "start": 23.77
+        },
+        {
+          "type": "kibibyte",
+          "count": 5,
+          "gap": 1.8,
+          "start": 26.92
+        },
+        {
+          "type": "ecc_kibibyte",
+          "count": 2,
+          "gap": 1.8,
+          "start": 30.16
+        }
+      ]
+    },
+    {
+      "name": "63 - Relentless Octaword Wall",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 75,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "octaword",
+          "count": 70,
+          "gap": 0.6,
+          "start": 12.65
+        }
+      ]
+    },
+    {
+      "name": "64 - Kibibyte Siege",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 6,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_kibibyte",
+          "count": 3,
+          "gap": 1.8,
+          "start": 4.05
+        }
+      ]
+    },
+    {
+      "name": "65 - Combined Arms",
+      "groups": [
+        {
+          "type": "quadlet",
+          "count": 80,
+          "gap": 0.42,
+          "start": 0.0
+        },
+        {
+          "type": "octlet",
+          "count": 70,
+          "gap": 0.5,
+          "start": 14.93
+        },
+        {
+          "type": "octaword",
+          "count": 50,
+          "gap": 0.6,
+          "start": 30.45
+        },
+        {
+          "type": "kibibyte",
+          "count": 3,
+          "gap": 1.8,
+          "start": 43.68
+        },
+        {
+          "type": "mebibyte",
+          "count": 2,
+          "gap": 2.6,
+          "start": 45.3
+        }
+      ]
+    },
+    {
+      "name": "66 - Kibibyte Breach",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 8,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_kibibyte",
+          "count": 3,
+          "gap": 1.8,
+          "start": 5.67
+        }
+      ]
+    },
+    {
+      "name": "67 - Kibibyte Maul",
+      "groups": [
+        {
+          "type": "enc_octaword",
+          "count": 13,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 8,
+          "gap": 1.8,
+          "start": 3.24
+        }
+      ]
+    },
+    {
+      "name": "68 - Mebibyte Bash",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 4,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 1,
+          "gap": 2.6,
+          "start": 2.43
+        }
+      ]
+    },
+    {
+      "name": "69 - Relentless Octaword Bulwark",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 80,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "octaword",
+          "count": 50,
+          "gap": 0.6,
+          "start": 13.51
+        }
+      ]
+    },
+    {
+      "name": "70 - Relentless Octlet Surge",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 120,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "octlet",
+          "count": 90,
+          "gap": 0.5,
+          "start": 20.35
+        },
+        {
+          "type": "kibibyte",
+          "count": 4,
+          "gap": 1.8,
+          "start": 40.38
+        }
+      ]
+    },
+    {
+      "name": "71 - Relentless Kibibyte Strike",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 30,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 10,
+          "gap": 1.8,
+          "start": 7.83
+        }
+      ]
+    },
+    {
+      "name": "72 - Relentless Octaword Block",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 38,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 2,
+          "gap": 2.6,
+          "start": 9.99
+        }
+      ]
+    },
+    {
+      "name": "73 - Mebibyte Crush",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 8,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 2,
+          "gap": 2.6,
+          "start": 5.67
+        }
+      ]
+    },
+    {
+      "name": "74 - Hardened Octaword",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 50,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_octaword",
+          "count": 60,
+          "gap": 0.6,
+          "start": 13.23
+        },
+        {
+          "type": "tls_octaword",
+          "count": 25,
+          "gap": 0.6,
+          "start": 29.16
+        },
+        {
+          "type": "mebibyte",
+          "count": 1,
+          "gap": 2.6,
+          "start": 35.64
+        }
+      ]
+    },
+    {
+      "name": "75 - Mebibyte Smash",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 28,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_kibibyte",
+          "count": 3,
+          "gap": 1.8,
+          "start": 4.62
+        },
+        {
+          "type": "mebibyte",
+          "count": 7,
+          "gap": 2.6,
+          "start": 6.24
+        }
+      ]
+    },
+    {
+      "name": "76 - Brutal Octaword Wall",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 60,
+          "gap": 0.6,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "77 - Mebibyte Pound",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 11,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 5,
+          "gap": 2.6,
+          "start": 8.1
+        }
+      ]
+    },
+    {
+      "name": "78 - All Fronts",
+      "groups": [
+        {
+          "type": "ecc_doublet",
+          "count": 80,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "octlet",
+          "count": 90,
+          "gap": 0.5,
+          "start": 13.51
+        },
+        {
+          "type": "octaword",
+          "count": 70,
+          "gap": 0.6,
+          "start": 33.54
+        },
+        {
+          "type": "enc_octaword",
+          "count": 70,
+          "gap": 0.6,
+          "start": 52.17
+        },
+        {
+          "type": "mebibyte",
+          "count": 1,
+          "gap": 2.6,
+          "start": 70.8
+        }
+      ]
+    },
+    {
+      "name": "79 - Mebibyte Quake",
+      "groups": [
+        {
+          "type": "octlet",
+          "count": 90,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 4,
+          "gap": 2.6,
+          "start": 20.03
+        },
+        {
+          "type": "ecc_mebibyte",
+          "count": 2,
+          "gap": 2.6,
+          "start": 23.54
+        }
+      ]
+    },
+    {
+      "name": "80 - First Gibibyte",
+      "groups": [
+        {
+          "type": "gibibyte",
+          "count": 1,
+          "gap": 3.2,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "81 - Relentless Mebibyte Bash",
+      "groups": [
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "82 - Relentless Mebibyte Crush",
+      "groups": [
+        {
+          "type": "mebibyte",
+          "count": 10,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_mebibyte",
+          "count": 5,
+          "gap": 2.6,
+          "start": 10.53
+        }
+      ]
+    },
+    {
+      "name": "83 - Brutal Octaword Bulwark",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 60,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 15.93
+        }
+      ]
+    },
+    {
+      "name": "84 - Relentless Mebibyte Smash",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 10,
+          "gap": 2.6,
+          "start": 10.53
+        }
+      ]
+    },
+    {
+      "name": "85 - Gibibyte Onslaught",
+      "groups": [
+        {
+          "type": "gibibyte",
+          "count": 2,
+          "gap": 3.2,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "86 - Armored Mebibyte",
+      "groups": [
+        {
+          "type": "ecc_mebibyte",
+          "count": 5,
+          "gap": 2.6,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "87 - Gibibyte Storm",
+      "groups": [
+        {
+          "type": "gibibyte",
+          "count": 4,
+          "gap": 3.2,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "88 - Gibibyte Wrath",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 8,
+          "gap": 2.6,
+          "start": 10.53
+        },
+        {
+          "type": "gibibyte",
+          "count": 2,
+          "gap": 3.2,
+          "start": 18.72
+        }
+      ]
+    },
+    {
+      "name": "89 - Hardened Mebibyte",
+      "groups": [
+        {
+          "type": "ecc_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_mebibyte",
+          "count": 8,
+          "gap": 2.6,
+          "start": 10.53
+        }
+      ]
+    },
+    {
+      "name": "90 - Encrypted Quadlet",
+      "groups": [
+        {
+          "type": "tls_quadlet",
+          "count": 50,
+          "gap": 0.42,
+          "start": 0.0
+        },
+        {
+          "type": "tls_kibibyte",
+          "count": 3,
+          "gap": 1.8,
+          "start": 9.26
+        }
+      ]
+    },
+    {
+      "name": "91 - Brutal Mebibyte Bash",
+      "groups": [
+        {
+          "type": "ecc_octaword",
+          "count": 70,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 18.63
+        }
+      ]
+    },
+    {
+      "name": "92 - Gibibyte Terror",
+      "groups": [
+        {
+          "type": "ecc_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 4,
+          "gap": 3.2,
+          "start": 10.53
+        }
+      ]
+    },
+    {
+      "name": "93 - Shielded Mebibyte",
+      "groups": [
+        {
+          "type": "ecc_mebibyte",
+          "count": 10,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "tls_kibibyte",
+          "count": 6,
+          "gap": 1.8,
+          "start": 10.53
+        }
+      ]
+    },
+    {
+      "name": "94 - Gibibyte Fury",
+      "groups": [
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 15.21
+        }
+      ]
+    },
+    {
+      "name": "95 - The Gauntlet",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 140,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "tls_quadlet",
+          "count": 80,
+          "gap": 0.42,
+          "start": 23.77
+        },
+        {
+          "type": "ecc_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 38.7
+        },
+        {
+          "type": "tls_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 49.23
+        }
+      ]
+    },
+    {
+      "name": "96 - Relentless Gibibyte Onslaught",
+      "groups": [
+        {
+          "type": "ecc_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 10.53
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 25.74
+        }
+      ]
+    },
+    {
+      "name": "97 - Armored Gibibyte",
+      "groups": [
+        {
+          "type": "ecc_gibibyte",
+          "count": 2,
+          "gap": 3.2,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "98 - Relentless Gibibyte Storm",
+      "groups": [
+        {
+          "type": "ecc_mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 8,
+          "gap": 3.2,
+          "start": 15.21
+        }
+      ]
+    },
+    {
+      "name": "99 - Last Stand",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "tls_mebibyte",
+          "count": 9,
+          "gap": 2.6,
+          "start": 10.53
+        },
+        {
+          "type": "tebibyte",
+          "count": 1,
+          "gap": 3.8,
+          "start": 19.89
+        }
+      ]
+    },
+    {
+      "name": "100 - First Tebibyte",
+      "groups": [
+        {
+          "type": "tebibyte",
+          "count": 1,
+          "gap": 3.8,
+          "start": 0.0
+        }
+      ]
+    },
+    {
+      "name": "101 - Relentless Gibibyte Wrath",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 40,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 8,
+          "gap": 1.8,
+          "start": 10.53
+        },
+        {
+          "type": "gibibyte",
+          "count": 2,
+          "gap": 3.2,
+          "start": 16.2
+        }
+      ]
+    },
+    {
+      "name": "102 - Brutal Gibibyte Onslaught",
+      "groups": [
+        {
+          "type": "ecc_octaword",
+          "count": 40,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 8,
+          "gap": 2.6,
+          "start": 10.53
+        },
+        {
+          "type": "gibibyte",
+          "count": 3,
+          "gap": 3.2,
+          "start": 18.72
+        }
+      ]
+    },
+    {
+      "name": "103 - Brutal Gibibyte Storm",
+      "groups": [
+        {
+          "type": "enc_octlet",
+          "count": 80,
+          "gap": 0.5,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 12,
+          "gap": 1.8,
+          "start": 17.78
+        },
+        {
+          "type": "gibibyte",
+          "count": 2,
+          "gap": 3.2,
+          "start": 26.69
+        }
+      ]
+    },
+    {
+      "name": "104 - Brutal Gibibyte Wrath",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 10,
+          "gap": 2.6,
+          "start": 10.53
+        },
+        {
+          "type": "gibibyte",
+          "count": 3,
+          "gap": 3.2,
+          "start": 21.06
+        }
+      ]
+    },
+    {
+      "name": "105 - Tebibyte Doom",
+      "groups": [
+        {
+          "type": "tls_octaword",
+          "count": 40,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 4,
+          "gap": 3.2,
+          "start": 10.53
+        },
+        {
+          "type": "tebibyte",
+          "count": 1,
+          "gap": 3.8,
+          "start": 14.85
+        }
+      ]
+    },
+    {
+      "name": "106 - Heavy Gibibyte Onslaught",
+      "groups": [
+        {
+          "type": "ecc_kibibyte",
+          "count": 12,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "mebibyte",
+          "count": 12,
+          "gap": 2.6,
+          "start": 8.91
+        },
+        {
+          "type": "gibibyte",
+          "count": 4,
+          "gap": 3.2,
+          "start": 21.78
+        }
+      ]
+    },
+    {
+      "name": "107 - Heavy Gibibyte Storm",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 70,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 5,
+          "gap": 3.2,
+          "start": 18.63
+        },
+        {
+          "type": "ecc_gibibyte",
+          "count": 2,
+          "gap": 3.2,
+          "start": 24.39
+        }
+      ]
+    },
+    {
+      "name": "108 - Heavy Gibibyte Wrath",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 140,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "tls_quadlet",
+          "count": 60,
+          "gap": 0.42,
+          "start": 23.77
+        },
+        {
+          "type": "gibibyte",
+          "count": 4,
+          "gap": 3.2,
+          "start": 34.92
+        }
+      ]
+    },
+    {
+      "name": "109 - Kitchen Sink",
+      "groups": [
+        {
+          "type": "kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_mebibyte",
+          "count": 10,
+          "gap": 2.6,
+          "start": 10.53
+        },
+        {
+          "type": "gibibyte",
+          "count": 5,
+          "gap": 3.2,
+          "start": 21.06
+        },
+        {
+          "type": "tebibyte",
+          "count": 1,
+          "gap": 3.8,
+          "start": 26.82
+        }
+      ]
+    },
+    {
+      "name": "110 - Tebibyte Reckoning",
+      "groups": [
+        {
+          "type": "tls_kibibyte",
+          "count": 12,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 8.91
+        },
+        {
+          "type": "tebibyte",
+          "count": 2,
+          "gap": 3.8,
+          "start": 16.11
+        }
+      ]
+    },
+    {
+      "name": "111 - Rolling Gibibyte Onslaught",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 70,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_octaword",
+          "count": 50,
+          "gap": 0.6,
+          "start": 18.63
+        },
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 31.86
+        },
+        {
+          "type": "gibibyte",
+          "count": 4,
+          "gap": 3.2,
+          "start": 47.07
+        }
+      ]
+    },
+    {
+      "name": "112 - Rolling Gibibyte Storm",
+      "groups": [
+        {
+          "type": "gibibyte",
+          "count": 8,
+          "gap": 3.2,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_gibibyte",
+          "count": 3,
+          "gap": 3.2,
+          "start": 10.08
+        }
+      ]
+    },
+    {
+      "name": "113 - Grand Melee",
+      "groups": [
+        {
+          "type": "enc_octaword",
+          "count": 60,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "tls_mebibyte",
+          "count": 8,
+          "gap": 2.6,
+          "start": 15.93
+        },
+        {
+          "type": "gibibyte",
+          "count": 5,
+          "gap": 3.2,
+          "start": 24.12
+        },
+        {
+          "type": "tebibyte",
+          "count": 2,
+          "gap": 3.8,
+          "start": 29.88
+        }
+      ]
+    },
+    {
+      "name": "114 - Rolling Gibibyte Wrath",
+      "groups": [
+        {
+          "type": "ecc_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 0.0
+        },
+        {
+          "type": "ecc_mebibyte",
+          "count": 12,
+          "gap": 2.6,
+          "start": 10.53
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 23.4
+        }
+      ]
+    },
+    {
+      "name": "115 - Tebibyte Cataclysm",
+      "groups": [
+        {
+          "type": "mebibyte",
+          "count": 12,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 12.87
+        },
+        {
+          "type": "tebibyte",
+          "count": 3,
+          "gap": 3.8,
+          "start": 20.07
+        }
+      ]
+    },
+    {
+      "name": "116 - Tebibyte Ruin",
+      "groups": [
+        {
+          "type": "tls_octaword",
+          "count": 60,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "tls_kibibyte",
+          "count": 12,
+          "gap": 1.8,
+          "start": 15.93
+        },
+        {
+          "type": "tebibyte",
+          "count": 2,
+          "gap": 3.8,
+          "start": 24.84
+        }
+      ]
+    },
+    {
+      "name": "117 - Tebibyte Oblivion",
+      "groups": [
+        {
+          "type": "ecc_gibibyte",
+          "count": 5,
+          "gap": 3.2,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 5.76
+        },
+        {
+          "type": "tebibyte",
+          "count": 2,
+          "gap": 3.8,
+          "start": 12.96
+        }
+      ]
+    },
+    {
+      "name": "118 - Everything At Once",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 80,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 21.33
+        },
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 31.86
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 47.07
+        },
+        {
+          "type": "tebibyte",
+          "count": 2,
+          "gap": 3.8,
+          "start": 54.27
+        }
+      ]
+    },
+    {
+      "name": "119 - Relentless Tebibyte Doom",
+      "groups": [
+        {
+          "type": "tls_gibibyte",
+          "count": 5,
+          "gap": 3.2,
+          "start": 0.0
+        },
+        {
+          "type": "tebibyte",
+          "count": 3,
+          "gap": 3.8,
+          "start": 5.76
+        }
+      ]
+    },
+    {
+      "name": "120 - Armored Tebibyte",
+      "groups": [
+        {
+          "type": "ecc_tebibyte",
+          "count": 3,
+          "gap": 3.8,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 8,
+          "gap": 3.2,
+          "start": 3.42
+        },
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 13.5
+        }
+      ]
+    },
+    {
+      "name": "121 - Motley Swarm",
+      "groups": [
+        {
+          "type": "enc_doublet",
+          "count": 140,
+          "gap": 0.38,
+          "start": 0.0
+        },
+        {
+          "type": "tls_quadlet",
+          "count": 80,
+          "gap": 0.42,
+          "start": 23.77
+        },
+        {
+          "type": "ecc_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 38.7
+        },
+        {
+          "type": "tebibyte",
+          "count": 3,
+          "gap": 3.8,
+          "start": 49.23
+        }
+      ]
+    },
+    {
+      "name": "122 - Relentless Tebibyte Reckoning",
+      "groups": [
+        {
+          "type": "tls_mebibyte",
+          "count": 10,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 8,
+          "gap": 3.2,
+          "start": 10.53
+        },
+        {
+          "type": "tebibyte",
+          "count": 3,
+          "gap": 3.8,
+          "start": 20.61
+        }
+      ]
+    },
+    {
+      "name": "123 - Hardened Tebibyte",
+      "groups": [
+        {
+          "type": "ecc_gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 7.2
+        },
+        {
+          "type": "ecc_tebibyte",
+          "count": 3,
+          "gap": 3.8,
+          "start": 14.4
+        }
+      ]
+    },
+    {
+      "name": "124 - Relentless Tebibyte Cataclysm",
+      "groups": [
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "tls_gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 15.21
+        },
+        {
+          "type": "tebibyte",
+          "count": 4,
+          "gap": 3.8,
+          "start": 22.41
+        }
+      ]
+    },
+    {
+      "name": "125 - Brutal Tebibyte Doom",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 80,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 10,
+          "gap": 3.2,
+          "start": 21.33
+        },
+        {
+          "type": "tebibyte",
+          "count": 4,
+          "gap": 3.8,
+          "start": 34.29
+        }
+      ]
+    },
+    {
+      "name": "126 - Shielded Tebibyte",
+      "groups": [
+        {
+          "type": "gibibyte",
+          "count": 8,
+          "gap": 3.2,
+          "start": 0.0
+        },
+        {
+          "type": "tls_gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 10.08
+        },
+        {
+          "type": "ecc_tebibyte",
+          "count": 4,
+          "gap": 3.8,
+          "start": 17.28
+        }
+      ]
+    },
+    {
+      "name": "127 - Brutal Tebibyte Reckoning",
+      "groups": [
+        {
+          "type": "mebibyte",
+          "count": 14,
+          "gap": 2.6,
+          "start": 0.0
+        },
+        {
+          "type": "gibibyte",
+          "count": 8,
+          "gap": 3.2,
+          "start": 15.21
+        },
+        {
+          "type": "tebibyte",
+          "count": 5,
+          "gap": 3.8,
+          "start": 25.29
+        },
+        {
+          "type": "ecc_tebibyte",
+          "count": 3,
+          "gap": 3.8,
+          "start": 32.13
+        }
+      ]
+    },
+    {
+      "name": "128 - Total Chaos",
+      "groups": [
+        {
+          "type": "octaword",
+          "count": 80,
+          "gap": 0.6,
+          "start": 0.0
+        },
+        {
+          "type": "tls_kibibyte",
+          "count": 14,
+          "gap": 1.8,
+          "start": 21.33
+        },
+        {
+          "type": "tls_gibibyte",
+          "count": 6,
+          "gap": 3.2,
+          "start": 31.86
+        },
+        {
+          "type": "ecc_tebibyte",
+          "count": 4,
+          "gap": 3.8,
+          "start": 39.06
+        },
+        {
+          "type": "tebibyte",
+          "count": 6,
+          "gap": 3.8,
+          "start": 44.19
+        }
+      ]
+    }
+  ]
+}
