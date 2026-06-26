@@ -14,31 +14,31 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 150,
             "damage": 15,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 500,
+            "cost": 400,
             "damage": 38,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1200,
+            "cost": 800,
             "damage": 90,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 1800,
             "damage": 225,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 10500,
             "damage": 250,
             "buffer_overflow": "on",
             "width": 0.1,
@@ -51,31 +51,31 @@
         "name": "Action",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 150,
             "fire_rate": 1.0,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 500,
+            "cost": 400,
             "fire_rate": 1.4,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1200,
+            "cost": 800,
             "fire_rate": 1.5,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 1800,
             "fire_rate": 1.5,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 10500,
             "fire_rate": 2.0,
             "targets": 3,
             "width": 0.1,
@@ -88,31 +88,31 @@
         "name": "Optics",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 150,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 500,
+            "cost": 400,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1200,
+            "cost": 800,
             "cipher": "on",
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 1800,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 10500,
             "range": 1,
             "ignore_walls": "on",
             "width": 0.1,
@@ -138,31 +138,31 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 150,
             "damage": 3,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 500,
+            "cost": 400,
             "damage": 8,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1200,
+            "cost": 800,
             "damage": 18,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 1800,
             "damage": 45,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 10500,
             "damage": 30,
             "bit_corruption": "on",
             "width": 0.1,
@@ -175,31 +175,31 @@
         "name": "Overdrive",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 150,
             "fire_rate": 4,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 500,
+            "cost": 400,
             "fire_rate": 6,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1200,
+            "cost": 800,
             "fire_rate": 6,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 1800,
             "fire_rate": 6,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 10500,
             "fire_rate": 6,
             "targets": 3,
             "width": 0.1,
@@ -212,31 +212,31 @@
         "name": "Optics",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 150,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 500,
+            "cost": 400,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1200,
+            "cost": 800,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 1800,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 10500,
             "range": 1,
             "ignore_walls": "on",
             "width": 0.1,
@@ -262,31 +262,31 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 500,
+            "cost": 375,
             "damage": 100,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1250,
+            "cost": 1000,
             "damage": 250,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 2000,
             "damage": 600,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 7500,
+            "cost": 4500,
             "damage": 1500,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 23000,
+            "cost": 19500,
             "damage": 1500,
             "buffer_overflow": "on",
             "width": 0.1,
@@ -299,31 +299,31 @@
         "name": "Cadence",
         "tiers": [
           {
-            "cost": 500,
+            "cost": 375,
             "fire_rate": 0.3,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1250,
+            "cost": 1000,
             "fire_rate": 0.4,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 2000,
             "fire_rate": 0.5,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 7500,
+            "cost": 4500,
             "fire_rate": 0.6,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 23000,
+            "cost": 19500,
             "fire_rate": 0.5,
             "targets": 3,
             "width": 0.1,
@@ -336,31 +336,31 @@
         "name": "Corruption",
         "tiers": [
           {
-            "cost": 500,
+            "cost": 375,
             "damage": 150,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1250,
+            "cost": 1000,
             "bit_corruption": "on",
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3000,
+            "cost": 2000,
             "damage": 500,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 7500,
+            "cost": 4500,
             "damage": 1200,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 23000,
+            "cost": 19500,
             "damage": 1500,
             "buffer_overflow": "on",
             "width": 0.1,
@@ -387,31 +387,31 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 300,
+            "cost": 225,
             "damage": 9,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 750,
+            "cost": 600,
             "damage": 23,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1800,
+            "cost": 1200,
             "damage": 54,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 4500,
+            "cost": 2700,
             "damage": 135,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 16000,
+            "cost": 13500,
             "damage": 180,
             "width": 0.1,
             "height": 0.1,
@@ -423,31 +423,31 @@
         "name": "Spread",
         "tiers": [
           {
-            "cost": 300,
+            "cost": 225,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 750,
+            "cost": 600,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1800,
+            "cost": 1200,
             "directions": 3,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 4500,
+            "cost": 2700,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 16000,
+            "cost": 13500,
             "directions": 3,
             "ignore_walls": "on",
             "width": 0.1,
@@ -460,31 +460,31 @@
         "name": "Corruption",
         "tiers": [
           {
-            "cost": 300,
+            "cost": 225,
             "fire_rate": 0.6,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 750,
+            "cost": 600,
             "bit_corruption": "on",
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 1800,
+            "cost": 1200,
             "fire_rate": 0.8,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 4500,
+            "cost": 2700,
             "fire_rate": 0.8,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 16000,
+            "cost": 13500,
             "fire_rate": 1.6,
             "width": 0.1,
             "height": 0.1,
@@ -511,31 +511,31 @@
         "name": "Focus",
         "tiers": [
           {
-            "cost": 800,
+            "cost": 600,
             "damage": 120,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 2000,
+            "cost": 1600,
             "damage": 300,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 4800,
+            "cost": 3200,
             "damage": 700,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 7200,
             "damage": 1400,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 32000,
+            "cost": 27500,
             "damage": 1150,
             "width": 0.1,
             "height": 0.1,
@@ -547,32 +547,32 @@
         "name": "Lens",
         "tiers": [
           {
-            "cost": 800,
+            "cost": 600,
             "ramp_time": -2.0,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 2000,
+            "cost": 1600,
             "ramp_time": -2.0,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 4800,
+            "cost": 3200,
             "range": 1,
             "focus_time": -0.2,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 7200,
             "ramp_time": -1.0,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 32000,
+            "cost": 27500,
             "ramp_time": -0.5,
             "width": 0.1,
             "height": 0.1,
@@ -584,31 +584,31 @@
         "name": "Decrypt",
         "tiers": [
           {
-            "cost": 800,
+            "cost": 600,
             "cipher": "on",
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 2000,
+            "cost": 1600,
             "bit_corruption": "on",
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 4800,
+            "cost": 3200,
             "damage": 300,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 12000,
+            "cost": 7200,
             "damage": 700,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 32000,
+            "cost": 27500,
             "damage": 500,
             "width": 0.1,
             "height": 0.1,
@@ -625,7 +625,7 @@
     "range": 3,
     "fire_rate": 0.8,
     "damage": 0,
-    "cost": 750,
+    "cost": 600,
     "projectile_speed": 360,
     "fire_mode": "arc",
     "dos": true,
@@ -634,31 +634,31 @@
         "name": "Bandwidth",
         "tiers": [
           {
-            "cost": 1500,
+            "cost": 900,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3750,
+            "cost": 2400,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 9000,
+            "cost": 4800,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 22500,
+            "cost": 10800,
             "range": 1,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 50000,
+            "cost": 36500,
             "range": 1,
             "arc_angle": 290,
             "width": 0.1,
@@ -671,33 +671,33 @@
         "name": "Signal",
         "tiers": [
           {
-            "cost": 1500,
+            "cost": 900,
             "dos_slow_factor": -0.05,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3750,
+            "cost": 2400,
             "cipher": "on",
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 9000,
+            "cost": 4800,
             "dos_slow_factor": -0.1,
             "dos_slow_time": 1.0,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 22500,
+            "cost": 10800,
             "dos_slow_factor": -0.1,
             "dos_slow_time": 1.0,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 50000,
+            "cost": 36500,
             "dos_slow_factor": -0.1,
             "dos_slow_time": 2.0,
             "dos_freeze": -0.5,
@@ -711,36 +711,163 @@
         "name": "Payload",
         "tiers": [
           {
-            "cost": 1500,
+            "cost": 900,
             "damage": 3,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 3750,
+            "cost": 2400,
             "damage": 6,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 9000,
+            "cost": 4800,
             "damage": 12,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 22500,
+            "cost": 10800,
             "damage": 24,
             "width": 0.03,
             "height": 0.03
           },
           {
-            "cost": 50000,
+            "cost": 36500,
             "damage": 60,
             "bit_corruption": "on",
             "width": 0.1,
             "height": 0.1,
             "color": "#f75390"
+          }
+        ]
+      }
+    ]
+  },
+  "quantum": {
+    "name": "Quantum",
+    "description": "Apex arc tower. Native Cipher + Bit Corruption damages ECC, Encrypted, and TLS alike with zero upgrades. Amplitude -> Collapse (execute low-HP enemies whole), Field -> Superposition (360 board-wide pulse), Phase -> Phase Array (rapid pulses). Deals damage, no DoS.",
+    "color": "#2fe3d0",
+    "range": 5,
+    "fire_rate": 1.2,
+    "damage": 60,
+    "cost": 1000,
+    "projectile_speed": 400,
+    "fire_mode": "arc",
+    "cipher": true,
+    "bit_corruption": true,
+    "arc_angle": 70,
+    "upgrades": [
+      {
+        "name": "Amplitude",
+        "tiers": [
+          {
+            "cost": 1500,
+            "damage": 80,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 4000,
+            "damage": 220,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 8000,
+            "damage": 450,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 18000,
+            "damage": 1000,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 52500,
+            "damage": 750,
+            "execute_threshold": 0.15,
+            "execute_no_decay": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#78b39c"
+          }
+        ]
+      },
+      {
+        "name": "Field",
+        "tiers": [
+          {
+            "cost": 1500,
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 4000,
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 8000,
+            "arc_angle": 30,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 18000,
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 52500,
+            "range": 1,
+            "arc_angle": 260,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#3adce0"
+          }
+        ]
+      },
+      {
+        "name": "Phase",
+        "tiers": [
+          {
+            "cost": 1500,
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 4000,
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 8000,
+            "fire_rate": 0.5,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 18000,
+            "fire_rate": 0.6,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 52500,
+            "fire_rate": 1.2,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#78e2a2"
           }
         ]
       }
