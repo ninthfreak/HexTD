@@ -49,6 +49,7 @@ var game_wave_index := 0          # next wave to start in game mode (0-based)
 const BAR_ICON_PX := 100         # pause / speed hex button size
 const WAVE_ICON_PX := 150        # wave hex button — 50% larger than the others
 const TOWER_HEX_PX := 96         # hex build-button size
+const ICON_BTN_PX := 64          # height of the graphic-only sound/spawn/cheat hex buttons
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -75,6 +76,7 @@ var cam_label: Label                 # camera readout, right of the lives line
 var wave_select: OptionButton
 var enemy_select: OptionButton
 var spawn_count: SpinBox
+var spawn_button: Button             # icon flips singular/plural with the count
 var _enemy_ids: Array = []
 var speed_button: TextureButton      # the graphic itself is the button (no chrome)
 var pause_button: TextureButton
@@ -725,12 +727,28 @@ func _on_sound_pressed() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.set_muted(not sound_on)
-	sound_button.text = "Sound: On" if sound_on else "Sound: Off"
+	sound_button.icon = _load_art("sound_on" if sound_on else "sound_off")
 
 func _on_cheat_pressed() -> void:
 	money += cheat_amount
 	_update_labels()
 	_set_info("Cheat: +%d funds." % cheat_amount)
+
+# Turn a plain Button into a graphic-only one: the hex-face PNG is the whole button
+# (flat, no chrome, so the baked-in hex tile isn't double-framed), centred and scaled.
+func _style_icon_button(b: Button, art: String) -> void:
+	b.flat = true
+	b.text = ""
+	b.icon = _load_art(art)
+	b.expand_icon = true
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.custom_minimum_size = Vector2(0, ICON_BTN_PX)
+
+# Spawn icon reads singular at a count of 1, plural above it.
+func _update_spawn_icon() -> void:
+	if spawn_button == null or spawn_count == null:
+		return
+	spawn_button.icon = _load_art("spawn_enemy" if int(spawn_count.value) == 1 else "spawn_enemies")
 
 func _on_exit_pressed() -> void:
 	Engine.time_scale = 1.0
@@ -998,20 +1016,23 @@ func _build_ui() -> void:
 		count_row.add_child(spawn_count)
 		spawn_tab.add_child(count_row)
 
-		var spawn_button := Button.new()
-		spawn_button.text = "Spawn"
+		spawn_button = Button.new()
+		_style_icon_button(spawn_button, "spawn_enemies")
 		spawn_button.disabled = _enemy_ids.is_empty()
 		spawn_button.pressed.connect(_on_spawn_pressed)
 		spawn_tab.add_child(spawn_button)
+		spawn_count.value_changed.connect(func(_v): _update_spawn_icon())
+		_update_spawn_icon()
 
 	sound_button = Button.new()
-	sound_button.text = "Sound: On"
+	_style_icon_button(sound_button, "sound_on")
 	sound_button.pressed.connect(_on_sound_pressed)
 	vbox.add_child(sound_button)
 
 	if not is_game:
 		var cheat_button := Button.new()
-		cheat_button.text = "Cheat: +%d funds" % cheat_amount
+		_style_icon_button(cheat_button, "cheat_money")
+		cheat_button.tooltip_text = "Add $%d." % cheat_amount
 		cheat_button.pressed.connect(_on_cheat_pressed)
 		vbox.add_child(cheat_button)
 

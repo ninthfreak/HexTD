@@ -59,19 +59,26 @@ func set_affordable(v: bool) -> void:
 
 func _draw() -> void:
 	var d := size.x
-	# Hex body: dark base plus a wash of the tower's colour; brighter on hover.
-	draw_colored_polygon(_verts, Color(0.09, 0.11, 0.15, 0.96))
-	var tint := base_color
-	tint.a = 0.32 if _hover else 0.20
-	draw_colored_polygon(_verts, tint)
-	var outline := PackedVector2Array(_verts)
-	outline.append(_verts[0])
-	draw_polyline(outline, base_color.lightened(0.25) if _hover else base_color, 2.5, true)
-	# Tower picture in the upper portion (a plain colour wash stands in until art exists).
 	if pic != null:
-		var ps := d * 0.52
-		draw_texture_rect(pic, Rect2((d - ps) * 0.5, d * 0.15, ps, ps), false)
-	# Price along the bottom.
+		# The art is a full hex face (dark tile + coloured rim baked in, transparent
+		# outside the hex), so draw it across the whole cell — no extra hex frame, or
+		# it would double-frame. Modulate handles hover-brighten / unaffordable-dim.
+		var m := Color(1, 1, 1)
+		if not affordable:
+			m = Color(0.5, 0.5, 0.5)
+		elif _hover:
+			m = Color(1.18, 1.18, 1.18)
+		draw_texture_rect(pic, Rect2(0, 0, d, d), false, m)
+	else:
+		# Placeholder hex until the art exists: dark base + a wash of the tower colour.
+		draw_colored_polygon(_verts, Color(0.09, 0.11, 0.15, 0.96))
+		var tint := base_color
+		tint.a = 0.32 if _hover else 0.20
+		draw_colored_polygon(_verts, tint)
+		var outline := PackedVector2Array(_verts)
+		outline.append(_verts[0])
+		draw_polyline(outline, base_color.lightened(0.25) if _hover else base_color, 2.5, true)
+	# Price along the bottom (drawn over the art's dark base).
 	var pcol := Color(1, 1, 1) if affordable else Color(1, 0.42, 0.42)
 	draw_string(get_theme_default_font(), Vector2(0, d * 0.87), "$%d" % cost,
 		HORIZONTAL_ALIGNMENT_CENTER, d, int(d * 0.17), pcol)
