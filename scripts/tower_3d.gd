@@ -16,10 +16,17 @@ var cell: Vector2i
 var pp := Vector2.ZERO               # plane position (the tower's center)
 var target_priority := "first"
 var range_rotated := false            # false = standard (wider) hex range; true = 30° rotated (taller)
+var _rotated_cells := {}
 
 func toggle_range_rotation() -> bool:
 	range_rotated = not range_rotated
+	if range_rotated:
+		_rebuild_rotated_cache()
 	return range_rotated
+
+func _rebuild_rotated_cache() -> void:
+	var reach: int = board.tower_reach(data.range_tiles)
+	_rotated_cells = board.rotated_range_set(cell, reach)
 
 var _cooldown := 0.0
 var _laser_target = null
@@ -220,6 +227,8 @@ func upgrade(s: int) -> void:
 	invested += next_cost(s)
 	slot_levels[s] += 1
 	_apply_levels()
+	if range_rotated:
+		_rebuild_rotated_cache()
 	_rebuild_body()
 
 func sell_value() -> int:
@@ -371,11 +380,9 @@ func _fire_arc(t) -> void:
 	board.add_projectile(w)
 
 func _cell_in_range(target_cell: Vector2i) -> bool:
-	var reach: int = board.tower_reach(data.range_tiles)
 	if range_rotated:
-		var dq: int = target_cell.x - cell.x
-		var dr: int = target_cell.y - cell.y
-		return HexUtils.in_rotated_range(dq, dr, reach)
+		return _rotated_cells.has(target_cell)
+	var reach: int = board.tower_reach(data.range_tiles)
 	return HexUtils.axial_distance(cell, target_cell) <= reach
 
 func _any_enemy_in_range() -> bool:
