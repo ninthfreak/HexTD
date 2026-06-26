@@ -13,6 +13,16 @@ var waves: Array = []
 var default_gap := 0.7
 var cheat_amount := 500
 
+# Money-cheat hold-to-repeat: a tap grants one award; holding waits, then fires
+# repeatedly with the interval ramping from slow to fast the longer it's held.
+const CHEAT_REPEAT_DELAY := 0.45    # hold this long before auto-repeat kicks in
+const CHEAT_INTERVAL_START := 0.32  # first repeat gap (slow)
+const CHEAT_INTERVAL_MIN := 0.04    # fastest repeat gap (held a while)
+const CHEAT_RAMP_TIME := 2.5        # seconds of repeating to reach top speed
+var _cheat_held := false
+var _cheat_hold_time := 0.0
+var _cheat_next := 0.0
+
 # --- nodes ---
 var board: GameBoard3D
 var content: GameContent
@@ -258,6 +268,7 @@ func _process(delta: float) -> void:
 	_camera_keys(delta)
 	_update_preview()
 	_update_cam_readout()
+	_cheat_tick(delta)
 
 # Live camera readout: orbit distance (the zoom metric) plus the camera's world
 # position, so it's clear where the camera sits at any zoom/pan.
@@ -757,6 +768,35 @@ func _on_cheat_pressed() -> void:
 	_update_labels()
 	_set_info("Cheat: +%d funds." % cheat_amount)
 
+# Press grants one award immediately and arms the hold-to-repeat ramp.
+func _on_cheat_down() -> void:
+	_on_cheat_pressed()
+	_cheat_held = true
+	_cheat_hold_time = 0.0
+	_cheat_next = 0.0
+
+func _on_cheat_up() -> void:
+	_cheat_held = false
+
+# Called every frame: once the button has been held past the delay, fire repeat
+# awards on an interval that ramps from CHEAT_INTERVAL_START down to _MIN.
+func _cheat_tick(delta: float) -> void:
+	if not _cheat_held:
+		return
+	# Safety net in case button_up was missed (focus loss, drag-off).
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_cheat_held = false
+		return
+	_cheat_hold_time += delta
+	if _cheat_hold_time < CHEAT_REPEAT_DELAY:
+		return
+	_cheat_next -= delta
+	if _cheat_next <= 0.0:
+		_on_cheat_pressed()
+		var t := _cheat_hold_time - CHEAT_REPEAT_DELAY
+		var f := clampf(t / CHEAT_RAMP_TIME, 0.0, 1.0)
+		_cheat_next = lerpf(CHEAT_INTERVAL_START, CHEAT_INTERVAL_MIN, f)
+
 # Graphic-only hex button: the hex-face PNG *is* the button (TextureButton, no
 # chrome — the same pattern as pause/speed/wave), aspect-centred at icon height.
 func _style_icon_button(b: TextureButton, art: String) -> void:
@@ -1152,9 +1192,10 @@ func _build_ui() -> void:
 	if not is_game:
 		var cheat_button := TextureButton.new()
 		_style_icon_button(cheat_button, "cheat_money")
-		cheat_button.tooltip_text = "Add ¤%d." % cheat_amount
+		cheat_button.tooltip_text = "Add ¤%d (hold to repeat, faster the longer you hold)." % cheat_amount
 		cheat_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cheat_button.pressed.connect(_on_cheat_pressed)
+		cheat_button.button_down.connect(_on_cheat_down)
+		cheat_button.button_up.connect(_on_cheat_up)
 		util_row.add_child(cheat_button)
 
 	var exit_button := Button.new()
