@@ -330,7 +330,6 @@ func _update_preview() -> void:
 	if sel_t != null:
 		overlay.selected_color = sel_t.data.color
 		overlay.selected_ignore_walls = sel_t.data.ignore_walls
-		overlay.selected_facing = sel_t.facing
 	overlay.refresh()
 	_set_badged_tower(sel_t)
 	_update_badge_tooltip()
