@@ -31,6 +31,7 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `cipher` | bool | false | Can see and target Encrypted enemies. |
 | `buffer_overflow` | bool | false | Single-hit surplus damage spills into the target's decay children. Single-target only. |
 | `ignore_walls` | bool | false | "Tunneling": attack through blocking tiles (LOS ignored; `radial` spokes pass through walls). |
+| `dos` | bool | false | "Denial of Service": a hit freezes the enemy briefly, then slows it for a short window. `single`/`radial` only (laser ignores it). |
 | `height_scale` | number | 1.0 | Body height multiplier, 3D view (min 0.05). |
 | `width_scale` | number | 1.0 | Body width / footprint multiplier (min 0.05; also scales the 2D body). |
 | `upgrades` | array | `[]` | Up to 3 upgrade slots — see below. |
@@ -48,6 +49,15 @@ is a per-tower in-game toggle, not a JSON field.
   ease-in) curve: `damage_per_sec = damage * (elapsed / ramp_time)²`, reaching full
   at `ramp_time`. The ramp resets to 0 whenever the target changes or is lost, so a
   stream of small targets never reaches full power.
+- **`arc`** — an aimed expanding wave. Each shot emits a wave from the tower toward
+  its prioritised target (the `target_priority` direction); the front travels
+  outward at `projectile_speed` and dissipates at the range edge. Every enemy the
+  front crosses within range — and within the aimed wedge — is affected once (no
+  pierce cap; breadth is set by range). It applies `damage` (default 0 deals none)
+  and the tower's ability flags through the normal effect path, gated by Cipher for
+  Encrypted enemies. `fire_rate` is waves/second; `directions`/`ramp_time`/
+  `focus_time` are unused. A pure delivery mechanism — it carries whatever the tower
+  has (e.g. pair with `dos` for a freeze wave).
 
 ## Upgrades
 
@@ -86,6 +96,7 @@ change".
 | `bit_corruption` | `"on"`\|`"off"` | Enable/disable Bit Corruption. |
 | `ignore_walls` | `"on"`\|`"off"` | Enable/disable Tunneling. |
 | `buffer_overflow` | `"on"`\|`"off"` | Enable/disable Buffer Overflow. |
+| `dos` | `"on"`\|`"off"` | Enable/disable Denial of Service. |
 
 Flags resolve in slot order — a later slot's `"on"`/`"off"` overrides an earlier
 one.

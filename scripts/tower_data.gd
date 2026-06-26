@@ -17,12 +17,13 @@ extends Resource
 @export var bit_corruption := false           # ignores enemy ECC damage resistance
 @export var cipher := false                   # can see and target Encrypted enemies
 @export var buffer_overflow := false          # single-hit surplus damage spills into the target's decay children
+@export var dos := false                      # "Denial of Service": a hit briefly freezes the enemy, then slows it (single/radial only)
 @export var height_scale: float = 1.0         # body height multiplier (3D view)
 @export var width_scale: float = 1.0          # body width / footprint multiplier
 ## Up to 3 upgrade slots (independent paths), authored in the editor. Each slot is a
 ## Dictionary {"name": String, "tiers": Array}. Each tier (up to 5 per slot) is a
 ## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate"/"directions"/"ramp_time"/
 ## "focus_time"/"height"/"width": additive deltas (may be negative), optional "color": "#rrggbb" override,
-## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow": "on"|"off"}.
+## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow"/"dos": "on"|"off"}.
 ## Slots are bought independently, level by level; tiers within a slot are sequential.
 @export var upgrades: Array = []
