@@ -97,6 +97,7 @@ var wave_num_label: Label            # next/current wave number drawn in the hex
 var sound_button: TextureButton
 var sound_on := true
 var target_button: Button
+var facing_button: Button
 var upgrade_buttons: Array = []
 var _tower_buttons: Array = []       # HexTowerButton list (cost-affordability refresh)
 var sell_button: Button
@@ -328,10 +329,12 @@ func _update_preview() -> void:
 	if sel_t != null:
 		overlay.selected_color = sel_t.data.color
 		overlay.selected_ignore_walls = sel_t.data.ignore_walls
+		overlay.selected_facing = sel_t.facing
 	overlay.refresh()
 	_set_badged_tower(sel_t)
 	_update_badge_tooltip()
 	_update_target_button()
+	_update_facing_button()
 	_update_tower_buttons()
 
 # Cast a ray from the cursor through the camera onto the y=0 plane and
@@ -381,6 +384,29 @@ func _on_target_pressed() -> void:
 	var p: String = t.cycle_target_priority()
 	_update_target_button()
 	_set_info("%s now targets: %s." % [t.data.display_name, _priority_label(p)])
+
+const FACING_LABELS := ["East", "South-East", "South-West", "West", "North-West", "North-East"]
+
+func _update_facing_button() -> void:
+	if not has_selected:
+		facing_button.visible = false
+		return
+	var t = board.tower_at(selected_cell)
+	if t == null:
+		facing_button.visible = false
+		return
+	facing_button.visible = true
+	facing_button.text = "Facing: %s  (tap to rotate)" % FACING_LABELS[t.facing]
+
+func _on_facing_pressed() -> void:
+	if not has_selected:
+		return
+	var t = board.tower_at(selected_cell)
+	if t == null:
+		return
+	var f: int = t.rotate_facing()
+	_update_facing_button()
+	_set_info("%s now facing: %s." % [t.data.display_name, FACING_LABELS[f]])
 
 # Upgrade/sell buttons carry a CostLabel overlay so the small ¤ glyph can be drawn
 # larger than the surrounding text and still sit aligned with the digits.
@@ -460,6 +486,7 @@ func _on_sell_pressed() -> void:
 	_update_labels()
 	_update_tower_buttons()
 	_update_target_button()
+	_update_facing_button()
 	_set_info("Sold %s for %d." % [nm, refund])
 
 # ---------------------------------------------------------------- input
@@ -1217,6 +1244,13 @@ func _build_ui() -> void:
 	target_button.custom_minimum_size = Vector2(0, 36)
 	target_button.pressed.connect(_on_target_pressed)
 	vbox.add_child(target_button)
+
+	facing_button = Button.new()
+	facing_button.visible = false
+	facing_button.custom_minimum_size = Vector2(0, 36)
+	facing_button.tooltip_text = "Rotate tower facing by 60° (changes attack direction)."
+	facing_button.pressed.connect(_on_facing_pressed)
+	vbox.add_child(facing_button)
 
 	upgrade_buttons = []
 	for s in range(3):
