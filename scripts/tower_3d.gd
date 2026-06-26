@@ -59,7 +59,10 @@ static var _badge_tex := {}          # texture file base -> Texture2D (shared ca
 static var _badge_shader_res: Shader = null
 const _BADGE_SHADER := """
 shader_type spatial;
-render_mode unshaded, cull_disabled;
+// depth_test_disabled: badges are a HUD-like overlay — never occluded by the
+// board, path, range highlight, towers or enemies. High render_priority (set on
+// the material) keeps them sorted on top of other transparent geometry too.
+render_mode unshaded, cull_disabled, depth_test_disabled;
 
 uniform sampler2D glyph_tex : source_color;
 uniform sampler2D backplate_tex : source_color;
@@ -827,6 +830,7 @@ func _make_badge_material(entry: Dictionary) -> ShaderMaterial:
 		return null
 	var mat := ShaderMaterial.new()
 	mat.shader = _badge_shader()
+	mat.render_priority = RenderingServer.MATERIAL_RENDER_PRIORITY_MAX   # draw on top of all other transparent geometry
 	mat.set_shader_parameter("glyph_tex", glyph)
 	mat.set_shader_parameter("backplate_tex", backplate)
 	mat.set_shader_parameter("rim_tex", rim)
