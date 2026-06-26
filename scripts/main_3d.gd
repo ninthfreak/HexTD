@@ -76,13 +76,13 @@ var cam_label: Label                 # camera readout, right of the lives line
 var wave_select: OptionButton
 var enemy_select: OptionButton
 var spawn_count: SpinBox
-var spawn_button: Button             # icon flips singular/plural with the count
+var spawn_button: TextureButton      # icon flips singular/plural with the count
 var _enemy_ids: Array = []
 var speed_button: TextureButton      # the graphic itself is the button (no chrome)
 var pause_button: TextureButton
 var wave_button: TextureButton       # honeycomb centre: starts the next wave
 var wave_num_label: Label            # next/current wave number drawn in the hex middle
-var sound_button: Button
+var sound_button: TextureButton
 var sound_on := true
 var target_button: Button
 var upgrade_buttons: Array = []
@@ -727,28 +727,26 @@ func _on_sound_pressed() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.set_muted(not sound_on)
-	sound_button.icon = _load_art("sound_on" if sound_on else "sound_off")
+	sound_button.texture_normal = _load_art("sound_on" if sound_on else "sound_off")
 
 func _on_cheat_pressed() -> void:
 	money += cheat_amount
 	_update_labels()
 	_set_info("Cheat: +%d funds." % cheat_amount)
 
-# Turn a plain Button into a graphic-only one: the hex-face PNG is the whole button
-# (flat, no chrome, so the baked-in hex tile isn't double-framed), centred and scaled.
-func _style_icon_button(b: Button, art: String) -> void:
-	b.flat = true
-	b.text = ""
-	b.icon = _load_art(art)
-	b.expand_icon = true
-	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+# Graphic-only hex button: the hex-face PNG *is* the button (TextureButton, no
+# chrome — the same pattern as pause/speed/wave), aspect-centred at icon height.
+func _style_icon_button(b: TextureButton, art: String) -> void:
+	b.ignore_texture_size = true
+	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	b.custom_minimum_size = Vector2(0, ICON_BTN_PX)
+	b.texture_normal = _load_art(art)
 
 # Spawn icon reads singular at a count of 1, plural above it.
 func _update_spawn_icon() -> void:
 	if spawn_button == null or spawn_count == null:
 		return
-	spawn_button.icon = _load_art("spawn_enemy" if int(spawn_count.value) == 1 else "spawn_enemies")
+	spawn_button.texture_normal = _load_art("spawn_enemy" if int(spawn_count.value) == 1 else "spawn_enemies")
 
 func _on_exit_pressed() -> void:
 	Engine.time_scale = 1.0
@@ -1016,7 +1014,7 @@ func _build_ui() -> void:
 		count_row.add_child(spawn_count)
 		spawn_tab.add_child(count_row)
 
-		spawn_button = Button.new()
+		spawn_button = TextureButton.new()
 		_style_icon_button(spawn_button, "spawn_enemies")
 		spawn_button.disabled = _enemy_ids.is_empty()
 		spawn_button.pressed.connect(_on_spawn_pressed)
@@ -1024,13 +1022,13 @@ func _build_ui() -> void:
 		spawn_count.value_changed.connect(func(_v): _update_spawn_icon())
 		_update_spawn_icon()
 
-	sound_button = Button.new()
+	sound_button = TextureButton.new()
 	_style_icon_button(sound_button, "sound_on")
 	sound_button.pressed.connect(_on_sound_pressed)
 	vbox.add_child(sound_button)
 
 	if not is_game:
-		var cheat_button := Button.new()
+		var cheat_button := TextureButton.new()
 		_style_icon_button(cheat_button, "cheat_money")
 		cheat_button.tooltip_text = "Add $%d." % cheat_amount
 		cheat_button.pressed.connect(_on_cheat_pressed)
