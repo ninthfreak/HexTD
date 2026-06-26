@@ -1,6 +1,7 @@
 {
   "basic": {
     "name": "Basic",
+    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage.\nWeak: swarms, and large health pools late-game.",
     "color": "#59b2ff",
     "range": 4,
     "fire_rate": 1.6,
@@ -64,6 +65,7 @@
   },
   "machinegun": {
     "name": "Machine Gun",
+    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters.\nWeak: tanky or armored foes; short range; can't pierce ECC or see Encrypted.",
     "color": "#9141ac",
     "range": 3,
     "fire_rate": 8,
@@ -119,6 +121,7 @@
   },
   "slow": {
     "name": "Heavy",
+    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses (upgradable to pierce ECC).\nWeak: swarms slip past its slow fire; overkills weak enemies.",
     "color": "#ffb84d",
     "range": 4,
     "fire_rate": 0.6,
@@ -174,6 +177,7 @@
   },
   "radial": {
     "name": "Splitter",
+    "description": "Area tower that fires six spokes at once.\nGood at: cheaply hitting clustered or lined-up enemies.\nWeak: single targets; coverage depends on the path layout.",
     "color": "#1a5fb4",
     "range": 3,
     "fire_rate": 1.2,
@@ -234,6 +238,7 @@
   },
   "laser": {
     "name": "Beam",
+    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused; longest reach on the board.\nWeak: swarms and fast movers reset its ramp.",
     "color": "#ed333b",
     "range": 8,
     "fire_rate": 1.2,
@@ -291,6 +296,7 @@
   },
   "jammer": {
     "name": "Jammer",
+    "description": "Support tower that freezes, then slows, enemies its wave touches.\nGood at: locking down groups so your other towers hit them longer.\nWeak: no damage alone; short range; steep price.",
     "color": "#f24fbe",
     "range": 3,
     "fire_rate": 0.8,
