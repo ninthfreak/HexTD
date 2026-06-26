@@ -63,11 +63,11 @@ func _draw() -> void:
 		# The art is a full hex face (dark tile + coloured rim baked in, transparent
 		# outside the hex), so draw it across the whole cell — no extra hex frame, or
 		# it would double-frame. Modulate handles hover-brighten / unaffordable-dim.
-		var m := Color(1, 1, 1)
-		if not affordable:
-			m = Color(0.5, 0.5, 0.5)
-		elif _hover:
-			m = Color(1.18, 1.18, 1.18)
+		# Unaffordable dims; hover brightens — and the two compose, so an unaffordable
+		# tower (e.g. a pricey one you can't yet buy) still lights up on hover.
+		var m := Color(0.5, 0.5, 0.5) if not affordable else Color(1, 1, 1)
+		if _hover:
+			m *= 1.3
 		draw_texture_rect(pic, Rect2(0, 0, d, d), false, m)
 	else:
 		# Placeholder hex until the art exists: dark base + a wash of the tower colour.

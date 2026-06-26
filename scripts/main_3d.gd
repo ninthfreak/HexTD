@@ -744,6 +744,16 @@ func _style_icon_button(b: TextureButton, art: String) -> void:
 	b.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 	b.custom_minimum_size = Vector2(0, ICON_BTN_PX)
 	b.texture_normal = _load_art(art)
+	_add_hover_glow(b)
+
+# Brighten a hex button while the cursor is over it (unless it's disabled). Uses
+# modulate, so it composes with any self_modulate state tint (e.g. pause's dim).
+func _add_hover_glow(b: BaseButton) -> void:
+	b.mouse_entered.connect(func() -> void:
+		if not b.disabled:
+			b.modulate = Color(1.3, 1.3, 1.3))
+	b.mouse_exited.connect(func() -> void:
+		b.modulate = Color(1, 1, 1))
 
 # Spawn icon reads singular at a count of 1, plural above it.
 func _update_spawn_icon() -> void:
@@ -805,9 +815,10 @@ func _build_map_title() -> void:
 	add_child(layer)
 	var lbl := Label.new()
 	lbl.text = map.display_name
-	# Span the play area (left of the pane) and centre the text.
+	# Span the full viewport and centre the text on screen.
 	lbl.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl.offset_right = -float(pane_width)
+	lbl.offset_left = 0
+	lbl.offset_right = 0
 	lbl.offset_top = 10
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_size_override("font_size", 26)
@@ -1060,6 +1071,7 @@ func _build_ui() -> void:
 		wave_button.tooltip_text = "Start the selected wave"
 		wave_button.disabled = waves.is_empty()
 		wave_button.pressed.connect(_on_wave_button_pressed)
+		_add_hover_glow(wave_button)
 		waves_tab.add_child(wave_button)
 
 		var spawn_tab := VBoxContainer.new()
@@ -1246,6 +1258,7 @@ func _make_row_hex(parent: Control, icon: String) -> TextureButton:
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.custom_minimum_size = Vector2(0, BAR_ICON_PX)
 	b.texture_normal = _load_icon(icon)
+	_add_hover_glow(b)
 	parent.add_child(b)
 	return b
 
@@ -1258,6 +1271,7 @@ func _make_hex_button(parent: Control, pos: Vector2, d: float) -> TextureButton:
 	b.position = pos
 	b.size = Vector2(d, d)
 	b.custom_minimum_size = Vector2(d, d)
+	_add_hover_glow(b)
 	parent.add_child(b)
 	return b
 
