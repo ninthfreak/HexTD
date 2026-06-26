@@ -50,6 +50,7 @@ const BAR_ICON_PX := 100         # pause / speed hex button size
 const WAVE_ICON_PX := 150        # wave hex button — 50% larger than the others
 const TOWER_HEX_PX := 96         # hex build-button size
 const ICON_BTN_PX := 64          # height of the graphic-only sound/spawn/cheat hex buttons
+const TOOLTIP_BG := Color(0.02, 0.03, 0.05, 0.97)   # dark tooltip background (readability)
 # Wave-number tints, matched to the SVG art strokes.
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
@@ -823,9 +824,11 @@ func _build_badge_tooltip() -> void:
 	badge_tip_panel.visible = false
 	badge_tip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.06, 0.08, 0.12, 0.95)
+	sb.bg_color = TOOLTIP_BG
 	sb.set_corner_radius_all(6)
 	sb.set_content_margin_all(8)
+	sb.border_color = Color(1, 1, 1, 0.12)
+	sb.set_border_width_all(1)
 	badge_tip_panel.add_theme_stylebox_override("panel", sb)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -889,6 +892,21 @@ func _update_badge_tooltip() -> void:
 
 # Same controls and layout as the 2D Main.
 # CanvasLayer floats the panel above the 3D viewport.
+# A theme whose only job is a dark TooltipPanel/TooltipLabel, so the standard
+# hover tooltips on the pane's controls read clearly. Everything else falls back to
+# the default theme.
+func _make_tooltip_theme() -> Theme:
+	var th := Theme.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = TOOLTIP_BG
+	sb.set_corner_radius_all(5)
+	sb.set_content_margin_all(7)
+	sb.border_color = Color(1, 1, 1, 0.12)
+	sb.set_border_width_all(1)
+	th.set_stylebox("panel", "TooltipPanel", sb)
+	th.set_color("font_color", "TooltipLabel", Color(0.92, 0.94, 0.98))
+	return th
+
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 2
@@ -903,6 +921,9 @@ func _build_ui() -> void:
 	panel.offset_right = 0.0
 	panel.offset_top = 0.0
 	panel.offset_bottom = 0.0
+	# Dark tooltip theme inherited by every control in the pane (the standard
+	# tooltip_text popups on the buttons), so they read clearly.
+	panel.theme = _make_tooltip_theme()
 	layer.add_child(panel)
 
 	var margin := MarginContainer.new()
