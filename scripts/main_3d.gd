@@ -53,6 +53,7 @@ var pan_speed := 600.0
 # "game" plays the waves in order with a manual break between each (no cheats,
 # no free spawning, no camera readout); "sandbox" exposes the full toolbox.
 var is_game := false
+var is_tutorial := false
 var game_over := false
 var game_wave_index := 0          # next wave to start in game mode (0-based)
 
@@ -119,7 +120,8 @@ var _art_cache := {}                  # art file base -> Texture2D
 
 func _ready() -> void:
 	Engine.time_scale = 1.0
-	is_game = GameState.mode == "game"
+	is_game = GameState.mode == "game" or GameState.mode == "tutorial"
+	is_tutorial = GameState.mode == "tutorial"
 	lives = 100 if is_game else 99999
 	content = GameContent.new()
 	map = Levels.get_by_path(GameState.selected_path)

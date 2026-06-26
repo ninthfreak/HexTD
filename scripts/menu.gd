@@ -50,6 +50,12 @@ func _show_mode_choice() -> void:
 	_clear()
 	_header("Choose a mode")
 
+	var tutorial := Button.new()
+	tutorial.text = "How to Play"
+	tutorial.custom_minimum_size = Vector2(0, 46)
+	tutorial.pressed.connect(_on_mode.bind("tutorial"))
+	col.add_child(tutorial)
+
 	var play := Button.new()
 	play.text = "Play Game"
 	play.custom_minimum_size = Vector2(0, 46)
@@ -63,7 +69,7 @@ func _show_mode_choice() -> void:
 	col.add_child(sandbox)
 
 	var hint := Label.new()
-	hint.text = "Play Game runs the waves in order with a break between each. Sandbox gives you cheats and free spawning."
+	hint.text = "How to Play walks you through the basics. Play Game runs the waves in order. Sandbox gives you cheats and free spawning."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD
 	hint.modulate = Color(1, 1, 1, 0.45)
