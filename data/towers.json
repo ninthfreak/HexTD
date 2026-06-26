@@ -1,12 +1,12 @@
 {
   "basic": {
     "name": "Basic",
-    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage.\nWeak: swarms, and large health pools late-game.",
+    "description": "All-rounder. Pick one path: Railgun (single-target boss-killer), Auto-loader (multi-target swarm-clear), or Overwatch (long range, sees Encrypted, fires through walls).",
     "color": "#59b2ff",
     "range": 4,
     "fire_rate": 1.6,
     "damage": 10,
-    "cost": 40,
+    "cost": 100,
     "projectile_speed": 512,
     "fire_mode": "single",
     "upgrades": [
@@ -14,37 +14,25 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 25,
-            "damage": 6
+            "cost": 200,
+            "damage": 15
           },
           {
-            "cost": 45,
-            "damage": 10
+            "cost": 500,
+            "damage": 38
           },
           {
-            "cost": 85,
-            "damage": 18
+            "cost": 1200,
+            "damage": 90
           },
           {
-            "cost": 150,
+            "cost": 3000,
+            "damage": 225
+          },
+          {
+            "cost": 12000,
+            "damage": 250,
             "buffer_overflow": "on"
-          }
-        ]
-      },
-      {
-        "name": "Optics",
-        "tiers": [
-          {
-            "cost": 40,
-            "range": 1
-          },
-          {
-            "cost": 60,
-            "range": 1
-          },
-          {
-            "cost": 130,
-            "cipher": "on"
           }
         ]
       },
@@ -52,12 +40,51 @@
         "name": "Action",
         "tiers": [
           {
-            "cost": 25,
-            "fire_rate": 1
+            "cost": 200,
+            "fire_rate": 1.0
           },
           {
-            "cost": 35,
+            "cost": 500,
             "fire_rate": 1.4
+          },
+          {
+            "cost": 1200,
+            "fire_rate": 1.5
+          },
+          {
+            "cost": 3000,
+            "fire_rate": 1.5
+          },
+          {
+            "cost": 12000,
+            "fire_rate": 2.0,
+            "targets": 3
+          }
+        ]
+      },
+      {
+        "name": "Optics",
+        "tiers": [
+          {
+            "cost": 200,
+            "range": 1
+          },
+          {
+            "cost": 500,
+            "range": 1
+          },
+          {
+            "cost": 1200,
+            "cipher": "on"
+          },
+          {
+            "cost": 3000,
+            "range": 1
+          },
+          {
+            "cost": 12000,
+            "range": 1,
+            "ignore_walls": "on"
           }
         ]
       }
@@ -65,12 +92,12 @@
   },
   "machinegun": {
     "name": "Machine Gun",
-    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters.\nWeak: tanky or armored foes; short range; can't pierce ECC or see Encrypted.",
+    "description": "Rapid swarm gun. AP Rounds (pierces ECC armor), Overclock (multi-target spray), or Sentry (long-range, wall-piercing coverage).",
     "color": "#9141ac",
     "range": 3,
     "fire_rate": 8,
     "damage": 2,
-    "cost": 40,
+    "cost": 100,
     "projectile_speed": 768,
     "fire_mode": "single",
     "upgrades": [
@@ -78,16 +105,25 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 20,
-            "damage": 1
-          },
-          {
-            "cost": 40,
-            "damage": 2
-          },
-          {
-            "cost": 60,
+            "cost": 200,
             "damage": 3
+          },
+          {
+            "cost": 500,
+            "damage": 8
+          },
+          {
+            "cost": 1200,
+            "damage": 18
+          },
+          {
+            "cost": 3000,
+            "damage": 45
+          },
+          {
+            "cost": 12000,
+            "damage": 30,
+            "bit_corruption": "on"
           }
         ]
       },
@@ -95,12 +131,25 @@
         "name": "Overdrive",
         "tiers": [
           {
-            "cost": 20,
+            "cost": 200,
             "fire_rate": 4
           },
           {
-            "cost": 30,
+            "cost": 500,
             "fire_rate": 6
+          },
+          {
+            "cost": 1200,
+            "fire_rate": 6
+          },
+          {
+            "cost": 3000,
+            "fire_rate": 6
+          },
+          {
+            "cost": 12000,
+            "fire_rate": 6,
+            "targets": 3
           }
         ]
       },
@@ -108,12 +157,25 @@
         "name": "Optics",
         "tiers": [
           {
-            "cost": 50,
+            "cost": 200,
             "range": 1
           },
           {
-            "cost": 80,
+            "cost": 500,
             "range": 1
+          },
+          {
+            "cost": 1200,
+            "range": 1
+          },
+          {
+            "cost": 3000,
+            "range": 1
+          },
+          {
+            "cost": 12000,
+            "range": 1,
+            "ignore_walls": "on"
           }
         ]
       }
@@ -121,12 +183,12 @@
   },
   "slow": {
     "name": "Heavy",
-    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses (upgradable to pierce ECC).\nWeak: swarms slip past its slow fire; overkills weak enemies.",
+    "description": "Single big-hit boss-killer. Siege (raw deletion + overkill cascade), Salvo (multi-target one-shots a cluster), or Logic Bomb (pierces ECC + cascades \u2014 the ECC-boss deleter).",
     "color": "#ffb84d",
     "range": 4,
     "fire_rate": 0.6,
     "damage": 100,
-    "cost": 150,
+    "cost": 250,
     "projectile_speed": 384,
     "fire_mode": "single",
     "upgrades": [
@@ -134,29 +196,51 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 90,
-            "damage": 60
+            "cost": 500,
+            "damage": 100
           },
           {
-            "cost": 180,
-            "damage": 120
+            "cost": 1250,
+            "damage": 250
           },
           {
-            "cost": 360,
-            "damage": 240
+            "cost": 3000,
+            "damage": 600
+          },
+          {
+            "cost": 7500,
+            "damage": 1500
+          },
+          {
+            "cost": 23000,
+            "damage": 1500,
+            "buffer_overflow": "on"
           }
         ]
       },
       {
-        "name": "Optics",
+        "name": "Cadence",
         "tiers": [
           {
-            "cost": 70,
-            "range": 1
+            "cost": 500,
+            "fire_rate": 0.3
           },
           {
-            "cost": 110,
-            "range": 1
+            "cost": 1250,
+            "fire_rate": 0.4
+          },
+          {
+            "cost": 3000,
+            "fire_rate": 0.5
+          },
+          {
+            "cost": 7500,
+            "fire_rate": 0.6
+          },
+          {
+            "cost": 23000,
+            "fire_rate": 0.5,
+            "targets": 3
           }
         ]
       },
@@ -164,11 +248,24 @@
         "name": "Corruption",
         "tiers": [
           {
-            "cost": 180,
+            "cost": 500,
+            "damage": 150
+          },
+          {
+            "cost": 1250,
             "bit_corruption": "on"
           },
           {
-            "cost": 300,
+            "cost": 3000,
+            "damage": 500
+          },
+          {
+            "cost": 7500,
+            "damage": 1200
+          },
+          {
+            "cost": 23000,
+            "damage": 1500,
             "buffer_overflow": "on"
           }
         ]
@@ -177,12 +274,12 @@
   },
   "radial": {
     "name": "Splitter",
-    "description": "Area tower that fires six spokes at once.\nGood at: cheaply hitting clustered or lined-up enemies.\nWeak: single targets; coverage depends on the path layout.",
+    "description": "Radial AoE. Frag (heavy per-spoke damage), Omni (12 wall-piercing spokes), or Spool (rapid fire). Bit Corruption available at Spread/Corruption T2 to shred ECC swarms.",
     "color": "#1a5fb4",
     "range": 3,
     "fire_rate": 1.2,
     "damage": 3,
-    "cost": 75,
+    "cost": 150,
     "projectile_speed": 384,
     "fire_mode": "radial",
     "directions": 6,
@@ -191,16 +288,24 @@
         "name": "Caliber",
         "tiers": [
           {
-            "cost": 75,
-            "damage": 3
+            "cost": 300,
+            "damage": 9
           },
           {
-            "cost": 125,
-            "damage": 5
+            "cost": 750,
+            "damage": 23
           },
           {
-            "cost": 200,
-            "damage": 8
+            "cost": 1800,
+            "damage": 54
+          },
+          {
+            "cost": 4500,
+            "damage": 135
+          },
+          {
+            "cost": 16000,
+            "damage": 180
           }
         ]
       },
@@ -208,15 +313,24 @@
         "name": "Spread",
         "tiers": [
           {
-            "cost": 60,
+            "cost": 300,
             "range": 1
           },
           {
-            "cost": 40,
+            "cost": 750,
+            "range": 1
+          },
+          {
+            "cost": 1800,
             "directions": 3
           },
           {
-            "cost": 130,
+            "cost": 4500,
+            "range": 1
+          },
+          {
+            "cost": 16000,
+            "directions": 3,
             "ignore_walls": "on"
           }
         ]
@@ -225,12 +339,24 @@
         "name": "Corruption",
         "tiers": [
           {
-            "cost": 40,
+            "cost": 300,
             "fire_rate": 0.6
           },
           {
-            "cost": 150,
+            "cost": 750,
             "bit_corruption": "on"
+          },
+          {
+            "cost": 1800,
+            "fire_rate": 0.8
+          },
+          {
+            "cost": 4500,
+            "fire_rate": 0.8
+          },
+          {
+            "cost": 16000,
+            "fire_rate": 1.6
           }
         ]
       }
@@ -238,12 +364,12 @@
   },
   "laser": {
     "name": "Beam",
-    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused; longest reach on the board.\nWeak: swarms and fast movers reset its ramp.",
+    "description": "Long-range ramping laser. Overcharge (max boss DPS), Prefocus (near-instant ramp \u2014 fixes the swarm weakness), or Cryptanalysis (full TLS pierce). Lens/Decrypt T1-2 splash ramp or the TLS flags.",
     "color": "#ed333b",
     "range": 8,
     "fire_rate": 1.2,
     "damage": 90,
-    "cost": 200,
+    "cost": 400,
     "projectile_speed": 320,
     "fire_mode": "laser",
     "ramp_time": 6,
@@ -253,16 +379,24 @@
         "name": "Focus",
         "tiers": [
           {
-            "cost": 100,
-            "damage": 40
-          },
-          {
-            "cost": 175,
-            "damage": 70
-          },
-          {
-            "cost": 300,
+            "cost": 800,
             "damage": 120
+          },
+          {
+            "cost": 2000,
+            "damage": 300
+          },
+          {
+            "cost": 4800,
+            "damage": 700
+          },
+          {
+            "cost": 12000,
+            "damage": 1400
+          },
+          {
+            "cost": 32000,
+            "damage": 1150
           }
         ]
       },
@@ -270,16 +404,25 @@
         "name": "Lens",
         "tiers": [
           {
-            "cost": 80,
-            "range": 1
+            "cost": 800,
+            "ramp_time": -2.0
           },
           {
-            "cost": 150,
+            "cost": 2000,
+            "ramp_time": -2.0
+          },
+          {
+            "cost": 4800,
+            "range": 1,
             "focus_time": -0.2
           },
           {
-            "cost": 160,
-            "cipher": "on"
+            "cost": 12000,
+            "ramp_time": -1.0
+          },
+          {
+            "cost": 32000,
+            "ramp_time": -0.5
           }
         ]
       },
@@ -287,8 +430,24 @@
         "name": "Decrypt",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 800,
+            "cipher": "on"
+          },
+          {
+            "cost": 2000,
             "bit_corruption": "on"
+          },
+          {
+            "cost": 4800,
+            "damage": 300
+          },
+          {
+            "cost": 12000,
+            "damage": 700
+          },
+          {
+            "cost": 32000,
+            "damage": 500
           }
         ]
       }
@@ -296,12 +455,12 @@
   },
   "jammer": {
     "name": "Jammer",
-    "description": "Support tower that freezes, then slows, enemies its wave touches.\nGood at: locking down groups so your other towers hit them longer.\nWeak: no damage alone; short range; steep price.",
+    "description": "Crowd control. Omni-Jam (360 board-wide slow), Total Lockdown (deeper, longer freeze), or Weaponized (AoE freeze + damage). Cipher at Signal T2 to jam Encrypted.",
     "color": "#f24fbe",
     "range": 3,
     "fire_rate": 0.8,
     "damage": 0,
-    "cost": 1000,
+    "cost": 750,
     "projectile_speed": 360,
     "fire_mode": "arc",
     "dos": true,
@@ -310,16 +469,25 @@
         "name": "Bandwidth",
         "tiers": [
           {
-            "cost": 250,
+            "cost": 1500,
             "range": 1
           },
           {
-            "cost": 450,
+            "cost": 3750,
             "range": 1
           },
           {
-            "cost": 800,
-            "range": 2
+            "cost": 9000,
+            "range": 1
+          },
+          {
+            "cost": 22500,
+            "range": 1
+          },
+          {
+            "cost": 50000,
+            "range": 1,
+            "arc_angle": 290
           }
         ]
       },
@@ -327,12 +495,27 @@
         "name": "Signal",
         "tiers": [
           {
-            "cost": 200,
+            "cost": 1500,
             "fire_rate": 0.4
           },
           {
-            "cost": 350,
+            "cost": 3750,
             "cipher": "on"
+          },
+          {
+            "cost": 9000,
+            "fire_rate": 0.4
+          },
+          {
+            "cost": 22500,
+            "fire_rate": 0.4
+          },
+          {
+            "cost": 50000,
+            "fire_rate": 1.0,
+            "dos_freeze": 0.5,
+            "dos_slow_time": 2.0,
+            "dos_slow_factor": -0.25
           }
         ]
       },
@@ -340,16 +523,25 @@
         "name": "Payload",
         "tiers": [
           {
-            "cost": 150,
+            "cost": 1500,
             "damage": 3
           },
           {
-            "cost": 250,
-            "damage": 5
+            "cost": 3750,
+            "damage": 6
           },
           {
-            "cost": 400,
-            "damage": 8
+            "cost": 9000,
+            "damage": 12
+          },
+          {
+            "cost": 22500,
+            "damage": 24
+          },
+          {
+            "cost": 50000,
+            "damage": 60,
+            "bit_corruption": "on"
           }
         ]
       }
