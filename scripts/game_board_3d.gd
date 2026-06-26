@@ -954,6 +954,64 @@ func hexes_in_range(center: Vector2i, n: int, rotated := false) -> Dictionary:
 				shadowed.append(cell)
 	return {"visible": visible, "shadowed": shadowed, "blocked": blocked}
 
+func cell_set_outline(cells: Dictionary, smooth_iters: int) -> Array:
+	var pos := {}
+	var nbr := {}
+	for cell in cells:
+		var c := _cell_to_pixel(cell)
+		var hp := _hex_plane_polygon(c)
+		for i in range(6):
+			if cells.has(cell + EDGE_NB[i]):
+				continue
+			var a: Vector2 = hp[i]
+			var b: Vector2 = hp[(i + 1) % 6]
+			var ka := _vkey(a)
+			var kb := _vkey(b)
+			pos[ka] = a
+			pos[kb] = b
+			if not nbr.has(ka): nbr[ka] = []
+			if not nbr.has(kb): nbr[kb] = []
+			if not (kb in nbr[ka]): nbr[ka].append(kb)
+			if not (ka in nbr[kb]): nbr[kb].append(ka)
+	var used := {}
+	var polys: Array = []
+	for s in nbr.keys():
+		for first in nbr[s]:
+			var e0 := _ekey(s, first)
+			if used.has(e0):
+				continue
+			used[e0] = true
+			var loop: Array = [s]
+			var prev: Vector2i = s
+			var cur: Vector2i = first
+			var guard := 0
+			while cur != s and guard < 100000:
+				guard += 1
+				loop.append(cur)
+				var nxt: Variant = null
+				for cand in nbr[cur]:
+					if cand == prev:
+						continue
+					var e2 := _ekey(cur, cand)
+					if used.has(e2):
+						continue
+					nxt = cand
+					used[e2] = true
+					break
+				if nxt == null:
+					break
+				prev = cur
+				cur = nxt
+			if loop.size() < 3:
+				continue
+			var pts := PackedVector2Array()
+			for k in loop:
+				pts.append(pos[k])
+			if _signed_area(pts) < 0.0:
+				pts.reverse()
+			polys.append(_smooth_loop(pts, smooth_iters))
+	return polys
+
 func has_los(a: Vector2, b: Vector2) -> bool:
 	if blocking_set.is_empty():
 		return true

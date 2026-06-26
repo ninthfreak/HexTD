@@ -65,18 +65,29 @@ func _draw_region(cell: Vector2i, n: int, ignore_walls := false, rotated := fals
 	var fp := {}
 	for c in board.footprint(cell):
 		fp[c] = true
+	var range_set := {}
+	var hidden_set := {}
 	for c in res["visible"]:
-		if fp.has(c):
-			continue
-		_draw_tile(c, RANGE_FILL)
+		if not fp.has(c):
+			range_set[c] = true
 	for c in res["shadowed"]:
 		if fp.has(c):
 			continue
-		_draw_tile(c, RANGE_FILL if ignore_walls else HIDDEN_FILL)
+		if ignore_walls:
+			range_set[c] = true
+		else:
+			hidden_set[c] = true
 	for c in res["blocked"]:
-		if fp.has(c):
-			continue
-		_draw_tile(c, HIDDEN_FILL)
+		if not fp.has(c):
+			hidden_set[c] = true
+	if not range_set.is_empty():
+		var polys: Array = board.cell_set_outline(range_set, 4)
+		for poly in polys:
+			_draw_filled_poly(poly, RANGE_FILL)
+	if not hidden_set.is_empty():
+		var polys: Array = board.cell_set_outline(hidden_set, 4)
+		for poly in polys:
+			_draw_filled_poly(poly, HIDDEN_FILL)
 
 func _draw_footprint(cell: Vector2i, base: Color, validate: bool) -> void:
 	var fill := Color(base.r, base.g, base.b, 0.35)
@@ -84,6 +95,25 @@ func _draw_footprint(cell: Vector2i, base: Color, validate: bool) -> void:
 		_draw_tile(c, fill)
 		if validate and not board.cell_free(c):
 			_draw_invalid_mark(board.cell_center_world(c))
+
+func _draw_filled_poly(poly: PackedVector2Array, col: Color) -> void:
+	if poly.size() < 3:
+		return
+	var idx := Geometry2D.triangulate_polygon(poly)
+	if idx.is_empty():
+		return
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var y: float = GameBoard3D.BUS_TOP + HOVER_LIFT
+	for t in range(0, idx.size(), 3):
+		for j in range(3):
+			var p: Vector2 = poly[idx[t + j]]
+			st.add_vertex(Vector3(p.x, y, p.y))
+	st.generate_normals()
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = _flat_translucent_mat(col)
+	_scene_root.add_child(mi)
 
 # A single flat hex tile floating just above the bus, as an unshaded
 # transparent polygon. Used for all three overlay categories.
