@@ -76,6 +76,9 @@ var paused := false
 var _spawn_timeline: Array = []   # sorted {time, type} from WaveLoader.build_timeline
 var _wave_clock := 0.0
 var _wave_running := false
+var _wave_awaiting_clear := false
+
+const WAVE_CLEAR_BONUS := 100
 
 # --- wave-name banner (pops up + fades out when a wave starts) ---
 var banner_label: Label
@@ -268,6 +271,12 @@ func _process(delta: float) -> void:
 			_spawn_enemy(entry["type"])
 		if _spawn_timeline.is_empty():
 			_wave_running = false
+			_wave_awaiting_clear = true
+	if _wave_awaiting_clear and board.enemies.is_empty():
+		_wave_awaiting_clear = false
+		if not game_over:
+			money += WAVE_CLEAR_BONUS
+			_update_labels()
 	_update_pause_button()
 	_update_wave_button()
 	_update_banner(delta)
@@ -774,6 +783,7 @@ func _on_enemy_reached_goal() -> void:
 func _trigger_defeat() -> void:
 	game_over = true
 	_wave_running = false
+	_wave_awaiting_clear = false
 	_spawn_timeline.clear()
 	Engine.time_scale = 0.0
 	paused = true
