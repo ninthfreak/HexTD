@@ -22,6 +22,7 @@
           {
             "cost": 400,
             "damage": 38,
+            "buffer_overflow": "on",
             "width": 0.03,
             "height": 0.03
           },
@@ -40,7 +41,6 @@
           {
             "cost": 10500,
             "damage": 250,
-            "buffer_overflow": "on",
             "width": 0.1,
             "height": 0.1,
             "color": "#9393bb"
@@ -140,6 +140,7 @@
           {
             "cost": 150,
             "damage": 3,
+            "bit_corruption": "on",
             "width": 0.03,
             "height": 0.03
           },
@@ -163,8 +164,7 @@
           },
           {
             "cost": 10500,
-            "damage": 30,
-            "bit_corruption": "on",
+            "damage": 60,
             "width": 0.1,
             "height": 0.1,
             "color": "#b84a85"
@@ -270,6 +270,7 @@
           {
             "cost": 1000,
             "damage": 250,
+            "buffer_overflow": "on",
             "width": 0.03,
             "height": 0.03
           },
@@ -288,7 +289,6 @@
           {
             "cost": 19500,
             "damage": 1500,
-            "buffer_overflow": "on",
             "width": 0.1,
             "height": 0.1,
             "color": "#ff9747"
@@ -462,12 +462,13 @@
           {
             "cost": 225,
             "fire_rate": 0.6,
+            "bit_corruption": "on",
             "width": 0.03,
             "height": 0.03
           },
           {
             "cost": 600,
-            "bit_corruption": "on",
+            "fire_rate": 0.6,
             "width": 0.03,
             "height": 0.03
           },
@@ -506,6 +507,7 @@
     "fire_mode": "laser",
     "ramp_time": 6,
     "focus_time": 0.3,
+    "ecc_pierce": 0.5,
     "upgrades": [
       {
         "name": "Focus",
