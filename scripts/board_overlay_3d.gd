@@ -81,11 +81,11 @@ func _draw_region(cell: Vector2i, n: int, ignore_walls := false, rotated := fals
 		if not fp.has(c):
 			hidden_set[c] = true
 	if not range_set.is_empty():
-		var polys: Array = board.cell_set_outline(range_set, 4)
+		var polys: Array = board.cell_set_outline(range_set, 2)
 		for poly in polys:
 			_draw_filled_poly(poly, RANGE_FILL)
 	if not hidden_set.is_empty():
-		var polys: Array = board.cell_set_outline(hidden_set, 4)
+		var polys: Array = board.cell_set_outline(hidden_set, 2)
 		for poly in polys:
 			_draw_filled_poly(poly, HIDDEN_FILL)
 
