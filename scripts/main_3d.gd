@@ -48,6 +48,11 @@ var cam_distance := 400.0
 var min_distance := 120.0
 var max_distance := 1600.0
 var pan_speed := 600.0
+var _target_distance := 400.0            # wheel writes here; _process eases toward it
+var _zoom_anchor := Vector2.ZERO         # plane point to keep under the cursor while zooming
+var _zoom_anchor_screen := Vector2.ZERO
+var _zoom_anchor_active := false
+var _zoom_last_ms := 0                   # wall-clock easing (survives time_scale 0)
 
 # --- mode ---
 # "game" plays the waves in order with a manual break between each (no cheats,
@@ -68,6 +73,11 @@ const STAT_ICON_PX := 60         # money / lives glyph size in the top-left over
 const WAVE_START_COL := Color(0.647, 0.455, 1.0)   # #a574ff  (wave_start)
 const WAVE_RUN_COL := Color(0.604, 0.643, 0.706)   # #9aa4b4  (wave_inprogress)
 const WAVE_DONE_COL := Color(0.5, 0.85, 0.55)
+# One economy color rule everywhere ¤ appears: gold = affordable/positive,
+# red = can't afford, green = refund/done.
+const GOLD_COL := Color(1.0, 0.82, 0.25)
+const COST_RED_COL := Color(1.0, 0.42, 0.42)
+const LOCKED_COL := Color(0.75, 0.5, 0.5, 0.8)
 var speed_steps := [1.0, 2.0, 3.0]
 var speed_index := 0
 var paused := false
@@ -82,9 +92,13 @@ const WAVE_CLEAR_BONUS := 100
 
 # --- wave-name banner (pops up + fades out when a wave starts) ---
 var banner_label: Label
-var _banner_time := 0.0            # real-time seconds remaining (hold + fade)
+var _banner_time := 0.0            # real-time seconds remaining (in + hold + fade)
+const BANNER_IN := 0.25           # pop-in seconds (scale settle + fade-in)
 const BANNER_HOLD := 1.4          # fully-opaque seconds
 const BANNER_FADE := 1.2          # fade-out seconds
+var defeat_dim: ColorRect          # dark wash behind the defeat banner
+var defeat_sub_label: Label
+var _defeat_ms := 0                # wall-clock stamp of the defeat (time_scale is 0 then)
 
 # --- UI ---
 var money_label: Label
@@ -107,6 +121,7 @@ var _tower_control_row: HBoxContainer
 var upgrade_buttons: Array = []
 var _tower_buttons: Array = []       # HexTowerButton list (cost-affordability refresh)
 var sell_button: Button
+var crosspath_hint: Label            # one-line reason shown while a path is crosspath-locked
 var info_label: Label
 
 # --- ability badges ---
@@ -188,13 +203,24 @@ func _build_environment() -> void:
 	env.ssr_fade_in = 0.1
 	env.ssr_fade_out = 6.0
 	# HDR glow blooms every emissive surface (buses, markers, enemies, lasers,
-	# projectiles). Stronger here since the dark scene is built around the glow.
+	# projectiles). Additive blend: softlight only tints, additive actually
+	# spills light over the near-black floor — the neon-on-wet-asphalt look the
+	# materials are tuned for. Wider levels for a broader halo.
 	env.glow_enabled = true
-	env.glow_intensity = 1.0
-	env.glow_bloom = 0.15
-	env.glow_hdr_threshold = 1.0
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
+	env.glow_intensity = 0.55
+	env.glow_bloom = 0.1
+	env.glow_hdr_threshold = 0.95
+	env.set_glow_level(4, true)
+	env.set_glow_level(6, true)
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.0
+	# Raised white point keeps emissive cores saturated (default 1.0 hard-clips
+	# energy 2-3 emitters to white, turning the cyan rim white-with-fringe).
+	env.tonemap_white = 6.0
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.12
+	env.adjustment_contrast = 1.03
 	world_env = WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
@@ -207,14 +233,60 @@ func _build_environment() -> void:
 	directional_light.light_energy = 0.55
 	directional_light.light_color = Color(0.7, 0.8, 1.0)
 	directional_light.shadow_enabled = true
+	# The default shadow range (100, measured from the camera) ends far short of
+	# the ~400+ orbit distance, which silently disabled every shadow. One
+	# orthogonal split is ideal for a single board-sized scene.
+	directional_light.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	directional_light.directional_shadow_max_distance = 2000.0
+	directional_light.shadow_blur = 1.5
+	directional_light.light_angular_distance = 1.0
 	add_child(directional_light)
+
+	# Shadowless purple fill from the opposite yaw: lifts the dead-black faces
+	# away from the key light and color-separates lit vs shadowed sides (blue
+	# key / purple fill), without brightening the floor.
+	var fill := DirectionalLight3D.new()
+	fill.rotation = Vector3(deg_to_rad(-35.0), deg_to_rad(35.0 + 180.0), 0.0)
+	fill.light_energy = 0.18
+	fill.light_color = Color(0.5, 0.42, 0.85)
+	fill.shadow_enabled = false
+	add_child(fill)
+
+	# SSR misses wherever the reflected ray leaves the screen; a once-baked box
+	# probe of the neon board becomes the fallback so the mirror floor never
+	# snaps to reflecting the black sky.
+	var b: Rect2 = board.get_bounds()
+	var probe := ReflectionProbe.new()
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	probe.size = Vector3(b.size.x + 200.0, 120.0, b.size.y + 200.0)
+	probe.position = Vector3(b.position.x + b.size.x * 0.5, 30.0, b.position.y + b.size.y * 0.5)
+	probe.box_projection = true
+	add_child(probe)
+
+	# A vast near-black semi-gloss ground plane under the slab: catches faint
+	# reflections of the board so the perimeter doesn't read as a cardboard
+	# cutout floating in the void.
+	var ground := MeshInstance3D.new()
+	var gm := PlaneMesh.new()
+	gm.size = Vector2(8000.0, 8000.0)
+	ground.mesh = gm
+	var gmat := StandardMaterial3D.new()
+	gmat.albedo_color = Color(0.008, 0.010, 0.014)
+	gmat.metallic = 0.85
+	gmat.roughness = 0.3
+	ground.material_override = gmat
+	ground.position = Vector3(b.position.x + b.size.x * 0.5, GameBoard3D.BUILD_BOTTOM - 2.0, b.position.y + b.size.y * 0.5)
+	add_child(ground)
 
 func _build_camera() -> void:
 	cam_pivot = Node3D.new()
 	add_child(cam_pivot)
 	camera = Camera3D.new()
 	camera.fov = 38.0
-	camera.near = 0.5
+	# Nothing ever gets closer than min_distance minus the board height, so a
+	# generous near plane reclaims depth precision for the thin coplanar layers
+	# on the slab (inlay / markers / ribbon).
+	camera.near = 4.0
 	camera.far = 4000.0
 	add_child(camera)
 	_update_camera_transform()
@@ -253,6 +325,7 @@ func _frame_camera() -> void:
 	var fov_h: float = atan(tan(fov_v * 0.5) * play_aspect) * 2.0
 	var d_h: float = board_half_w / tan(fov_h * 0.5)
 	cam_distance = clampf(maxf(d_v, d_h), min_distance, max_distance)
+	_target_distance = cam_distance
 	# Nudge the focus toward screen-left so the board centers in the playable
 	# region rather than under the right-side panel.
 	var shift: float = (float(pane_width) * 0.5) / play_w * board_half_w
@@ -277,9 +350,19 @@ func _process(delta: float) -> void:
 		if not game_over:
 			money += WAVE_CLEAR_BONUS
 			_update_labels()
+			_pulse_label(money_label, Color(1.5, 1.3, 0.6))
+			if is_game and game_wave_index >= waves.size():
+				# That was the last wave — the run is won.
+				_play_sfx("victory")
+				_show_wave_banner("SYSTEM CLEAR")
+				_set_info("All waves cleared!", "success")
+			else:
+				_play_sfx("wave_clear")
+				_set_info("Wave cleared — +%d bonus." % WAVE_CLEAR_BONUS, "success")
 	_update_pause_button()
 	_update_wave_button()
 	_update_banner(delta)
+	_ease_zoom(delta)
 	_camera_keys(delta)
 	_update_preview()
 	_update_cam_readout()
@@ -355,7 +438,9 @@ func _update_preview() -> void:
 # return the intersection as plane coords. This is the 3D counterpart of
 # `get_global_mouse_position()` from the 2D scene.
 func _mouse_to_plane() -> Vector2:
-	var mp: Vector2 = get_viewport().get_mouse_position()
+	return _plane_at_screen(get_viewport().get_mouse_position())
+
+func _plane_at_screen(mp: Vector2) -> Vector2:
 	if camera == null:
 		return Vector2.ZERO
 	var from := camera.project_ray_origin(mp)
@@ -430,14 +515,12 @@ func _attach_cost_label(btn: Button) -> void:
 	btn.add_child(cl)
 	btn.set_meta("cl", cl)
 
-func _set_cost_label(btn: Button, prefix: String, value: int, suffix: String, dim: bool) -> void:
-	(btn.get_meta("cl") as CostLabel).set_cost(prefix, value, suffix, dim)
-
-func _set_plain_label(btn: Button, text: String, dim: bool) -> void:
-	(btn.get_meta("cl") as CostLabel).set_plain(text, dim)
+func btn_cl(btn: Button) -> CostLabel:
+	return btn.get_meta("cl") as CostLabel
 
 func _update_tower_buttons() -> void:
 	var t = (board.tower_at(selected_cell) if has_selected else null)
+	var any_locked := false
 	for s in range(upgrade_buttons.size()):
 		var b: Button = upgrade_buttons[s]
 		if t == null or s >= t.slot_count():
@@ -447,23 +530,27 @@ func _update_tower_buttons() -> void:
 		if t.can_upgrade(s):
 			var c: int = t.next_cost(s)
 			b.disabled = money < c
-			_set_cost_label(b, "%s → Tier %d  (" % [t.slot_name(s), t.slot_level(s) + 1], c, ")", money < c)
+			var afford := money >= c
+			(btn_cl(b)).set_cost("%s → Tier %d  (" % [t.slot_name(s), t.slot_level(s) + 1], c, ")", not afford, GOLD_COL if afford else COST_RED_COL)
 			b.tooltip_text = t.tier_summary(s)
 		elif t.has_next_tier(s):
 			# Has a tier left, but the BTD6 crosspath rule forbids buying it now.
 			b.disabled = true
-			_set_plain_label(b, "%s — locked" % t.slot_name(s), true)
+			any_locked = true
+			(btn_cl(b)).set_plain("%s — locked" % t.slot_name(s), false, LOCKED_COL)
 			b.tooltip_text = "Crosspath limit: at most two paths upgraded, and only one above tier 2."
 		else:
 			b.disabled = true
-			_set_plain_label(b, "%s  (max %d)" % [t.slot_name(s), t.slot_level(s)], true)
+			(btn_cl(b)).set_plain("%s  (max %d)" % [t.slot_name(s), t.slot_level(s)], false, WAVE_DONE_COL)
 			b.tooltip_text = "Fully upgraded"
+	if crosspath_hint != null:
+		crosspath_hint.visible = any_locked
 	if t == null:
 		sell_button.visible = false
 	else:
 		sell_button.visible = true
 		sell_button.disabled = false
-		_set_cost_label(sell_button, "Sell  (+", t.sell_value(), ")", false)
+		(btn_cl(sell_button)).set_cost("Sell  (+", t.sell_value(), ")", false, WAVE_DONE_COL)
 		sell_button.tooltip_text = "Refund %d%% of everything spent on this tower." % t.refund_percent()
 
 func _on_upgrade_pressed(s: int) -> void:
@@ -474,7 +561,7 @@ func _on_upgrade_pressed(s: int) -> void:
 		return
 	var c: int = t.next_cost(s)
 	if money < c:
-		_set_info("Not enough money to upgrade (need %d)." % c)
+		_set_info("Not enough money to upgrade (need %d)." % c, "error")
 		return
 	money -= c
 	t.upgrade(s)
@@ -484,6 +571,7 @@ func _on_upgrade_pressed(s: int) -> void:
 	_update_labels()
 	_update_tower_buttons()
 	_set_info("%s: %s now at tier %d." % [t.data.display_name, t.slot_name(s), t.slot_level(s)])
+	_play_sfx("upgrade")
 
 func _on_sell_pressed() -> void:
 	if not has_selected:
@@ -500,7 +588,8 @@ func _on_sell_pressed() -> void:
 	_update_tower_buttons()
 	_update_tower_control_row()
 	_update_target_button()
-	_set_info("Sold %s for %d." % [nm, refund])
+	_set_info("Sold %s for %d." % [nm, refund], "success")
+	_play_sfx("sell")
 
 # ---------------------------------------------------------------- input
 func _input(event: InputEvent) -> void:
@@ -555,18 +644,45 @@ func _finish_drag() -> void:
 		if _try_place(cell):
 			placing_id = ""
 
+# Wheel zoom only retargets; _ease_zoom in _process glides the camera there.
+# The plane point under the cursor at wheel time is pinned so the zoom dives
+# toward (or backs away from) what the player is pointing at.
 func _zoom_by(factor: float) -> void:
-	cam_distance = clampf(cam_distance * factor, min_distance, max_distance)
+	_target_distance = clampf(_target_distance * factor, min_distance, max_distance)
+	if not _mouse_over_pane():
+		_zoom_anchor_screen = get_viewport().get_mouse_position()
+		_zoom_anchor = _plane_at_screen(_zoom_anchor_screen)
+		_zoom_anchor_active = true
+
+func _ease_zoom(_delta: float) -> void:
+	# Wall-clock easing: _process delta is zeroed while paused (time_scale 0),
+	# but the camera should still glide then.
+	var now := Time.get_ticks_msec()
+	var dt := clampf(float(now - _zoom_last_ms) / 1000.0, 0.0, 0.1)
+	_zoom_last_ms = now
+	if absf(cam_distance - _target_distance) < 0.05:
+		_zoom_anchor_active = false
+		return
+	cam_distance = lerpf(cam_distance, _target_distance, 1.0 - exp(-12.0 * dt))
+	if absf(cam_distance - _target_distance) < 0.05:
+		cam_distance = _target_distance
 	_update_camera_transform()
+	if _zoom_anchor_active:
+		# Re-project the stored screen point and shift focus so the anchored
+		# plane point stays put under it.
+		var hit := _plane_at_screen(_zoom_anchor_screen)
+		var d := _zoom_anchor - hit
+		cam_pivot.position += Vector3(d.x, 0, d.y)
+		_update_camera_transform()
 
 # ---------------------------------------------------------------- placement
 func _try_place(cell: Vector2i) -> bool:
 	if not board.is_buildable(cell):
-		_set_info("Can't build there.")
+		_set_info("Can't build there.", "error")
 		return false
 	var td := content.tower(placing_id)
 	if money < td.cost:
-		_set_info("Not enough money (need %d)." % td.cost)
+		_set_info("Not enough money (need %d)." % td.cost, "error")
 		return false
 	money -= td.cost
 	var t := Tower3D.new()
@@ -574,6 +690,7 @@ func _try_place(cell: Vector2i) -> bool:
 	t.setup(td, board, board.cell_center_world(cell))
 	board.place_tower(cell, t)
 	_update_labels()
+	_play_sfx("build_place")
 	return true
 
 func _select_tower(cell: Vector2i, t) -> void:
@@ -686,6 +803,7 @@ func _on_start_pressed() -> void:
 	var banner_text: String = wname if (nm is String and nm != "") else "Wave %d" % (wi + 1)
 	wave_select.selected = (wi + 1) % waves.size()
 	_show_wave_banner(banner_text)
+	_play_sfx("wave_start")
 	_set_info("Started wave %s." % wname)
 
 # Game mode: waves run strictly in order with a manual break between each. The
@@ -711,6 +829,7 @@ func _on_start_next_pressed() -> void:
 	var nm = wave.get("name", "")
 	var banner_text: String = wname if (nm is String and nm != "") else "Wave %d" % (wi + 1)
 	_show_wave_banner(banner_text)
+	_play_sfx("wave_start")
 	_set_info("Started wave %s." % wname)
 
 # Combat is "in progress" while a wave is spawning or any enemy is still alive on
@@ -749,6 +868,11 @@ func _update_wave_button() -> void:
 			wave_button.texture_normal = _load_icon("wave_inprogress")
 			wave_num_label.text = str(game_wave_index)
 			wave_num_label.add_theme_color_override("font_color", WAVE_RUN_COL)
+		# A button that disables under the cursor never gets mouse_exited — drop
+		# any stuck hover brightness, and dim the art like pause does.
+		if wave_button.disabled:
+			_clear_hover(wave_button)
+		wave_button.self_modulate = Color(1, 1, 1) if not wave_button.disabled else Color(0.6, 0.6, 0.6, 0.9)
 	else:
 		# Sandbox: a plain wave_start hex (no number overlay); the dropdown names the
 		# wave. Can always start (stacks onto a running wave) unless there are none.
@@ -769,14 +893,19 @@ func _update_pause_button() -> void:
 	pause_button.disabled = not active
 	pause_button.texture_normal = _load_icon("play" if paused else "pause")
 	pause_button.self_modulate = Color(1, 1, 1) if active else Color(0.42, 0.42, 0.42, 0.85)
+	if pause_button.disabled:
+		_clear_hover(pause_button)
 
 func _on_enemy_bounty(amount: int) -> void:
 	money += amount
 	_update_labels()
+	_pulse_label(money_label, Color(1.5, 1.3, 0.6))
 
 func _on_enemy_reached_goal() -> void:
 	lives = maxi(0, lives - 1)
 	_update_labels()
+	_pulse_label(lives_label, Color(1.6, 0.5, 0.5))
+	_play_sfx("enemy_leak")
 	if lives <= 0 and is_game and not game_over:
 		_trigger_defeat()
 
@@ -787,8 +916,17 @@ func _trigger_defeat() -> void:
 	_spawn_timeline.clear()
 	Engine.time_scale = 0.0
 	paused = true
-	_show_wave_banner("DEFEAT")
+	_play_sfx("defeat")
+	# Loss gets its own dressing (red banner + subtitle + dark wash) — it must
+	# not read like just another wave name.
+	banner_label.text = "SYSTEM FAILURE"
+	banner_label.add_theme_color_override("font_color", Color(1.0, 0.28, 0.24))
+	banner_label.add_theme_font_size_override("font_size", 72)
+	banner_label.scale = Vector2.ONE
 	banner_label.modulate.a = 1.0
+	defeat_sub_label.text = "all lives lost — kernel panic"
+	defeat_sub_label.visible = true
+	_defeat_ms = Time.get_ticks_msec()
 	_banner_time = 0.0
 
 # ---------------------------------------------------------------- sandbox controls
@@ -822,6 +960,9 @@ func _on_cheat_pressed() -> void:
 	money += cheat_amount
 	_update_labels()
 	_set_info("Cheat: +%d funds." % cheat_amount)
+	# Tiny coin blip; the AudioManager's per-name rate floor keeps the
+	# hold-to-repeat ramp from becoming a jackhammer.
+	_play_sfx("cheat_money")
 
 # Press grants one award immediately and arms the hold-to-repeat ramp.
 func _on_cheat_down() -> void:
@@ -861,14 +1002,52 @@ func _style_icon_button(b: TextureButton, art: String) -> void:
 	b.texture_normal = _load_art(art)
 	_add_hover_glow(b)
 
-# Brighten a hex button while the cursor is over it (unless it's disabled). Uses
-# modulate, so it composes with any self_modulate state tint (e.g. pause's dim).
+# Brighten a hex button while the cursor is over it (unless it's disabled), with
+# a short glide instead of a snap, plus a small press-in scale for tactility.
+# Uses modulate, so it composes with any self_modulate state tint (e.g. pause's
+# dim). Tweens ignore time_scale so buttons stay alive while paused.
 func _add_hover_glow(b: BaseButton) -> void:
+	b.pivot_offset = b.size * 0.5
+	b.resized.connect(func() -> void:
+		b.pivot_offset = b.size * 0.5)
 	b.mouse_entered.connect(func() -> void:
 		if not b.disabled:
-			b.modulate = Color(1.3, 1.3, 1.3))
+			_tween_button(b, "modulate", Color(1.3, 1.3, 1.3), 0.08))
 	b.mouse_exited.connect(func() -> void:
-		b.modulate = Color(1, 1, 1))
+		_tween_button(b, "modulate", Color(1, 1, 1), 0.18))
+	b.button_down.connect(func() -> void:
+		if not b.disabled:
+			_tween_button(b, "scale", Vector2(0.94, 0.94), 0.05)
+			_play_sfx("ui_click"))
+	b.button_up.connect(func() -> void:
+		_tween_button(b, "scale", Vector2.ONE, 0.15, Tween.TRANS_BACK))
+
+# One eased property tween per (button, property); refire kills the previous so
+# rapid hover/press can't stack.
+func _tween_button(b: Control, prop: String, to: Variant, dur: float, trans := Tween.TRANS_QUAD) -> void:
+	var key := "tw_" + prop
+	var prev: Tween = b.get_meta(key) if b.has_meta(key) else null
+	if prev != null and prev.is_valid():
+		prev.kill()
+	# Tweens advance on scaled time and 4.3 has no ignore_time_scale, so while
+	# the game is frozen (pause / defeat) apply the state instantly — buttons
+	# must never feel dead under the cursor.
+	if Engine.time_scale <= 0.05:
+		b.set_indexed(prop, to)
+		return
+	var tw := b.create_tween()
+	tw.tween_property(b, prop, to, dur).set_trans(trans).set_ease(Tween.EASE_OUT)
+	b.set_meta(key, tw)
+
+# Snap a button's hover brightness off (used when it disables under the cursor,
+# where mouse_exited never fires).
+func _clear_hover(b: Control) -> void:
+	if b.modulate == Color(1, 1, 1):
+		return
+	var prev: Tween = b.get_meta("tw_modulate") if b.has_meta("tw_modulate") else null
+	if prev != null and prev.is_valid():
+		prev.kill()
+	b.modulate = Color(1, 1, 1)
 
 # Spawn icon reads singular at a count of 1, plural above it.
 func _update_spawn_icon() -> void:
@@ -940,17 +1119,21 @@ func _build_map_title() -> void:
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_size_override("font_size", 26)
-	# Synthesised bold (no bold font asset needed) + a soft outline so it reads over
-	# the bright board.
-	var fv := FontVariation.new()
-	fv.base_font = ThemeDB.fallback_font
-	fv.variation_embolden = 0.6
-	lbl.add_theme_font_override("font", fv)
+	# Synthesised bold + a soft outline so it reads over the bright board.
+	lbl.add_theme_font_override("font", _bold_font())
 	lbl.add_theme_color_override("font_color", Color(1, 1, 1))
 	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	lbl.add_theme_constant_override("outline_size", 6)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(lbl)
+
+# Synthesised bold (no bold font asset needed) — shared by the map title, the
+# wave-number hex overlay and the pane section headers.
+func _bold_font(embolden := 0.6) -> FontVariation:
+	var fv := FontVariation.new()
+	fv.base_font = ThemeDB.fallback_font
+	fv.variation_embolden = embolden
+	return fv
 
 # ---------------------------------------------------------------- wave banner
 # A large title that pops up and fades out when a wave starts, naming the wave.
@@ -974,22 +1157,68 @@ func _build_wave_banner() -> void:
 	banner_label.add_theme_constant_override("outline_size", 10)
 	banner_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner_label.modulate = Color(1, 1, 1, 0.0)   # hidden until a wave starts
+	# Defeat dressing, hidden until _trigger_defeat: a dark red-black wash over
+	# the play area behind the banner, plus a smaller subtitle under it.
+	defeat_dim = ColorRect.new()
+	defeat_dim.color = Color(0.06, 0.0, 0.02, 0.0)
+	defeat_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	defeat_dim.offset_right = -float(pane_width)
+	defeat_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(defeat_dim)
+	layer.move_child(defeat_dim, 0)                # behind the banner label
+	defeat_sub_label = Label.new()
+	defeat_sub_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	defeat_sub_label.offset_right = -float(pane_width)
+	defeat_sub_label.anchor_top = 0.30
+	defeat_sub_label.anchor_bottom = 0.40
+	defeat_sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	defeat_sub_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	defeat_sub_label.add_theme_font_size_override("font_size", 20)
+	defeat_sub_label.add_theme_color_override("font_color", Color(1, 0.55, 0.5, 0.8))
+	defeat_sub_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	defeat_sub_label.add_theme_constant_override("outline_size", 6)
+	defeat_sub_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	defeat_sub_label.visible = false
+	layer.add_child(defeat_sub_label)
 	layer.add_child(banner_label)
 
-# Restart the pop-up timer, showing the given wave's name.
+# Restart the pop-up timer, showing the given wave's name. Also clears any
+# defeat styling so a later banner (e.g. after a scene reload) reads normal.
 func _show_wave_banner(wave_label: String) -> void:
 	if banner_label == null:
 		return
 	banner_label.text = wave_label
-	_banner_time = BANNER_HOLD + BANNER_FADE
+	banner_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	banner_label.add_theme_font_size_override("font_size", 56)
+	_banner_time = BANNER_IN + BANNER_HOLD + BANNER_FADE
 
-# Drive the banner fade in real time so the speed multiplier doesn't change it.
+# Drive the banner in real time so the speed multiplier doesn't change it:
+# quick pop-in (fade + scale settle), hold, eased fade-out. Defeat holds forever
+# and pulls the dark wash in underneath.
 func _update_banner(delta: float) -> void:
-	if banner_label == null or _banner_time <= 0.0:
+	if banner_label == null:
+		return
+	if game_over:
+		# time_scale is 0 here, which zeroes _process delta — animate the wash
+		# off the wall clock instead.
+		var el: float = float(Time.get_ticks_msec() - _defeat_ms) / 1000.0
+		defeat_dim.color.a = minf(0.55, el / 0.6 * 0.55)
+		banner_label.modulate.a = 1.0
+		return
+	if _banner_time <= 0.0:
 		return
 	var dt := delta / maxf(Engine.time_scale, 0.0001)
 	_banner_time = maxf(0.0, _banner_time - dt)
-	banner_label.modulate.a = clampf(_banner_time / BANNER_FADE, 0.0, 1.0)
+	banner_label.pivot_offset = banner_label.size * 0.5
+	var tail := BANNER_HOLD + BANNER_FADE
+	if _banner_time > tail:
+		var t_in := 1.0 - (_banner_time - tail) / BANNER_IN
+		banner_label.modulate.a = t_in
+		banner_label.scale = Vector2.ONE * lerpf(1.18, 1.0, 1.0 - pow(1.0 - t_in, 3.0))
+	else:
+		banner_label.scale = Vector2.ONE
+		var t_out := clampf(_banner_time / BANNER_FADE, 0.0, 1.0)
+		banner_label.modulate.a = t_out * t_out * (3.0 - 2.0 * t_out)   # smoothstep ease
 
 # ---------------------------------------------------------------- ability badges
 # Toggle the world-space badge row as the selection changes. The badges live on
@@ -1000,9 +1229,11 @@ func _set_badged_tower(t) -> void:
 		return
 	if _badged_tower != null and is_instance_valid(_badged_tower):
 		_badged_tower.set_badges_visible(false)
+		_badged_tower.set_selected(false)
 	_badged_tower = t
 	if t != null:
 		t.set_badges_visible(true)
+		t.set_selected(true)
 	else:
 		_update_badge_tooltip()   # selection cleared -> drop any visible tip
 
@@ -1041,6 +1272,9 @@ func _build_badge_tooltip() -> void:
 	badge_tip_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	badge_tip_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	badge_tip_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	# Wrap long ability text instead of producing a screen-wide panel.
+	badge_tip_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	badge_tip_label.custom_minimum_size = Vector2(240, 0)
 	row.add_child(badge_tip_label)
 	badge_tip_layer.add_child(badge_tip_panel)
 
@@ -1084,23 +1318,111 @@ func _update_badge_tooltip() -> void:
 		_tip_file = file
 		badge_tip_glyph.texture = _load_art(file + "_glyph")
 	badge_tip_panel.visible = true
-	badge_tip_panel.position = get_viewport().get_mouse_position() + Vector2(16, 16)
+	# Keep the tip on screen: flip to the other side of the cursor at the
+	# right/bottom edges instead of clipping off.
+	var mp: Vector2 = get_viewport().get_mouse_position()
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	var sz: Vector2 = badge_tip_panel.get_combined_minimum_size()
+	var pos: Vector2 = mp + Vector2(16, 16)
+	if pos.x + sz.x > vp.x - 6.0:
+		pos.x = maxf(6.0, mp.x - sz.x - 8.0)
+	if pos.y + sz.y > vp.y - 6.0:
+		pos.y = maxf(6.0, mp.y - sz.y - 8.0)
+	badge_tip_panel.position = pos
 
 # Same controls and layout as the 2D Main.
 # CanvasLayer floats the panel above the 3D viewport.
-# A theme whose only job is a dark TooltipPanel/TooltipLabel, so the standard
-# hover tooltips on the pane's controls read clearly. Everything else falls back to
-# the default theme.
-func _make_tooltip_theme() -> Theme:
-	var th := Theme.new()
+# The pane's dark theme: panel background, button family (Button / OptionButton
+# and its PopupMenu / TabContainer / SpinBox LineEdit), separators and the dark
+# tooltips. Stock Godot grey belonged to a different game than the neon board.
+const PANE_BG := Color(0.035, 0.045, 0.075, 0.97)
+const BTN_BG := Color(0.09, 0.11, 0.17)
+const BTN_BG_HOVER := Color(0.13, 0.16, 0.24)
+const BTN_BG_PRESSED := Color(0.06, 0.075, 0.12)
+const BTN_BG_DISABLED := Color(0.05, 0.06, 0.09)
+const ACCENT := Color(0.647, 0.455, 1.0)          # WAVE_START_COL purple
+
+func _btn_box(bg: Color, border: Color) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = TOOLTIP_BG
+	sb.bg_color = bg
 	sb.set_corner_radius_all(5)
-	sb.set_content_margin_all(7)
-	sb.border_color = Color(1, 1, 1, 0.12)
+	sb.border_color = border
 	sb.set_border_width_all(1)
-	th.set_stylebox("panel", "TooltipPanel", sb)
+	sb.content_margin_left = 8
+	sb.content_margin_right = 8
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	return sb
+
+func _make_pane_theme() -> Theme:
+	var th := Theme.new()
+	# Tooltips (shared by every control in the pane).
+	var tip := StyleBoxFlat.new()
+	tip.bg_color = TOOLTIP_BG
+	tip.set_corner_radius_all(5)
+	tip.set_content_margin_all(7)
+	tip.border_color = Color(1, 1, 1, 0.12)
+	tip.set_border_width_all(1)
+	th.set_stylebox("panel", "TooltipPanel", tip)
 	th.set_color("font_color", "TooltipLabel", Color(0.92, 0.94, 0.98))
+	# Pane background: near-black with a thin neon seam on the board-facing edge.
+	var pane := StyleBoxFlat.new()
+	pane.bg_color = PANE_BG
+	pane.border_width_left = 2
+	pane.border_color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.30)
+	th.set_stylebox("panel", "Panel", pane)
+	# Button family.
+	var normal := _btn_box(BTN_BG, Color(1, 1, 1, 0.10))
+	var hover := _btn_box(BTN_BG_HOVER, Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.35))
+	var pressed := _btn_box(BTN_BG_PRESSED, Color(1, 1, 1, 0.10))
+	var disabled := _btn_box(BTN_BG_DISABLED, Color(1, 1, 1, 0.05))
+	for cls in ["Button", "OptionButton"]:
+		th.set_stylebox("normal", cls, normal)
+		th.set_stylebox("hover", cls, hover)
+		th.set_stylebox("pressed", cls, pressed)
+		th.set_stylebox("disabled", cls, disabled)
+		th.set_stylebox("focus", cls, hover)
+		th.set_color("font_color", cls, Color(0.86, 0.90, 0.98))
+		th.set_color("font_hover_color", cls, Color(1, 1, 1))
+		th.set_color("font_pressed_color", cls, Color(0.86, 0.90, 0.98))
+		th.set_color("font_disabled_color", cls, Color(0.86, 0.90, 0.98, 0.4))
+	# OptionButton dropdown list.
+	var pop := StyleBoxFlat.new()
+	pop.bg_color = Color(0.05, 0.06, 0.10, 0.98)
+	pop.set_corner_radius_all(5)
+	pop.border_color = Color(1, 1, 1, 0.12)
+	pop.set_border_width_all(1)
+	pop.set_content_margin_all(4)
+	th.set_stylebox("panel", "PopupMenu", pop)
+	th.set_stylebox("hover", "PopupMenu", _btn_box(BTN_BG_HOVER, Color(0, 0, 0, 0)))
+	th.set_color("font_color", "PopupMenu", Color(0.86, 0.90, 0.98))
+	th.set_color("font_hover_color", "PopupMenu", Color(1, 1, 1))
+	# Tabs (sandbox Waves/Spawn).
+	var tab_sel := _btn_box(BTN_BG, Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.45))
+	tab_sel.corner_radius_bottom_left = 0
+	tab_sel.corner_radius_bottom_right = 0
+	var tab_un := _btn_box(Color(0.05, 0.06, 0.10), Color(1, 1, 1, 0.06))
+	tab_un.corner_radius_bottom_left = 0
+	tab_un.corner_radius_bottom_right = 0
+	th.set_stylebox("tab_selected", "TabContainer", tab_sel)
+	th.set_stylebox("tab_unselected", "TabContainer", tab_un)
+	var tab_panel := StyleBoxFlat.new()
+	tab_panel.bg_color = Color(0.05, 0.06, 0.10, 0.6)
+	tab_panel.set_corner_radius_all(5)
+	tab_panel.corner_radius_top_left = 0
+	tab_panel.set_content_margin_all(8)
+	th.set_stylebox("panel", "TabContainer", tab_panel)
+	th.set_color("font_selected_color", "TabContainer", Color(1, 1, 1))
+	th.set_color("font_unselected_color", "TabContainer", Color(0.7, 0.74, 0.85, 0.7))
+	# SpinBox's text field.
+	var le := _btn_box(Color(0.05, 0.06, 0.10), Color(1, 1, 1, 0.10))
+	th.set_stylebox("normal", "LineEdit", le)
+	th.set_color("font_color", "LineEdit", Color(0.86, 0.90, 0.98))
+	# Separators: a dim accent-tinted line instead of the stock grey groove.
+	var sep := StyleBoxLine.new()
+	sep.color = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.18)
+	sep.thickness = 1
+	th.set_stylebox("separator", "HSeparator", sep)
 	return th
 
 func _build_ui() -> void:
@@ -1117,9 +1439,9 @@ func _build_ui() -> void:
 	panel.offset_right = 0.0
 	panel.offset_top = 0.0
 	panel.offset_bottom = 0.0
-	# Dark tooltip theme inherited by every control in the pane (the standard
-	# tooltip_text popups on the buttons), so they read clearly.
-	panel.theme = _make_tooltip_theme()
+	# Dark pane theme inherited by every control in the pane (buttons, tabs,
+	# dropdowns, tooltips), so the UI belongs to the same night scene as the board.
+	panel.theme = _make_pane_theme()
 	layer.add_child(panel)
 
 	var margin := MarginContainer.new()
@@ -1255,13 +1577,20 @@ func _build_ui() -> void:
 
 	var exit_button := Button.new()
 	exit_button.text = "Exit to map select"
-	exit_button.pressed.connect(_on_exit_pressed)
+	exit_button.pressed.connect(func() -> void:
+		_play_sfx("ui_click")
+		_on_exit_pressed())
 	vbox.add_child(exit_button)
 
 	vbox.add_child(HSeparator.new())
 
+	# Quiet all-caps section label — gives the pane a typographic hierarchy the
+	# uniform 16px default lacked.
 	var towers_header := Label.new()
-	towers_header.text = "Towers"
+	towers_header.text = "TOWERS"
+	towers_header.add_theme_font_size_override("font_size", 13)
+	towers_header.add_theme_font_override("font", _bold_font(0.4))
+	towers_header.add_theme_color_override("font_color", Color(0.62, 0.67, 0.80))
 	vbox.add_child(towers_header)
 	_build_tower_honeycomb(vbox)
 
@@ -1296,6 +1625,15 @@ func _build_ui() -> void:
 		_attach_cost_label(ub)
 		upgrade_buttons.append(ub)
 
+	# Why a path is greyed, without hunting for the hover tooltip.
+	crosspath_hint = Label.new()
+	crosspath_hint.text = "Crosspath: max two paths, one above tier 2."
+	crosspath_hint.add_theme_font_size_override("font_size", 12)
+	crosspath_hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
+	crosspath_hint.autowrap_mode = TextServer.AUTOWRAP_WORD
+	crosspath_hint.visible = false
+	vbox.add_child(crosspath_hint)
+
 	sell_button = Button.new()
 	sell_button.visible = false
 	sell_button.custom_minimum_size = Vector2(0, 36)
@@ -1305,6 +1643,9 @@ func _build_ui() -> void:
 
 	info_label = Label.new()
 	info_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	# Reserve three lines so one↔three-line messages don't shove the transport
+	# honeycomb below around.
+	info_label.custom_minimum_size = Vector2(0, 48)
 	vbox.add_child(info_label)
 
 	var help := Label.new()
@@ -1377,6 +1718,11 @@ func _build_transport(parent: Control) -> void:
 	wave_num_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	wave_num_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	wave_num_label.add_theme_font_size_override("font_size", int(dw * 0.30))
+	# House style: embolden + black outline so the number doesn't shimmer
+	# against the hex art's strokes.
+	wave_num_label.add_theme_font_override("font", _bold_font())
+	wave_num_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+	wave_num_label.add_theme_constant_override("outline_size", int(dw * 0.045))
 	wave_num_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	wave_button.add_child(wave_num_label)
 
@@ -1471,6 +1817,7 @@ func _load_tower_pic(id: String) -> Texture2D:
 	return tex
 
 func _on_tower_pressed(id: String) -> void:
+	_play_sfx("ui_click")
 	placing_id = id
 	dragging = true
 	has_selected = false
@@ -1482,6 +1829,37 @@ func _update_labels() -> void:
 	for b in _tower_buttons:
 		b.set_affordable(money >= b.cost)
 
-func _set_info(text: String) -> void:
-	if info_label != null:
-		info_label.text = text
+# Brief tint flash so a label's change registers at the edge of vision (income,
+# life loss, new info text). Kills the previous pulse so spam can't stack.
+func _pulse_label(l: Label, c: Color) -> void:
+	if l == null:
+		return
+	var prev: Tween = l.get_meta("pulse_tw") if l.has_meta("pulse_tw") else null
+	if prev != null and prev.is_valid():
+		prev.kill()
+	l.modulate = c
+	# Tweens run on scaled time (4.3 has no ignore_time_scale); a pulse fired
+	# into a freeze (defeat) just holds its tint until time resumes — fine.
+	var tw := l.create_tween()
+	tw.tween_property(l, "modulate", Color(1, 1, 1), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	l.set_meta("pulse_tw", tw)
+
+# kind: "info" (neutral), "error" (rejections), "success" (confirmations) — the
+# same slot used to render all three identically.
+func _play_sfx(sound_name: String) -> void:
+	var am = get_node_or_null("/root/AudioManager")
+	if am:
+		am.play_sfx(sound_name)
+
+func _set_info(text: String, kind := "info") -> void:
+	if info_label == null:
+		return
+	info_label.text = text
+	var col := Color(0.85, 0.89, 0.98)
+	match kind:
+		"error":
+			col = Color(1.0, 0.5, 0.45)
+		"success":
+			col = Color(0.55, 0.85, 0.6)
+	info_label.add_theme_color_override("font_color", col)
+	_pulse_label(info_label, Color(1.35, 1.35, 1.35))

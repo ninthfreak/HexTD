@@ -16,11 +16,13 @@ const SFX_VOLUME_DB := -8.0        # global SFX level - lower this if everything
 const AUDIO_DIR := "res://audio/"
 const POOL_SIZE := 24
 const PER_NAME_PER_FRAME := 3      # max copies of one sound started in a single frame
+const MIN_GAP_MS := 45             # per-name floor between (non-stacked) restarts
 const DEFAULT_DEATH := "enemy_death"
 
 var _pool: Array[AudioStreamPlayer] = []
 var _streams := {}                 # name -> AudioStream (cache)
 var _frame_counts := {}            # name -> count started this frame
+var _last_start_ms := {}           # name -> tick of the last start (rate floor)
 var _laser_stream: AudioStream = null
 
 func _ready() -> void:
@@ -72,7 +74,14 @@ func play_sfx(sound_name: String, pitch_var := 0.06) -> void:
 	var c: int = int(_frame_counts.get(key, 0))
 	if c >= PER_NAME_PER_FRAME:
 		return
+	# Rate floor: simultaneous bursts (same frame) may stack up to the cap
+	# above, but sequential restarts of one name are spaced out — many towers
+	# firing the same sound become a texture instead of a machine gun.
+	var now := Time.get_ticks_msec()
+	if c == 0 and now - int(_last_start_ms.get(key, -1000)) < MIN_GAP_MS:
+		return
 	_frame_counts[key] = c + 1
+	_last_start_ms[key] = now
 	var p := _free_player()
 	if p == null:
 		return   # all voices busy -> drop this one (global polyphony cap)
