@@ -77,7 +77,9 @@ static func get_level(index: int) -> HexMapData:
 
 ## Fallback: a serpentine path on a large grid (used only if maps/ is empty).
 static func _generated_demo() -> HexMapData:
-	var path := _serpentine(24, 1, 13, 3)
+	# Band 4 leaves 3 buildable rows between path runs — the minimum for the
+	# 7-cell tower footprint. (Band 3's 2-row strips could never host a tower.)
+	var path := _serpentine(24, 1, 13, 4)
 	return _build(24, 16, path, "Generated Demo")
 
 static func _serpentine(cols: int, first_row: int, last_row: int, band: int) -> Array:
@@ -117,6 +119,9 @@ static func _build(cols: int, rows: int, path_offset: Array, name: String) -> He
 	for o in path_offset:
 		path.append(HexUtils.offset_to_axial(o.x, o.y))
 	m.path = path
+	# Same fallback as MapLoader: no explicit bus region -> the path cells ARE
+	# the bus (without this the board renders no path inlay / neon ribbon).
+	m.bus = path.duplicate()
 	var on_path := {}
 	for c in path:
 		on_path[c] = true

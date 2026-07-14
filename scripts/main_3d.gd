@@ -1011,8 +1011,13 @@ func _tween_button(b: Control, prop: String, to: Variant, dur: float, trans := T
 	var prev: Tween = b.get_meta(key) if b.has_meta(key) else null
 	if prev != null and prev.is_valid():
 		prev.kill()
+	# Tweens advance on scaled time and 4.3 has no ignore_time_scale, so while
+	# the game is frozen (pause / defeat) apply the state instantly — buttons
+	# must never feel dead under the cursor.
+	if Engine.time_scale <= 0.05:
+		b.set_indexed(prop, to)
+		return
 	var tw := b.create_tween()
-	tw.set_ignore_time_scale(true)
 	tw.tween_property(b, prop, to, dur).set_trans(trans).set_ease(Tween.EASE_OUT)
 	b.set_meta(key, tw)
 
@@ -1812,8 +1817,9 @@ func _pulse_label(l: Label, c: Color) -> void:
 	if prev != null and prev.is_valid():
 		prev.kill()
 	l.modulate = c
+	# Tweens run on scaled time (4.3 has no ignore_time_scale); a pulse fired
+	# into a freeze (defeat) just holds its tint until time resumes — fine.
 	var tw := l.create_tween()
-	tw.set_ignore_time_scale(true)
 	tw.tween_property(l, "modulate", Color(1, 1, 1), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	l.set_meta("pulse_tw", tw)
 

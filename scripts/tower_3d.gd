@@ -2,10 +2,10 @@ class_name Tower3D
 extends Node3D
 ## 3D tower. Targeting, upgrades, fire modes and the audible laser hum are
 ## ported unchanged from the 2D Tower; all logic still operates on plane
-## (Vector2) coordinates via the entity's `pp` field and `cell`. The body is
-## an extruded prism (diamond / star / cylinder by fire mode), and the laser
-## beam is a thin metallic cylinder reoriented each frame to point at the
-## locked target.
+## (Vector2) coordinates via the entity's `pp` field and `cell`. The body is a
+## shared hex plinth + one low-poly silhouette per fire mode, split into a dark
+## shell and hot emissive accents (see _rebuild_body); the laser beam is a
+## colored sheath + white-hot core reoriented each frame to the locked target.
 
 var data: TowerData
 var base_data: TowerData
@@ -38,11 +38,26 @@ var _hum_phase := 0.0
 var _hum_freq := 40.0
 
 # 3D scene
-var _body: Node3D                    # container for the composite tower parts
-var _beam: MeshInstance3D            # laser beam (null until first needed)
+var _body: Node3D                    # container for the composite tower parts (scaled by upgrades)
+var _turret: Node3D                  # child of _body carrying the mode silhouette; yaws toward the aim
+var _shell_mat: StandardMaterial3D   # dark body material — fire-flash / selection target
+var _accent_mat: StandardMaterial3D  # hot emissive material — crosses the bloom threshold
+var _base_scale := Vector3.ONE       # upgrade-derived body scale; pulses return to it
+var _aims := false                   # single/arc carry a directional feature on _turret
+var _aim_yaw := 0.0
+var _aim_timer := 0.0
+var _selected := false
+var _flash_tween: Tween
+var _breathe_tween: Tween
+var _beam: MeshInstance3D            # laser beam sheath (null until first needed)
 var _beam_cyl: CylinderMesh
 var _beam_mat: StandardMaterial3D
+var _beam_core: MeshInstance3D       # white-hot core inside the sheath
+var _beam_core_cyl: CylinderMesh
 var _beam_impact: MeshInstance3D     # bright dot at the target end
+var _impact_mat: StandardMaterial3D
+var _beam_origin_y := 0.0            # laser cone apex height (plinth + cone, upgrade-scaled)
+static var _plinth_mat_res: StandardMaterial3D = null
 
 # --- ability badges (real world-space children of the tower) ---
 # A row of billboarded hex "windows" hung off the (unscaled) tower root at a
@@ -128,10 +143,23 @@ const HUM_TABLE := 2048
 const HUM_VOL_DB := -3.0
 
 const BODY_HEIGHT := 8.0             # nominal body height (world units)
-const BEAM_ORIGIN_LIFT := 30.0       # beam fires from the tall laser cone tip
 const BEAM_TARGET_LIFT := 2.0        # mid-height of an enemy body (Enemy3D.BODY_HEIGHT * 0.5)
 const BEAM_BASE_THICK := 0.6
 const BEAM_FULL_THICK := 1.6
+
+const LASER_CONE_H := 60.0           # laser cone height; the beam leaves its apex
+const LASER_TIP_FRAC := 0.8          # upper cone fraction rendered as the hot accent
+const PLINTH_H := 2.5                # shared hex plinth height under every body
+const PLINTH_COLOR := Color(0.30, 0.32, 0.38)
+const HORN_FLARE_POW := 2.4          # arc horn flare curve (radius vs height)
+const ARC_THROAT_F := 0.85           # arc horn: throat dish / rim-lip split fraction
+const SHELL_EMISSION := 0.35         # idle shell glow — below the bloom threshold
+const ACCENT_EMISSION := 1.4         # hot accents — cross the bloom threshold
+const FLASH_EMISSION := 1.8          # fire-flash shell spike (blooms for a blink)
+const SELECT_BREATHE_HI := 0.9       # selection breathe peak — still below bloom
+const AIM_RELAX_TIME := 1.0          # yaw back to rest after this long targetless
+const TIER_RING_H := 1.4             # tier progression ring dimensions
+const TIER_RING_STEP := 2.6
 
 static var _hum_table: PackedFloat32Array
 
@@ -230,6 +258,7 @@ func upgrade(s: int) -> void:
 	if range_rotated:
 		_rebuild_rotated_cache()
 	_rebuild_body()
+	_upgrade_pop()
 
 func sell_value() -> int:
 	return int(floor(invested * SELL_REFUND))
@@ -334,8 +363,27 @@ func _process(delta: float) -> void:
 			_process_arc(delta)
 		_:
 			_process_targeted(delta)
+	if _aims and _turret != null and is_instance_valid(_turret):
+		_update_aim(delta)
 	if _badge_anchor != null and not _badge_mats.is_empty():
 		_update_badge_zoom()
+
+# Yaw the turret toward the last fired-at direction; relax to rest when no
+# target has been engaged for AIM_RELAX_TIME. Radial/laser stay symmetric.
+func _update_aim(delta: float) -> void:
+	var tgt := 0.0
+	if _aim_timer > 0.0:
+		_aim_timer -= delta
+		tgt = _aim_yaw
+	_turret.rotation.y = lerp_angle(_turret.rotation.y, tgt, minf(1.0, 10.0 * delta))
+
+# Plane dir (dx, dy) maps to 3D (dx, 0, dy); the aim features are built along
+# local +X, and rotation.y sends +X to (cos yaw, 0, -sin yaw).
+func _note_aim(dir: Vector2) -> void:
+	if dir.length_squared() < 0.000001:
+		return
+	_aim_yaw = atan2(-dir.y, dir.x)
+	_aim_timer = AIM_RELAX_TIME
 
 func _process_targeted(delta: float) -> void:
 	_cooldown -= delta
@@ -346,6 +394,7 @@ func _process_targeted(delta: float) -> void:
 		if not ts.is_empty():
 			for tt in ts:
 				_shoot(tt)
+			_fire_flash()
 			_cooldown = 1.0 / data.fire_rate
 
 func _process_radial(delta: float) -> void:
@@ -378,6 +427,8 @@ func _fire_arc(t) -> void:
 	w.dos_slow_time = data.dos_slow_time
 	w.dos_slow_factor = data.dos_slow_factor
 	board.add_projectile(w)
+	_note_aim(t.pp - pp)
+	_fire_flash()
 
 func _cell_in_range(target_cell: Vector2i) -> bool:
 	if range_rotated:
@@ -410,6 +461,7 @@ func _fire_volley() -> void:
 		p.dos_slow_time = data.dos_slow_time
 		p.dos_slow_factor = data.dos_slow_factor
 		board.add_projectile(p)
+	_fire_flash()
 
 func _process_laser(delta: float) -> void:
 	# focus_time: after a kill the beam is blind/idle for this long. This caps
@@ -427,6 +479,8 @@ func _process_laser(delta: float) -> void:
 	if _laser_target == null:
 		_laser_target = _acquire_target()
 		_charge = 0.0          # fresh target starts at the weak end of the curve
+		if _laser_target != null:
+			_fire_flash()      # lock-on blink — the laser's per-shot feedback
 	if _laser_target != null:
 		_charge = minf(_charge + delta, data.ramp_time)
 		var cr := 1.0 if data.ramp_time <= 0.0 else clampf(_charge / data.ramp_time, 0.0, 1.0)
@@ -583,6 +637,7 @@ func cycle_target_priority() -> String:
 	return target_priority
 
 func _shoot(t) -> void:
+	_note_aim(t.pp - pp)
 	var p := Projectile3D.new()
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
 	p.dos_freeze = data.dos_freeze
@@ -591,53 +646,119 @@ func _shoot(t) -> void:
 	board.add_projectile(p)
 
 # ---------------------------------------------------------------- body (3D)
-# One colour-coded, FLAT-SHADED low-poly primitive per fire mode (no base/caps):
-#   single -> octagonal cylinder; radial -> stellated torus; laser -> cone;
-#   arc -> flared horn / bell (the inverse of the laser cone — opens upward).
-# Built by hand with per-face normals so they read as faceted low-poly (Godot's
-# CylinderMesh/TorusMesh use smooth normals, which looked round / "high poly").
+# Every body = a shared gunmetal hex plinth (the chip socket the component is
+# seated in) + one colour-coded, FLAT-SHADED low-poly silhouette per fire mode:
+#   single -> octagonal cylinder; radial -> polyhedral torus bristling with
+#   spikes; laser -> cone; arc -> flared horn / bell (opens upward).
+# Each silhouette splits into a dark shell and a hot emissive accent (single:
+# cap plate; laser: cone tip; radial: spikes; arc: rim lip + throat dish) so
+# the accent crosses the bloom threshold while the shell stays dark. Single and
+# arc also carry a small directional feature (prong / rim fin) on the yawing
+# _turret child; radial and laser stay symmetric. Built by hand with per-face
+# normals so they read as faceted low-poly (Godot's CylinderMesh/TorusMesh use
+# smooth normals, which looked round / "high poly").
 func _rebuild_body() -> void:
+	_kill_body_tweens()
 	if _body != null and is_instance_valid(_body):
 		_body.queue_free()
 		_body = null
+	_turret = null
 	if data == null:
 		return
 	_body = Node3D.new()
 	add_child(_body)
+	_turret = Node3D.new()
+	_body.add_child(_turret)
+	_shell_mat = _make_shell_mat()
+	_accent_mat = _make_accent_mat(data.fire_mode == "arc")
+	_aims = data.fire_mode != "radial" and data.fire_mode != "laser"
 	var r: float = GameBoard3D.TOWER_RADIUS
-	var mat := _core_mat()
+	# Plinth flats follow the hex cell's; inside _body (not _turret) so upgrade
+	# scaling composes but aim yaw never twists it off the cell.
+	_part(_low_poly_cylinder(r * 0.97, PLINTH_H, 6, -PI / 6.0), _plinth_mat(), 0.0)
+	var ring_r := r * 0.98
 	# Outer extent ~0.9 * TOWER_RADIUS: nearly fills the hex footprint with a
 	# small margin so the body never reads as crossing into a neighbour cell.
 	match data.fire_mode:
 		"radial":
-			# stellated torus: a polyhedral torus with a spike raised from every face,
-			# bristling outward in all directions — echoing the all-directions burst.
-			# Sized so the spike tips still sit inside the hex footprint.
+			# torus shell + a spike raised from every face, bristling outward in
+			# all directions — echoing the all-directions burst. Sized so the
+			# spike tips still sit inside the hex footprint.
 			var inner := r * 0.30
 			var outer := r * 0.72
 			var tube := (outer - inner) * 0.5
 			var spike := tube * 1.15
-			_part(_low_poly_stellated_torus(inner, outer, 8, 6, spike), mat, tube + spike)
+			var ty := PLINTH_H + tube + spike
+			_part(_low_poly_torus(inner, outer, 8, 6), _shell_mat, ty, _turret)
+			_part(_torus_spikes(inner, outer, 8, 6, spike), _accent_mat, ty, _turret)
+			ring_r = r * 0.55
 		"laser":
-			_part(_low_poly_cone(r * 0.9, 60.0, 6), mat, 0.0)
+			# Cone lofted as shell frustum + hot tip segment; the beam leaves the
+			# apex (_beam_origin_y below). Tip sunk/oversized a hair to seal the seam.
+			var split := LASER_CONE_H * LASER_TIP_FRAC
+			var tip_r := r * 0.9 * (1.0 - LASER_TIP_FRAC)
+			_part(_low_poly_frustum(r * 0.9, tip_r, split, 6), _shell_mat, PLINTH_H, _turret)
+			_part(_low_poly_cone(tip_r * 1.06, LASER_CONE_H - split + 0.3, 6), _accent_mat, PLINTH_H + split - 0.3, _turret)
 		"arc":
-			# Flared emitter: narrow base, concave flare to a wide open mouth on top.
-			_part(_low_poly_horn(r * 0.26, r * 0.95, 52.0, 8, 6), mat, 0.0)
+			# Flared emitter: narrow base, concave flare to a wide mouth. Shell up
+			# to the throat, accent rim lip above it, and an emissive dish closing
+			# the throat so the horn reads as charged from within. A rim fin at +X
+			# is the aim cue.
+			var b_r := r * 0.26
+			var rim := r * 0.95
+			var h := 52.0
+			_part(_low_poly_horn(b_r, rim, h, 8, 5, 0.0, ARC_THROAT_F, true), _shell_mat, PLINTH_H, _turret)
+			_part(_low_poly_horn(b_r, rim, h, 8, 2, ARC_THROAT_F, 1.0, false), _accent_mat, PLINTH_H, _turret)
+			var dish_r: float = b_r + (rim - b_r) * pow(ARC_THROAT_F, HORN_FLARE_POW)
+			_part(_disc(dish_r, 8), _accent_mat, PLINTH_H + h * ARC_THROAT_F, _turret)
+			_part(_tri_prism(
+					Vector3(rim * 0.70, h * 0.96, 0.9), Vector3(rim, h * 0.96, 0.9), Vector3(rim * 0.90, h * 1.12, 0.9),
+					Vector3(rim * 0.70, h * 0.96, -0.9), Vector3(rim, h * 0.96, -0.9), Vector3(rim * 0.90, h * 1.12, -0.9)),
+					_accent_mat, PLINTH_H, _turret)
+			ring_r = r * 0.45
 		_:
-			_part(_low_poly_cylinder(r * 0.9, 40.0, 8), mat, 0.0)
+			# Cylinder + hot cap plate; a flat prong wedge past the cap rim at +X
+			# is the aim cue. Overlapping parts embed slightly to avoid coplanar caps.
+			var body_h := 40.0
+			var cap_y := PLINTH_H + body_h - 0.5
+			_part(_low_poly_cylinder(r * 0.9, body_h, 8), _shell_mat, PLINTH_H, _turret)
+			_part(_low_poly_cylinder(r * 0.92, 2.2, 8), _accent_mat, cap_y, _turret)
+			_part(_tri_prism(
+					Vector3(r * 0.55, 2.4, -4.0), Vector3(r * 0.55, 2.4, 4.0), Vector3(r * 0.98, 2.4, 0.0),
+					Vector3(r * 0.55, 0.0, -4.0), Vector3(r * 0.55, 0.0, 4.0), Vector3(r * 0.98, 0.0, 0.0)),
+					_accent_mat, cap_y + 1.6, _turret)
+	# Tier progression marks: one thin accent ring per purchased tier, racked up
+	# the base like a chip's pin rows — visible even when a tier authors no
+	# size/colour delta.
+	var total_tiers := 0
+	for lv in slot_levels:
+		total_tiers += int(lv)
+	for i in range(total_tiers):
+		_part(_low_poly_cylinder(ring_r, TIER_RING_H, 8), _accent_mat, PLINTH_H + 0.8 + TIER_RING_STEP * float(i))
 	# Upgrades can reshape the body: scale width in the plane (X/Z) and height in Y.
-	# Scaling the whole container keeps every fire mode (and its part offsets) correct.
-	_body.scale = Vector3(maxf(0.05, data.width_scale), maxf(0.05, data.height_scale), maxf(0.05, data.width_scale))
+	# Scaling the whole container keeps every fire mode (and its part offsets)
+	# correct; _base_scale is what fire-flash / upgrade pulses return to.
+	_base_scale = Vector3(maxf(0.05, data.width_scale), maxf(0.05, data.height_scale), maxf(0.05, data.width_scale))
+	_body.scale = _base_scale
+	# Laser beam origin: the cone apex (plinth + cone height, upgrade-scaled),
+	# backed off a touch so the beam visibly leaves the very tip.
+	_beam_origin_y = (PLINTH_H + LASER_CONE_H * 0.985) * _base_scale.y
+	if _selected:
+		_apply_selection_mat()
 
-func _part(mesh: Mesh, mat: Material, y: float) -> MeshInstance3D:
+func _part(mesh: Mesh, mat: Material, y: float, parent: Node3D = null) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.position.y = y
-	_body.add_child(mi)
+	if parent == null:
+		parent = _body
+	parent.add_child(mi)
 	return mi
 
-# Add a flat triangle with an outward normal (away from `ctr`).
+# Add a flat triangle with an outward normal (away from `ctr`). Winding follows
+# the normal (matches _add_prism's convention in GameBoard3D) so the closed
+# bodies survive back-face culling.
 func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, ctr: Vector3) -> void:
 	var nrm := (b - a).cross(c - a)
 	if nrm.length() < 0.000001:
@@ -645,17 +766,21 @@ func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, ctr: Vector3) -> 
 	nrm = nrm.normalized()
 	if nrm.dot((a + b + c) / 3.0 - ctr) < 0.0:
 		nrm = -nrm
+		var t := b
+		b = c
+		c = t
 	for v in [a, b, c]:
 		st.set_normal(nrm); st.add_vertex(v)
 
-# Flat-shaded N-gon prism (base at y=0, up to y=height).
-func _low_poly_cylinder(rad: float, height: float, sides: int) -> ArrayMesh:
+# Flat-shaded N-gon prism (base at y=0, up to y=height). `phase` rotates the
+# corners (the hex plinth uses it to align with the cell's corners).
+func _low_poly_cylinder(rad: float, height: float, sides: int, phase := 0.0) -> ArrayMesh:
 	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var ctr := Vector3(0, height * 0.5, 0)
 	var topc := Vector3(0, height, 0)
 	for i in range(sides):
-		var a0 := TAU * float(i) / float(sides)
-		var a1 := TAU * float(i + 1) / float(sides)
+		var a0 := TAU * float(i) / float(sides) + phase
+		var a1 := TAU * float(i + 1) / float(sides) + phase
 		var b0 := Vector3(cos(a0) * rad, 0, sin(a0) * rad)
 		var b1 := Vector3(cos(a1) * rad, 0, sin(a1) * rad)
 		var t0 := b0 + Vector3(0, height, 0)
@@ -679,22 +804,63 @@ func _low_poly_cone(base_r: float, height: float, sides: int) -> ArrayMesh:
 		_tri(st, Vector3.ZERO, b1, b0, ctr)      # base cap
 	return st.commit()
 
+# Flat-shaded N-gon frustum (radius r0 at y=0 tapering to r1 at `height`),
+# closed by both caps — the laser cone's shell segment.
+func _low_poly_frustum(r0: float, r1: float, height: float, sides: int) -> ArrayMesh:
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ctr := Vector3(0, height * 0.5, 0)
+	var topc := Vector3(0, height, 0)
+	for i in range(sides):
+		var a0 := TAU * float(i) / float(sides)
+		var a1 := TAU * float(i + 1) / float(sides)
+		var b0 := Vector3(cos(a0) * r0, 0, sin(a0) * r0)
+		var b1 := Vector3(cos(a1) * r0, 0, sin(a1) * r0)
+		var t0 := Vector3(cos(a0) * r1, height, sin(a0) * r1)
+		var t1 := Vector3(cos(a1) * r1, height, sin(a1) * r1)
+		_tri(st, b0, b1, t1, ctr); _tri(st, b0, t1, t0, ctr)   # side quad
+		_tri(st, topc, t0, t1, ctr)                            # top cap
+		_tri(st, Vector3.ZERO, b1, b0, ctr)                    # bottom cap
+	return st.commit()
+
+# Flat N-gon disc facing up (at local y=0) — the arc horn's throat dish.
+func _disc(rad: float, sides: int) -> ArrayMesh:
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ctr := Vector3(0, -1.0, 0)
+	for i in range(sides):
+		var a0 := TAU * float(i) / float(sides)
+		var a1 := TAU * float(i + 1) / float(sides)
+		_tri(st, Vector3.ZERO, Vector3(cos(a0) * rad, 0, sin(a0) * rad), Vector3(cos(a1) * rad, 0, sin(a1) * rad), ctr)
+	return st.commit()
+
+# Closed triangular prism between cross-sections (a0,a1,a2) and (b0,b1,b2) —
+# the aim prong (single) and rim fin (arc).
+func _tri_prism(a0: Vector3, a1: Vector3, a2: Vector3, b0: Vector3, b1: Vector3, b2: Vector3) -> ArrayMesh:
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var ctr := (a0 + a1 + a2 + b0 + b1 + b2) / 6.0
+	_tri(st, a0, a1, a2, ctr)
+	_tri(st, b0, b1, b2, ctr)
+	_tri(st, a0, a1, b1, ctr); _tri(st, a0, b1, b0, ctr)
+	_tri(st, a1, a2, b2, ctr); _tri(st, a1, b2, b1, ctr)
+	_tri(st, a2, a0, b0, ctr); _tri(st, a2, b0, b2, ctr)
+	return st.commit()
+
 # Flat-shaded flared horn / bell — a body of revolution opening upward. Rings of
 # an N-gon are lofted from `base_r` at the bottom to `rim_r` at the top, with the
-# radius following a concave curve (radius grows faster near the top, FLARE_POW),
-# so the wall bows outward like a trumpet bell. The mouth is left open (no top
-# cap); a small bottom cap closes the base where it meets the turret.
-func _low_poly_horn(base_r: float, rim_r: float, height: float, sides: int, segs: int) -> ArrayMesh:
-	const FLARE_POW := 2.4
+# radius following a concave curve (radius grows faster near the top,
+# HORN_FLARE_POW), so the wall bows outward like a trumpet bell. `f0`..`f1`
+# select the lofted band (0 = base, 1 = mouth) so the dark shell and the hot rim
+# lip can be built as separate parts; `bottom_cap` closes the base where it
+# meets the plinth. The mouth is always left open (no top cap).
+func _low_poly_horn(base_r: float, rim_r: float, height: float, sides: int, segs: int, f0 := 0.0, f1 := 1.0, bottom_cap := true) -> ArrayMesh:
 	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var ctr := Vector3(0, height * 0.5, 0)
 	for s in range(segs):
-		var f0 := float(s) / float(segs)
-		var f1 := float(s + 1) / float(segs)
-		var y0 := height * f0
-		var y1 := height * f1
-		var r0: float = base_r + (rim_r - base_r) * pow(f0, FLARE_POW)
-		var r1: float = base_r + (rim_r - base_r) * pow(f1, FLARE_POW)
+		var fa: float = lerpf(f0, f1, float(s) / float(segs))
+		var fb: float = lerpf(f0, f1, float(s + 1) / float(segs))
+		var y0 := height * fa
+		var y1 := height * fb
+		var r0: float = base_r + (rim_r - base_r) * pow(fa, HORN_FLARE_POW)
+		var r1: float = base_r + (rim_r - base_r) * pow(fb, HORN_FLARE_POW)
 		for i in range(sides):
 			var a0 := TAU * float(i) / float(sides)
 			var a1 := TAU * float(i + 1) / float(sides)
@@ -703,17 +869,19 @@ func _low_poly_horn(base_r: float, rim_r: float, height: float, sides: int, segs
 			var p01 := Vector3(cos(a0) * r1, y1, sin(a0) * r1)
 			var p11 := Vector3(cos(a1) * r1, y1, sin(a1) * r1)
 			_tri(st, p00, p10, p11, ctr); _tri(st, p00, p11, p01, ctr)   # flared side quad
-	# Bottom cap (small octagon) so the base reads solid where it mounts.
-	for i in range(sides):
-		var a0 := TAU * float(i) / float(sides)
-		var a1 := TAU * float(i + 1) / float(sides)
-		var b0 := Vector3(cos(a0) * base_r, 0, sin(a0) * base_r)
-		var b1 := Vector3(cos(a1) * base_r, 0, sin(a1) * base_r)
-		_tri(st, Vector3.ZERO, b1, b0, ctr)
+	if bottom_cap:
+		# Bottom cap (small octagon) so the base reads solid where it mounts.
+		for i in range(sides):
+			var a0 := TAU * float(i) / float(sides)
+			var a1 := TAU * float(i + 1) / float(sides)
+			var b0 := Vector3(cos(a0) * base_r, 0, sin(a0) * base_r)
+			var b1 := Vector3(cos(a1) * base_r, 0, sin(a1) * base_r)
+			_tri(st, Vector3.ZERO, b1, b0, ctr)
 	return st.commit()
 
 # Flat-shaded polyhedral torus lying flat (major ring in XZ), centred at y=0.
 # `rings` faces around the main ring, `tube_sides` quads around the tube.
+# Wound to face outward so it survives back-face culling.
 func _low_poly_torus(inner_r: float, outer_r: float, rings: int, tube_sides: int) -> ArrayMesh:
 	var rr := (inner_r + outer_r) * 0.5
 	var tt := (outer_r - inner_r) * 0.5
@@ -729,7 +897,7 @@ func _low_poly_torus(inner_r: float, outer_r: float, rings: int, tube_sides: int
 			var c := _torus_pt(rr, tt, u1, v1)
 			var d := _torus_pt(rr, tt, u0, v1)
 			var nrm := _torus_nrm((u0 + u1) * 0.5, (v0 + v1) * 0.5)
-			for v in [a, b, c, a, c, d]:
+			for v in [a, d, c, a, c, b]:
 				st.set_normal(nrm); st.add_vertex(v)
 	return st.commit()
 
@@ -739,12 +907,12 @@ func _torus_pt(rr: float, tt: float, u: float, v: float) -> Vector3:
 func _torus_nrm(u: float, v: float) -> Vector3:
 	return Vector3(cos(u) * cos(v), sin(v), sin(u) * cos(v)).normalized()
 
-# Flat-shaded stellated torus: the same polyhedral torus, but every quad face is
-# raised into a 4-sided pyramid whose apex is pushed out along the face normal by
-# `spike`, so the body bristles with points in all directions. Each pyramid side is
-# oriented outward from that spike's own axis (not the global centre), so spikes on
-# the inner rim point inward correctly.
-func _low_poly_stellated_torus(inner_r: float, outer_r: float, rings: int, tube_sides: int, spike: float) -> ArrayMesh:
+# Spike pyramids only — the stellation of _low_poly_torus, raised from every
+# quad face along its normal by `spike`. Rendered with the hot accent material
+# over the plain torus shell so the radial tower's points are what bloom. Each
+# pyramid side is oriented outward from that spike's own axis (not the global
+# centre), so spikes on the inner rim point inward correctly.
+func _torus_spikes(inner_r: float, outer_r: float, rings: int, tube_sides: int, spike: float) -> ArrayMesh:
 	var rr := (inner_r + outer_r) * 0.5
 	var tt := (outer_r - inner_r) * 0.5
 	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -769,23 +937,109 @@ func _low_poly_stellated_torus(inner_r: float, outer_r: float, rings: int, tube_
 			_tri(st, d, a, apex, mid)
 	return st.commit()
 
-# Colour-coded body material: the tower's own colour, lit + a soft self-glow.
-# Low metallic so it reads as colour, not a dark mirror; two-sided so the hand-
-# built meshes never cull inside-out.
-func _core_mat() -> StandardMaterial3D:
+# ---------------------------------------------------------------- materials & juice
+# Dark shell: reads as the tower's colour but idles below the bloom threshold —
+# fire flashes and the selection breathe animate its emission energy.
+func _make_shell_mat() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_color = data.color
-	m.metallic = 0.25
-	m.roughness = 0.35
+	m.albedo_color = data.color.darkened(0.55)
+	m.metallic = 0.15
+	m.roughness = 0.55
 	m.emission_enabled = true
 	m.emission = data.color
-	m.emission_energy_multiplier = 0.5
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.emission_energy_multiplier = SHELL_EMISSION
 	return m
 
+# Hot accent: crosses the bloom threshold so every tower glows like the buses
+# do. Two-sided only for the arc horn, whose rim lip and throat dish are open
+# geometry; every other body is closed and culls back faces.
+func _make_accent_mat(two_sided: bool) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = data.color.darkened(0.4)
+	m.metallic = 0.0
+	m.roughness = 0.6
+	m.emission_enabled = true
+	m.emission = data.color
+	m.emission_energy_multiplier = ACCENT_EMISSION
+	if two_sided:
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return m
+
+# Shared gunmetal plinth material — never tinted or tweened, so one resource
+# serves every tower.
+static func _plinth_mat() -> StandardMaterial3D:
+	if _plinth_mat_res == null:
+		var m := StandardMaterial3D.new()
+		m.albedo_color = PLINTH_COLOR
+		m.metallic = 0.4
+		m.roughness = 0.4
+		_plinth_mat_res = m
+	return _plinth_mat_res
+
+func _kill_body_tweens() -> void:
+	if _flash_tween != null and _flash_tween.is_valid():
+		_flash_tween.kill()
+	_flash_tween = null
+	_stop_breathe()
+
+func _stop_breathe() -> void:
+	if _breathe_tween != null and _breathe_tween.is_valid():
+		_breathe_tween.kill()
+	_breathe_tween = null
+
+# Muzzle pulse: the shell emission spikes over the bloom threshold and the body
+# gets a quick squash-and-recover composed on the upgrade-derived base scale.
+func _fire_flash() -> void:
+	_body_pulse(FLASH_EMISSION, 0.18, _base_scale * Vector3(1.07, 0.94, 1.07), 0.15)
+
+# Upgrade juice: a bigger pop from below final size after the rebuild.
+func _upgrade_pop() -> void:
+	_body_pulse(2.5, 0.3, _base_scale * 0.8, 0.25)
+
+func _body_pulse(peak: float, glow_time: float, from_scale: Vector3, scale_time: float) -> void:
+	if _body == null or not is_instance_valid(_body) or _shell_mat == null:
+		return
+	_kill_body_tweens()
+	_flash_tween = create_tween()
+	_flash_tween.tween_property(_shell_mat, "emission_energy_multiplier", SHELL_EMISSION, glow_time).from(peak).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	_flash_tween.parallel().tween_property(_body, "scale", _base_scale, scale_time).from(from_scale).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_flash_tween.tween_callback(_restore_idle_glow)
+
+func _restore_idle_glow() -> void:
+	if _selected:
+		_start_breathe()
+
+# Selection highlight on the body itself: rim light + a slow emission breathe
+# on the shell, kept below the bloom threshold so it reads "lit", not "firing".
+# Called by Main3D alongside set_badges_visible; safe to call repeatedly.
+func set_selected(on: bool) -> void:
+	_selected = on
+	_apply_selection_mat()
+
+func _apply_selection_mat() -> void:
+	if _shell_mat == null:
+		return
+	_shell_mat.rim_enabled = _selected
+	if _selected:
+		_shell_mat.rim = 0.5
+		_shell_mat.rim_tint = 0.2
+		# A running fire flash owns the emission; its finish callback restarts the breathe.
+		if _flash_tween == null or not _flash_tween.is_running():
+			_start_breathe()
+	else:
+		_stop_breathe()
+		_shell_mat.emission_energy_multiplier = SHELL_EMISSION
+
+func _start_breathe() -> void:
+	_stop_breathe()
+	_breathe_tween = create_tween().set_loops()
+	_breathe_tween.tween_property(_shell_mat, "emission_energy_multiplier", SELECT_BREATHE_HI, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_breathe_tween.tween_property(_shell_mat, "emission_energy_multiplier", SHELL_EMISSION, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
 # ---------------------------------------------------------------- laser beam
-# Built lazily so non-laser towers stay cheap. Each frame the cylinder is
-# stretched and oriented from tower top to the locked target.
+# Built lazily so non-laser towers stay cheap. Each frame the sheath cylinder
+# (and the white-hot core inside it) is stretched and oriented from the cone
+# apex to the locked target; glow, thickness and the impact dot ramp with charge.
 func _ensure_beam() -> void:
 	if _beam != null and is_instance_valid(_beam):
 		return
@@ -799,7 +1053,7 @@ func _ensure_beam() -> void:
 	_beam_mat.albedo_color = data.color
 	_beam_mat.emission_enabled = true
 	_beam_mat.emission = data.color
-	_beam_mat.emission_energy_multiplier = BEAM_GLOW
+	_beam_mat.emission_energy_multiplier = 1.1
 	_beam_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_beam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_beam = MeshInstance3D.new()
@@ -808,6 +1062,25 @@ func _ensure_beam() -> void:
 	# Beam lives at world scope on the board entities root so its global
 	# transform isn't twisted by future tower-local transforms.
 	board._entities.add_child(_beam)
+	# White-hot core: same transform as the sheath, drawn on top of it.
+	_beam_core_cyl = CylinderMesh.new()
+	_beam_core_cyl.top_radius = BEAM_BASE_THICK * 0.35
+	_beam_core_cyl.bottom_radius = BEAM_BASE_THICK * 0.35
+	_beam_core_cyl.height = 1.0
+	_beam_core_cyl.radial_segments = 8
+	_beam_core_cyl.rings = 1
+	var cm := StandardMaterial3D.new()
+	cm.albedo_color = Color(1, 1, 1, 0.95)
+	cm.emission_enabled = true
+	cm.emission = Color(1, 1, 1)
+	cm.emission_energy_multiplier = 3.5
+	cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	cm.render_priority = 1
+	_beam_core = MeshInstance3D.new()
+	_beam_core.mesh = _beam_core_cyl
+	_beam_core.material_override = cm
+	board._entities.add_child(_beam_core)
 	_beam_impact = MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = BEAM_FULL_THICK * 1.8
@@ -815,43 +1088,54 @@ func _ensure_beam() -> void:
 	sm.radial_segments = 12
 	sm.rings = 6
 	_beam_impact.mesh = sm
-	var im := StandardMaterial3D.new()
-	im.albedo_color = Color(1, 1, 1, 1)
-	im.emission_enabled = true
-	im.emission = Color(1, 1, 1)
-	im.emission_energy_multiplier = BEAM_GLOW
-	im.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_beam_impact.material_override = im
+	_impact_mat = StandardMaterial3D.new()
+	_impact_mat.albedo_color = Color(1, 1, 1, 1)
+	_impact_mat.emission_enabled = true
+	_impact_mat.emission = data.color
+	_impact_mat.emission_energy_multiplier = BEAM_GLOW
+	_impact_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_beam_impact.material_override = _impact_mat
 	board._entities.add_child(_beam_impact)
 
 func _update_beam(frac: float, on: bool) -> void:
 	if not on:
 		if _beam != null and is_instance_valid(_beam):
 			_beam.visible = false
+			_beam_core.visible = false
 			_beam_impact.visible = false
 		return
 	_ensure_beam()
 	_beam.visible = true
+	_beam_core.visible = true
 	_beam_impact.visible = true
 	var thick := lerpf(BEAM_BASE_THICK, BEAM_FULL_THICK, frac)
+	if frac > 0.8:
+		# sizzle: a maxed beam vibrates instead of freezing at full width
+		thick *= 1.0 + 0.06 * sin(float(Time.get_ticks_msec()) * 0.04)
 	var alpha := lerpf(0.35, 0.9, frac)
 	_beam_cyl.top_radius = thick
 	_beam_cyl.bottom_radius = thick
+	_beam_core_cyl.top_radius = thick * 0.35
+	_beam_core_cyl.bottom_radius = thick * 0.35
 	_beam_mat.albedo_color = Color(data.color.r, data.color.g, data.color.b, alpha)
+	# Glow ramps with the quadratic damage ramp so charge is visible.
+	_beam_mat.emission_energy_multiplier = lerpf(1.1, 3.2, frac)
 	# Endpoints in world coords. Pull the target's plane pos through an
 	# explicit Vector2 first so the Vector3 constructor sees typed floats
 	# rather than Variant member accesses on an untyped reference.
 	var tpp: Vector2 = _laser_target.pp
-	var from := Vector3(pp.x, GameBoard3D.BUS_TOP + BEAM_ORIGIN_LIFT, pp.y)
+	var from := Vector3(pp.x, GameBoard3D.BUS_TOP + _beam_origin_y, pp.y)
 	# enemies hover at ENEMY_Y, so aim there (+ a little for body mid-height)
 	var to := Vector3(tpp.x, GameBoard3D.ENEMY_Y + BEAM_TARGET_LIFT, tpp.y)
 	var dir := to - from
 	var dlen := dir.length()
 	if dlen < 0.001:
 		_beam.visible = false
+		_beam_core.visible = false
 		_beam_impact.visible = false
 		return
 	_beam_cyl.height = dlen
+	_beam_core_cyl.height = dlen
 	# Orient the cylinder's Y axis along `dir`. Build an explicit basis to avoid
 	# look_at edge-cases (target directly above the source).
 	var y_axis := dir / dlen
@@ -860,15 +1144,21 @@ func _update_beam(frac: float, on: bool) -> void:
 	var z_axis := x_axis.cross(y_axis).normalized()
 	var mid := from + dir * 0.5
 	_beam.global_transform = Transform3D(Basis(x_axis, y_axis, z_axis), mid)
+	_beam_core.global_transform = _beam.global_transform
 	_beam_impact.global_transform = Transform3D(Basis(), to)
-	var impact_scale: float = lerpf(0.6, 1.4, frac)
+	# Impact dot: per-frame jitter sells contact sparking; the tint whitens as
+	# the beam charges so full ramp reads white-hot.
+	var impact_scale: float = lerpf(0.6, 1.4, frac) * randf_range(0.88, 1.14)
 	_beam_impact.scale = Vector3(impact_scale, impact_scale, impact_scale)
+	_impact_mat.emission = data.color.lerp(Color(1, 1, 1), frac)
 
 # Clean up the externally-parented beam nodes when the tower is removed.
 func _exit_tree() -> void:
 	_set_hum(false, 0.0)
 	if _beam != null and is_instance_valid(_beam):
 		_beam.queue_free()
+	if _beam_core != null and is_instance_valid(_beam_core):
+		_beam_core.queue_free()
 	if _beam_impact != null and is_instance_valid(_beam_impact):
 		_beam_impact.queue_free()
 
