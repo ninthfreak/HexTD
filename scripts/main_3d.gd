@@ -351,7 +351,14 @@ func _process(delta: float) -> void:
 			money += WAVE_CLEAR_BONUS
 			_update_labels()
 			_pulse_label(money_label, Color(1.5, 1.3, 0.6))
-			_set_info("Wave cleared — +%d bonus." % WAVE_CLEAR_BONUS, "success")
+			if is_game and game_wave_index >= waves.size():
+				# That was the last wave — the run is won.
+				_play_sfx("victory")
+				_show_wave_banner("SYSTEM CLEAR")
+				_set_info("All waves cleared!", "success")
+			else:
+				_play_sfx("wave_clear")
+				_set_info("Wave cleared — +%d bonus." % WAVE_CLEAR_BONUS, "success")
 	_update_pause_button()
 	_update_wave_button()
 	_update_banner(delta)
@@ -564,6 +571,7 @@ func _on_upgrade_pressed(s: int) -> void:
 	_update_labels()
 	_update_tower_buttons()
 	_set_info("%s: %s now at tier %d." % [t.data.display_name, t.slot_name(s), t.slot_level(s)])
+	_play_sfx("upgrade")
 
 func _on_sell_pressed() -> void:
 	if not has_selected:
@@ -581,6 +589,7 @@ func _on_sell_pressed() -> void:
 	_update_tower_control_row()
 	_update_target_button()
 	_set_info("Sold %s for %d." % [nm, refund], "success")
+	_play_sfx("sell")
 
 # ---------------------------------------------------------------- input
 func _input(event: InputEvent) -> void:
@@ -681,6 +690,7 @@ func _try_place(cell: Vector2i) -> bool:
 	t.setup(td, board, board.cell_center_world(cell))
 	board.place_tower(cell, t)
 	_update_labels()
+	_play_sfx("build_place")
 	return true
 
 func _select_tower(cell: Vector2i, t) -> void:
@@ -793,6 +803,7 @@ func _on_start_pressed() -> void:
 	var banner_text: String = wname if (nm is String and nm != "") else "Wave %d" % (wi + 1)
 	wave_select.selected = (wi + 1) % waves.size()
 	_show_wave_banner(banner_text)
+	_play_sfx("wave_start")
 	_set_info("Started wave %s." % wname)
 
 # Game mode: waves run strictly in order with a manual break between each. The
@@ -818,6 +829,7 @@ func _on_start_next_pressed() -> void:
 	var nm = wave.get("name", "")
 	var banner_text: String = wname if (nm is String and nm != "") else "Wave %d" % (wi + 1)
 	_show_wave_banner(banner_text)
+	_play_sfx("wave_start")
 	_set_info("Started wave %s." % wname)
 
 # Combat is "in progress" while a wave is spawning or any enemy is still alive on
@@ -893,6 +905,7 @@ func _on_enemy_reached_goal() -> void:
 	lives = maxi(0, lives - 1)
 	_update_labels()
 	_pulse_label(lives_label, Color(1.6, 0.5, 0.5))
+	_play_sfx("enemy_leak")
 	if lives <= 0 and is_game and not game_over:
 		_trigger_defeat()
 
@@ -903,6 +916,7 @@ func _trigger_defeat() -> void:
 	_spawn_timeline.clear()
 	Engine.time_scale = 0.0
 	paused = true
+	_play_sfx("defeat")
 	# Loss gets its own dressing (red banner + subtitle + dark wash) — it must
 	# not read like just another wave name.
 	banner_label.text = "SYSTEM FAILURE"
@@ -946,6 +960,9 @@ func _on_cheat_pressed() -> void:
 	money += cheat_amount
 	_update_labels()
 	_set_info("Cheat: +%d funds." % cheat_amount)
+	# Tiny coin blip; the AudioManager's per-name rate floor keeps the
+	# hold-to-repeat ramp from becoming a jackhammer.
+	_play_sfx("cheat_money")
 
 # Press grants one award immediately and arms the hold-to-repeat ramp.
 func _on_cheat_down() -> void:
@@ -1000,7 +1017,8 @@ func _add_hover_glow(b: BaseButton) -> void:
 		_tween_button(b, "modulate", Color(1, 1, 1), 0.18))
 	b.button_down.connect(func() -> void:
 		if not b.disabled:
-			_tween_button(b, "scale", Vector2(0.94, 0.94), 0.05))
+			_tween_button(b, "scale", Vector2(0.94, 0.94), 0.05)
+			_play_sfx("ui_click"))
 	b.button_up.connect(func() -> void:
 		_tween_button(b, "scale", Vector2.ONE, 0.15, Tween.TRANS_BACK))
 
@@ -1559,7 +1577,9 @@ func _build_ui() -> void:
 
 	var exit_button := Button.new()
 	exit_button.text = "Exit to map select"
-	exit_button.pressed.connect(_on_exit_pressed)
+	exit_button.pressed.connect(func() -> void:
+		_play_sfx("ui_click")
+		_on_exit_pressed())
 	vbox.add_child(exit_button)
 
 	vbox.add_child(HSeparator.new())
@@ -1797,6 +1817,7 @@ func _load_tower_pic(id: String) -> Texture2D:
 	return tex
 
 func _on_tower_pressed(id: String) -> void:
+	_play_sfx("ui_click")
 	placing_id = id
 	dragging = true
 	has_selected = false
@@ -1825,6 +1846,11 @@ func _pulse_label(l: Label, c: Color) -> void:
 
 # kind: "info" (neutral), "error" (rejections), "success" (confirmations) — the
 # same slot used to render all three identically.
+func _play_sfx(sound_name: String) -> void:
+	var am = get_node_or_null("/root/AudioManager")
+	if am:
+		am.play_sfx(sound_name)
+
 func _set_info(text: String, kind := "info") -> void:
 	if info_label == null:
 		return

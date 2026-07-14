@@ -813,7 +813,10 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) 
 func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
-		am.play_sfx(data.death_sound)
+		# A decay stage degrades rather than dies: it gets the split blip, so a
+		# 3-stage chain doesn't replay the same death sound three times. The
+		# (data-driven) death sound is saved for the final kill.
+		am.play_sfx("enemy_split" if data.reduces_to != null else data.death_sound)
 	bounty.emit(data.reward)
 	var lesser: EnemyData = data.reduces_to
 	if lesser == null:

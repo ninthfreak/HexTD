@@ -211,7 +211,13 @@ func _show_mode_choice() -> void:
 
 	_animate_step_in()
 
+func _play_click() -> void:
+	var am = get_node_or_null("/root/AudioManager")
+	if am:
+		am.play_sfx("ui_click")
+
 func _on_mode(mode: String) -> void:
+	_play_click()
 	GameState.mode = mode
 	_show_map_list()
 
@@ -226,7 +232,9 @@ func _show_map_list() -> void:
 	var back := Button.new()
 	back.text = "← Back"
 	back.custom_minimum_size = Vector2(0, 36)
-	back.pressed.connect(_show_mode_choice)
+	back.pressed.connect(func() -> void:
+		_play_click()
+		_show_mode_choice())
 	_style_secondary(back)
 	col.add_child(back)
 
@@ -275,6 +283,7 @@ func _map_button(entry: Dictionary) -> Button:
 	return b
 
 func _on_pick(path: String) -> void:
+	_play_click()
 	GameState.selected_path = path
 	# Fade to black, then swap scenes from the tween callback.
 	_fade.mouse_filter = Control.MOUSE_FILTER_STOP   # swallow clicks during the fade

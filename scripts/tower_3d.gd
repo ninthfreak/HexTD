@@ -395,6 +395,7 @@ func _process_targeted(delta: float) -> void:
 			for tt in ts:
 				_shoot(tt)
 			_fire_flash()
+			_play_sfx("tower_fire")   # once per volley, not per target
 			_cooldown = 1.0 / data.fire_rate
 
 func _process_radial(delta: float) -> void:
@@ -429,6 +430,9 @@ func _fire_arc(t) -> void:
 	board.add_projectile(w)
 	_note_aim(t.pp - pp)
 	_fire_flash()
+	# A DoS wave sounds like a jam, a damage wave like a whoosh — matches the
+	# frost-vs-color tint the wave itself renders with.
+	_play_sfx("dos_wave" if data.dos else "arc_fire")
 
 func _cell_in_range(target_cell: Vector2i) -> bool:
 	if range_rotated:
@@ -462,6 +466,7 @@ func _fire_volley() -> void:
 		p.dos_slow_factor = data.dos_slow_factor
 		board.add_projectile(p)
 	_fire_flash()
+	_play_sfx("radial_fire")
 
 func _process_laser(delta: float) -> void:
 	# focus_time: after a kill the beam is blind/idle for this long. This caps
@@ -499,6 +504,11 @@ func _process_laser(delta: float) -> void:
 	else:
 		_set_hum(false, 0.0)
 		_update_beam(0.0, false)
+
+func _play_sfx(sound_name: String) -> void:
+	var am = get_node_or_null("/root/AudioManager")
+	if am:
+		am.play_sfx(sound_name)
 
 func _set_hum(active: bool, charge_ratio: float) -> void:
 	if active:
