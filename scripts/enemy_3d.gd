@@ -21,6 +21,10 @@ const DOS_FROST := Color(0.5, 0.85, 1.0)   # icy tint while frozen/slowed
 const ECC_RESIST := 0.9
 const GLOW_HDR_BOOST := 0.9
 const BODY_HEIGHT := 4.0
+const HIT_FLASH_RATE := 8.0     # hit flash decays at ~8/s so each hit reads as a distinct blink
+const BOB_AMPLITUDE := 0.45     # hover bob on _body_root — display only, pp/hit logic untouched
+const BOB_RATE := 2.2
+const SPIN_RATE := 0.5          # idle spin (rad/s) for platonic solids only
 
 # Platonic solids + their dual compounds, used as true-3D enemy bodies (the
 # "faceted + edge glow" look). Sizes are driven by EnemyData.radius (the body's
@@ -75,10 +79,18 @@ var _alive := true
 var _freeze_time := 0.0
 var _slow_time := 0.0
 var _slow_factor := 1.0         # active slow multiplier (set per-tower by apply_dos)
-var _tint_mats: Array = []      # {mat, alb, emi, emi_on} for body materials we can frost-tint
+var _tint_mats: Array = []      # body materials driven by frost/flash (standard + shader; see _gather_tint_mats)
 var _dos_vis_k := -1.0          # last-applied tint strength (avoid per-frame churn)
+var _flash := 0.0               # hit-flash strength; set on damage, decayed in _process
+var _flash_vis := -1.0          # last-applied flash strength (churn guard, like _dos_vis_k)
+var _bob_time := 0.0
+var _bob_phase := 0.0           # per-enemy random phase so hover bobs de-sync across the wave
 var _body_root: Node3D         # rotates with heading (body only — bar stays upright)
 var _body: MeshInstance3D      # the body faces (prism for legacy shapes, hull faces for solids)
+var _edges_mi: MeshInstance3D  # neon edge outline; doubles as the source mesh for shard FX
+var _spin_node: Node3D         # solids only: idle-spin wrapper (heading yaw stays on _body_root)
+var _pop_tween: Tween
+var _pending_pop := 0.0        # spawn-pop duration deferred to _ready (setup runs pre-add_child)
 var _body_top := BODY_HEIGHT   # world height of the body's top (drives the health bar)
 var _bar: Sprite3D
 var _bar_tex: ImageTexture
@@ -90,9 +102,13 @@ func setup(d: EnemyData, points: PackedVector2Array) -> void:
 	pp = points[0]
 	if points.size() > 1:
 		heading = (points[1] - points[0]).angle()
+	_bob_phase = randf() * TAU
 	_build_visuals()
 	_sync_transform()
 	_refresh_bar_texture(1.0)
+	# Spawn-in pop: the same helper covers wave spawns and split children (both
+	# arrive through setup()), so nothing materialises at full size in one frame.
+	_pop_body(0.05, 0.25)
 
 func silhouette() -> PackedVector2Array:
 	return _shape_points()
@@ -108,6 +124,8 @@ func _build_visuals() -> void:
 	_bar = Sprite3D.new()
 	_bar.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_bar.shaded = false
+	# Nearest filtering: the 40x6 texture must stay crisp texels, not a smear.
+	_bar.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	# Draw the bar on top of everything (body, walls) so it reads as a HUD element
 	# regardless of camera angle, the way the 2D bar always sat above the sprite.
 	_bar.no_depth_test = true
@@ -119,8 +137,12 @@ func _build_visuals() -> void:
 # glowing neon edge outline (two child meshes); the legacy extruded prism shapes
 # get the single extruded body. Callers clear _body_root first (morph rebuilds).
 func _build_body() -> void:
+	# Detach before queue_free so _collect_tint_mats below never snapshots the
+	# outgoing meshes (queued nodes remain children until end of frame).
 	for c in _body_root.get_children():
+		_body_root.remove_child(c)
 		c.queue_free()
+	_spin_node = null
 	if data.shape in SOLIDS:
 		_build_solid_body()
 	else:
@@ -129,9 +151,29 @@ func _build_body() -> void:
 		_body.material_override = _faces_material()
 		_body_root.add_child(_body)
 		_body_top = BODY_HEIGHT
+		# Prisms get the same neon edge outline as the solids: silhouette loops
+		# at top and bottom plus the vertical corner edges.
+		_edges_mi = _make_edge_outline(_prism_edge_segments())
+		_body_root.add_child(_edges_mi)
 	# ECC scan band sweeps the body's full height, so tune it once the height is known.
 	_tune_scan(_body)
 	_collect_tint_mats()
+
+func _prism_edge_segments() -> Array:
+	var pts := _local_shape_points()
+	var segs: Array = []
+	var n := pts.size()
+	for i in range(n):
+		var a := pts[i]
+		var b := pts[(i + 1) % n]
+		var at := Vector3(a.x, BODY_HEIGHT, a.y)
+		var bt := Vector3(b.x, BODY_HEIGHT, b.y)
+		var ab := Vector3(a.x, 0.0, a.y)
+		var bb := Vector3(b.x, 0.0, b.y)
+		segs.append([at, bt])
+		segs.append([ab, bb])
+		segs.append([at, ab])
+	return segs
 
 func _place_bar() -> void:
 	if _bar != null:
@@ -191,20 +233,20 @@ func _build_solid_body() -> void:
 		face_st.set_normal(nrm); face_st.add_vertex(a + up)
 		face_st.set_normal(nrm); face_st.add_vertex(b + up)
 		face_st.set_normal(nrm); face_st.add_vertex(c + up)
+	# Solids sit under a spin wrapper so the idle rotation lives on the meshes
+	# while heading yaw (and the bob) stay on _body_root.
+	_spin_node = Node3D.new()
+	_body_root.add_child(_spin_node)
 	var faces_mi := MeshInstance3D.new()
 	faces_mi.mesh = face_st.commit()
 	faces_mi.material_override = _faces_material()
-	_body_root.add_child(faces_mi)
+	_spin_node.add_child(faces_mi)
 	_body = faces_mi
-	var edge_st := SurfaceTool.new()
-	edge_st.begin(Mesh.PRIMITIVE_LINES)
+	var lifted: Array = []
 	for se in sedges:
-		edge_st.add_vertex(se[0] + up)
-		edge_st.add_vertex(se[1] + up)
-	var edges_mi := MeshInstance3D.new()
-	edges_mi.mesh = edge_st.commit()
-	edges_mi.material_override = _edge_material()
-	_body_root.add_child(edges_mi)
+		lifted.append([se[0] + up, se[1] + up])
+	_edges_mi = _make_edge_outline(lifted)
+	_spin_node.add_child(_edges_mi)
 	_body_top = max_y + lift
 
 # Fill `faces` (triangles) and `edges` (segments) in unit coords for the shape.
@@ -393,6 +435,11 @@ func _faces_material() -> Material:
 	mat.metallic = 0.2
 	mat.roughness = 0.5
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Rim term so grazing faces pick up a halo — silhouettes separate from the
+	# dark board instead of flattening into color blobs.
+	mat.rim_enabled = true
+	mat.rim = 0.6
+	mat.rim_tint = 0.2
 	if data.glow > 0.0:
 		mat.emission_enabled = true
 		mat.emission = fill
@@ -400,12 +447,15 @@ func _faces_material() -> Material:
 	return mat
 
 # Shader for the special-property body. Replicates the plain look (lit metallic +
-# self-glow) and adds, per uniform flags:
-#  - ECC: a thick horizontal emission band sweeping up/down the body height.
-#  - Encrypted: partial face transparency, so the opaque wireframe edges show
-#    through as a "revealed wireframe".
-#  - both (TLS): both — and the scan band is forced opaque so the sweeping line
-#    is never see-through.
+# self-glow + Fresnel rim) and adds, per uniform flags:
+#  - ECC: a horizontal emission band scanning bottom-to-top at constant speed
+#    (wrapping ramp with a brief off-time between passes, not a sine slosh).
+#  - Encrypted: a 2px screen-space checkerboard discard — stays in the opaque
+#    pipeline (no transparency-sorting shimmer) and the opaque wireframe edges
+#    show through the discarded pixels as a "revealed wireframe".
+#  - both (TLS): both — the scan band is kept solid, never dithered away.
+#  - frost / flash: status uniforms driven from _apply_status_visual, so DoS ice
+#    and the hit flash read on shader bodies exactly like on standard ones.
 const _PROPERTY_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, depth_draw_opaque;
@@ -414,12 +464,13 @@ uniform vec4 body_color : source_color = vec4(1.0);
 uniform float emission_energy = 0.4;
 uniform float base_alpha = 1.0;
 uniform float scan_enabled = 0.0;
-uniform float scan_center = 0.0;
-uniform float scan_amp = 1.0;
+uniform float scan_top = 1.0;
 uniform float scan_half_width = 1.0;
-uniform float scan_speed = 1.6;
+uniform float scan_speed = 0.45;
 uniform float scan_boost = 2.4;
 uniform float scan_phase = 0.0;
+uniform float frost = 0.0;
+uniform float flash = 0.0;
 
 varying float v_y;
 
@@ -428,19 +479,35 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = body_color.rgb;
+	float band = 0.0;
+	if (scan_enabled > 0.5) {
+		// Wrapping linear ramp: constant-speed sweep past both ends of the body,
+		// so the band briefly disappears before the next pass — a scanline.
+		float t = fract(TIME * scan_speed + scan_phase);
+		float pos = mix(-scan_half_width, scan_top + scan_half_width, t);
+		band = 1.0 - smoothstep(scan_half_width * 0.55, scan_half_width, abs(v_y - pos));
+	}
+	// Encrypted: checkerboard discard (2px cells) instead of smooth alpha.
+	if (base_alpha < 0.999 && band < 0.5) {
+		vec2 cell = floor(FRAGCOORD.xy / 2.0);
+		if (mod(cell.x + cell.y, 2.0) < 0.5) {
+			discard;
+		}
+	}
+	vec3 frost_c = vec3(0.5, 0.85, 1.0);
+	ALBEDO = mix(body_color.rgb, frost_c, frost);
 	METALLIC = 0.2;
 	ROUGHNESS = 0.5;
 	vec3 emis = body_color.rgb * emission_energy;
-	float alpha = base_alpha;
-	if (scan_enabled > 0.5) {
-		float pos = scan_center + scan_amp * sin(TIME * scan_speed + scan_phase);
-		float band = 1.0 - smoothstep(scan_half_width * 0.55, scan_half_width, abs(v_y - pos));
-		emis += body_color.rgb * band * scan_boost;
-		alpha = max(alpha, band);   // scan band stays opaque (TLS: never transparent)
-	}
+	emis += body_color.rgb * band * scan_boost;
+	// Fresnel rim: grazing faces emit a halo that lifts the silhouette off the board.
+	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
+	emis += body_color.rgb * rim * 0.5;
+	// Frost after the band so a frozen ECC enemy's scan frosts too; flash last so
+	// a hit always reads white even through frost.
+	emis = mix(emis, frost_c * emission_energy, frost);
+	emis += vec3(1.0) * flash * 2.0;
 	EMISSION = emis;
-	ALPHA = clamp(alpha, 0.0, 1.0);
 }
 """
 
@@ -458,24 +525,25 @@ func _property_material() -> ShaderMaterial:
 		energy = 0.3 + data.glow * 0.25
 	m.set_shader_parameter("body_color", fill)
 	m.set_shader_parameter("emission_energy", energy)
-	# Encrypted: ghost the faces (the opaque edge wireframe then reads through them).
+	# Encrypted: base_alpha < 1 gates the checkerboard discard (the opaque edge
+	# wireframe then reads through the discarded pixels).
 	m.set_shader_parameter("base_alpha", 0.4 if data.encrypted else 1.0)
 	# ECC: enable the sweeping band (extents are set in _tune_scan once the height is known).
 	m.set_shader_parameter("scan_enabled", 1.0 if data.ecc else 0.0)
-	m.set_shader_parameter("scan_phase", randf() * TAU)   # de-sync the sweep across enemies
+	m.set_shader_parameter("scan_phase", randf())   # de-sync the sweep across enemies
 	return m
 
 # Set the ECC scan band's vertical extents from the finished body height. The
-# band sweeps the full [0, _body_top] span and is kept thick (~0.44 * height).
+# band ramps across the full [0, _body_top] span; half-width 0.15 * height keeps
+# it a line even on short bodies.
 func _tune_scan(mi: MeshInstance3D) -> void:
 	if mi == null:
 		return
 	var m = mi.material_override
 	if m is ShaderMaterial:
 		var top: float = maxf(_body_top, 0.001)
-		m.set_shader_parameter("scan_center", top * 0.5)
-		m.set_shader_parameter("scan_amp", top * 0.5)
-		m.set_shader_parameter("scan_half_width", top * 0.22)
+		m.set_shader_parameter("scan_top", top)
+		m.set_shader_parameter("scan_half_width", top * 0.15)
 
 # Edges: unshaded emission for a crisp glowing outline. Kept modest — too bright
 # and the bloom swallows the body into a formless blob.
@@ -483,11 +551,43 @@ func _edge_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	var fill: Color = data.color
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# Edge prisms are seen from every side; winding must never cull them away.
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.albedo_color = fill.lightened(0.3)
 	mat.emission_enabled = true
 	mat.emission = fill.lightened(0.3)
 	mat.emission_energy_multiplier = 1.2 + data.glow * 0.4
 	return mat
+
+# Edge outline as slim 4-sided prisms instead of 1px hardware lines: edge weight
+# scales with enemy size (half-width from the body radius), anti-aliases as real
+# geometry, and gives the bloom actual coverage. ~8 tris per edge — worst case
+# (dodeca_icosahedron, ~90 edges) is still trivial, rebuilt only on setup/morph.
+func _make_edge_outline(segs: Array) -> MeshInstance3D:
+	var hw := clampf(_radius_estimate() * 0.03, 0.05, 0.12)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for se in segs:
+		_emit_edge_prism(st, se[0], se[1], hw)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = _edge_material()
+	return mi
+
+func _emit_edge_prism(st: SurfaceTool, a: Vector3, b: Vector3, hw: float) -> void:
+	var axis := b - a
+	if axis.length() < 0.0001:
+		return
+	var dir := axis.normalized()
+	var ref := Vector3.UP if absf(dir.y) < 0.9 else Vector3.RIGHT
+	var u := dir.cross(ref).normalized() * hw
+	var w := dir.cross(u).normalized() * hw
+	var offs := [u + w, u - w, -u - w, -u + w]
+	for i in range(4):
+		var o1: Vector3 = offs[i]
+		var o2: Vector3 = offs[(i + 1) % 4]
+		st.add_vertex(a + o1); st.add_vertex(a + o2); st.add_vertex(b + o2)
+		st.add_vertex(a + o1); st.add_vertex(b + o2); st.add_vertex(b + o1)
 
 # Extrude the 2D silhouette into a prism (legacy non-solid shapes). Winding
 # mirrors GameBoard3D._add_prism (top cap + outward side walls).
@@ -605,6 +705,13 @@ func _process(delta: float) -> void:
 	else:
 		pp += to_target / dist * step
 	_sync_transform()
+	# Display-only motion: hover bob on _body_root (pp and the bar are untouched)
+	# and a slow idle spin for the platonic solids (on the mesh wrapper, so the
+	# heading yaw on _body_root survives).
+	_bob_time += delta
+	_body_root.position.y = sin(_bob_time * BOB_RATE + _bob_phase) * BOB_AMPLITUDE
+	if _spin_node != null:
+		_spin_node.rotation.y += delta * SPIN_RATE
 
 # --------------------------------------------------------------- Denial of Service
 # Apply (or refresh) the freeze-then-slow debuff. Re-hits take the longer remaining
@@ -625,13 +732,17 @@ func _tick_dos(delta: float) -> void:
 		_freeze_time -= delta
 	elif _slow_time > 0.0:
 		_slow_time -= delta
-	_apply_dos_visual()
+	if _flash > 0.0:
+		_flash = maxf(0.0, _flash - delta * HIT_FLASH_RATE)
+	_apply_status_visual()
 
-# Snapshot the body materials we can frost-tint (StandardMaterial3D only; the ECC
-# scan shader is left alone). Rebuilt whenever the body is (re)built.
+# Snapshot the body materials the status visuals drive: StandardMaterial3D gets
+# base albedo/emission/energy for frost + flash lerps; the property shader is
+# driven through its frost/flash uniforms. Rebuilt whenever the body is.
 func _collect_tint_mats() -> void:
 	_tint_mats.clear()
 	_dos_vis_k = -1.0
+	_flash_vis = -1.0
 	if _body_root != null:
 		_gather_tint_mats(_body_root)
 
@@ -640,26 +751,44 @@ func _gather_tint_mats(n: Node) -> void:
 		var m: Material = (n as MeshInstance3D).material_override
 		if m is StandardMaterial3D:
 			var sm := m as StandardMaterial3D
-			_tint_mats.append({"mat": sm, "alb": sm.albedo_color, "emi": sm.emission, "emi_on": sm.emission_enabled})
+			_tint_mats.append({"mat": sm, "is_shader": false, "alb": sm.albedo_color,
+				"emi": sm.emission, "emi_on": sm.emission_enabled,
+				"energy": sm.emission_energy_multiplier})
+		elif m is ShaderMaterial:
+			_tint_mats.append({"mat": m, "is_shader": true})
 	for c in n.get_children():
 		_gather_tint_mats(c)
 
-# Lerp the body toward an icy colour while frozen (strong) or slowed (mild), and
-# restore the originals when the debuff lapses. Only writes on a change in strength.
-func _apply_dos_visual() -> void:
+# Frost (icy lerp while frozen/slowed) + hit flash (toward white with an energy
+# boost past the bloom threshold), restored when both lapse. Property writes
+# only, churn-guarded: nothing is written while both strengths are unchanged.
+func _apply_status_visual() -> void:
 	var k := 0.0
 	if _freeze_time > 0.0:
 		k = 0.85
 	elif _slow_time > 0.0:
 		k = 0.5
-	if is_equal_approx(k, _dos_vis_k):
+	if is_equal_approx(k, _dos_vis_k) and is_equal_approx(_flash, _flash_vis):
 		return
 	_dos_vis_k = k
+	_flash_vis = _flash
 	for t in _tint_mats:
+		if t["is_shader"]:
+			var shm: ShaderMaterial = t["mat"]
+			shm.set_shader_parameter("frost", k)
+			shm.set_shader_parameter("flash", _flash)
+			continue
 		var sm: StandardMaterial3D = t["mat"]
 		sm.albedo_color = (t["alb"] as Color).lerp(DOS_FROST, k)
-		if t["emi_on"]:
-			sm.emission = (t["emi"] as Color).lerp(DOS_FROST, k)
+		var emi: Color = (t["emi"] as Color).lerp(DOS_FROST, k)
+		if _flash > 0.0:
+			sm.emission_enabled = true
+			sm.emission = emi.lerp(Color(1, 1, 1), _flash * 0.7)
+			sm.emission_energy_multiplier = float(t["energy"]) + _flash * 2.0
+		else:
+			sm.emission_enabled = bool(t["emi_on"])
+			sm.emission = emi
+			sm.emission_energy_multiplier = float(t["energy"])
 
 # --------------------------------------------------------------- damage / reduction
 func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> bool:
@@ -677,6 +806,7 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) 
 	if health <= 0.0:
 		_on_depleted(carry, pierces_ecc)
 		return true
+	_flash = 1.0
 	_refresh_bar_texture(health / data.health)
 	return false
 
@@ -688,6 +818,8 @@ func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	var lesser: EnemyData = data.reduces_to
 	if lesser == null:
 		_alive = false
+		# Shatter: the edge wireframe blows outward and blooms, then fades.
+		_spawn_shard_fx(Vector3.ONE * 1.6, 0.3, data.color.lightened(0.3), 6.0)
 		queue_free()
 		return
 	var count: int = maxi(1, data.reduce_count)
@@ -704,6 +836,10 @@ func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	_build_body()
 	_place_bar()
 	_refresh_bar_texture(1.0)
+	# Punch the morphed body in + a white flash so the decay reads as a split,
+	# not a glitch. Split children pop in via setup()'s spawn animation.
+	_flash = 1.0
+	_pop_body(1.45, 0.2)
 	# the rest spawn along the path behind us, evenly spaced, each carrying overflow
 	if count > 1:
 		var spacing: float = _radius_estimate() * 2.0 + 6.0
@@ -741,18 +877,89 @@ func place_on_path(seg: int, pos: Vector2) -> void:
 
 func _reach_goal() -> void:
 	_alive = false
+	# Life loss is immediate — only the visual lingers behind the free below.
 	reached_goal.emit()
+	# Sucked-into-the-port: vertical stretch, tinted toward the goal marker's red.
+	_spawn_shard_fx(Vector3(0.05, 1.4, 0.05), 0.25, GameBoard3D.GOAL_COLOR, 3.0)
 	queue_free()
+
+# Punch-in on _body_root (display only — pp-based hit logic and the billboarded
+# bar are untouched). Shared by spawn-in, split children, and the decay morph.
+# Spawners call setup() before add_child, so outside the tree the tween is
+# deferred to _ready (the body just starts at from_scale until then).
+func _pop_body(from_scale: float, duration: float) -> void:
+	if _body_root == null:
+		return
+	if _pop_tween != null and _pop_tween.is_valid():
+		_pop_tween.kill()
+	_body_root.scale = Vector3.ONE * from_scale
+	if not is_inside_tree():
+		_pending_pop = duration
+		return
+	_pending_pop = 0.0
+	_start_pop_tween(duration)
+
+func _ready() -> void:
+	if _pending_pop > 0.0:
+		_start_pop_tween(_pending_pop)
+		_pending_pop = 0.0
+
+func _start_pop_tween(duration: float) -> void:
+	_pop_tween = create_tween()
+	_pop_tween.tween_property(_body_root, "scale", Vector3.ONE, duration) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+# One-shot detached copy of the edge wireframe, tweened in the parent and freed.
+# The death shatter (scale out, emission spike) and the goal-leak suck-in
+# (vertical stretch, goal-red tint) are parameter variations of this. Costs one
+# already-built mesh + one material; the enemy node itself can free immediately.
+func _spawn_shard_fx(target_scale: Vector3, duration: float, tint: Color, spike: float) -> void:
+	if _edges_mi == null or not is_inside_tree():
+		return
+	var parent := get_parent()
+	if parent == null:
+		return
+	var shard := MeshInstance3D.new()
+	shard.mesh = _edges_mi.mesh
+	var mat := _edge_material()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shard.material_override = mat
+	parent.add_child(shard)
+	shard.global_transform = _edges_mi.global_transform
+	var end_scale: Vector3 = shard.scale * target_scale
+	var end_albedo := Color(tint.r, tint.g, tint.b, 0.0)
+	var tw := shard.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(shard, "scale", end_scale, duration) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(mat, "albedo_color", end_albedo, duration)
+	tw.tween_property(mat, "emission", tint, duration)
+	tw.chain().tween_callback(shard.queue_free)
+	# Emission spikes hard into the bloom, then dies with the fade.
+	var tw2 := shard.create_tween()
+	tw2.tween_property(mat, "emission_energy_multiplier", spike, duration * 0.25)
+	tw2.tween_property(mat, "emission_energy_multiplier", 0.0, duration * 0.75)
 
 # --------------------------------------------------------------- health bar
 # A tiny billboarded sprite. Cheap to redraw — only happens when health changes
-# (or on setup/morph), not every frame.
+# (or on setup/morph), not every frame. 1px near-opaque frame + dark track so it
+# reads on any background; the fill ramps green -> amber -> red as health drops;
+# hidden entirely at full health so healthy waves stay clutter-free.
 func _refresh_bar_texture(frac: float) -> void:
+	var f := clampf(frac, 0.0, 1.0)
+	if _bar != null:
+		_bar.visible = f < 0.999
 	var img := Image.create(BAR_PIX_W, BAR_PIX_H, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0.6))
-	var fill: int = maxi(0, int(round(float(BAR_PIX_W) * clampf(frac, 0.0, 1.0))))
+	img.fill(Color(0, 0, 0, 0.9))
+	img.fill_rect(Rect2i(1, 1, BAR_PIX_W - 2, BAR_PIX_H - 2), Color(0.08, 0.10, 0.14, 0.85))
+	var fill: int = maxi(0, int(round(float(BAR_PIX_W - 2) * f)))
 	if fill > 0:
-		img.fill_rect(Rect2i(0, 0, fill, BAR_PIX_H), Color(0.2, 0.9, 0.3))
+		var col := Color(0.2, 0.9, 0.3)
+		if f < 0.2:
+			col = Color(0.95, 0.25, 0.2)
+		elif f <= 0.5:
+			col = Color(0.95, 0.75, 0.15)
+		img.fill_rect(Rect2i(1, 1, fill, BAR_PIX_H - 2), col)
 	if _bar_tex == null:
 		_bar_tex = ImageTexture.create_from_image(img)
 		_bar.texture = _bar_tex
