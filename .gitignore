@@ -1,2 +1,6 @@
 # Throwaway offline-validation scripts / renders (not part of the game)
 scratchpad/
+
+# Godot-generated caches (rebuilt by the editor / --import on any machine)
+.godot/
+*.import
