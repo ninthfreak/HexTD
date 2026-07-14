@@ -15,10 +15,10 @@ const HEX_SIZE := 11.34
 ## substrate; the path "bus", spawn and goal are emissive neon so the HDR glow
 ## blooms them and the dark floor mirrors them (SSR).
 const BUS_COLOR := Color(0.15, 0.85, 1.00)   # neon cyan path edge (emissive)
-const SUBSTRATE_COLOR := Color(0.42, 0.16, 0.40)    # purple-pink build plateau (dim glow)
 const SPAWN_COLOR := Color(0.20, 1.00, 0.45)   # neon green
 const GOAL_COLOR := Color(1.00, 0.35, 0.30)    # neon red
 const WALL_COLOR := Color(0.38, 0.40, 0.46)    # gunmetal grey blocking walls
+const WALL_RIM_COLOR := Color(1.0, 0.62, 0.15) # amber "access denied" wall-top rim
 
 # Heights (world units). The build area is a raised plateau at BUS_TOP (the
 # shared placement plane — towers, ray-picking and overlays all anchor here, so
@@ -67,10 +67,10 @@ var _bounds := Rect2()
 var _entities: Node3D
 
 var _mat_bus: StandardMaterial3D
-var _mat_bus_edge: StandardMaterial3D
-var _mat_substrate: StandardMaterial3D
+var _mat_bus_edge: ShaderMaterial
 var _mat_glass: ShaderMaterial
 var _mat_wall: StandardMaterial3D
+var _mat_wall_rim: StandardMaterial3D
 var _mat_spawn: StandardMaterial3D
 var _mat_goal: StandardMaterial3D
 var _mesh_root: Node3D
@@ -80,10 +80,22 @@ func _ready() -> void:
 	_entities = Node3D.new()
 	add_child(_entities)
 
+func _process(_delta: float) -> void:
+	# Spawn/goal marker pulse: two material property writes per frame, no
+	# allocation, no mesh work. Goal is phase-shifted and slightly slower so the
+	# two objectives never beat in sync.
+	if _mat_spawn == null:
+		return
+	var t: float = Time.get_ticks_msec() / 1000.0
+	_mat_spawn.emission_energy_multiplier = 1.6 + 1.0 * absf(sin(t * 2.4))
+	_mat_goal.emission_energy_multiplier = 1.6 + 1.0 * absf(sin(t * 1.8 + PI * 0.5))
+
 # "Frozen smoke" build-slab shader. Highly diffuse + partially transparent, with
 # world-space fbm noise breaking the body into wispy denser/thinner regions, and
 # emission ramping up toward the bottom (y_bottom) so the slab reads as lit from
-# below. `build_color` tints it per map.
+# below. `build_color` tints it per map. Faint emissive hex-edge seams (etched
+# PCB traces) restore the cell lattice read on the seamless top; hex_size /
+# grid_origin mirror HexUtils' pointy-top axial<->pixel mapping exactly.
 const _FROZEN_SMOKE_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, depth_draw_opaque;
@@ -96,8 +108,18 @@ uniform float y_bottom = -3.2;
 uniform float base_alpha = 0.55;
 uniform float under_glow = 1.35;   // emission strength at the bottom
 uniform float top_glow = 0.22;     // emission strength at the top
+uniform float hex_size = 11.34;    // GameBoard3D.HEX_SIZE
+uniform float grid_strength = 1.0; // hex-seam intensity gate (0 disables)
+uniform vec2 grid_origin = vec2(0.0, 0.0);   // board plane origin offset
 
 varying vec3 v_world;
+
+// Center-to-center offsets of the 6 hex neighbours, in units of hex_size
+// (pointy-top: (+-sqrt3, 0), (+-sqrt3/2, +-3/2)).
+const vec2 HEX_NB[6] = {
+	vec2(1.7320508, 0.0), vec2(0.8660254, 1.5), vec2(-0.8660254, 1.5),
+	vec2(-1.7320508, 0.0), vec2(-0.8660254, -1.5), vec2(0.8660254, -1.5)
+};
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -112,12 +134,50 @@ void fragment() {
 	float t = clamp((v_world.y - y_bottom) / max(0.001, y_top - y_bottom), 0.0, 1.0);
 	// Lit from below: brightest at the bottom, fading up; wisps brighten it further.
 	float glow = mix(under_glow, top_glow, t) * (0.5 + 0.8 * smoke);
+	// Hex seams: HexUtils.pixel_to_axial + cube round, back to the pixel center.
+	// Edge proximity = (dist to nearest OTHER center - dist to own center) / 2 —
+	// exactly 0 on cell borders (verified offline), ~inradius at cell centers.
+	vec2 gp = v_world.xz - grid_origin;
+	float qf = (0.5773502691896258 * gp.x - gp.y / 3.0) / hex_size;
+	float rf = (2.0 / 3.0 * gp.y) / hex_size;
+	vec3 cf = vec3(qf, -qf - rf, rf);
+	vec3 cr = round(cf);
+	vec3 cd = abs(cr - cf);
+	if (cd.x > cd.y && cd.x > cd.z) { cr.x = -cr.y - cr.z; }
+	else if (cd.y > cd.z) { cr.y = -cr.x - cr.z; }
+	else { cr.z = -cr.x - cr.y; }
+	vec2 rel = gp - vec2(hex_size * 1.7320508 * (cr.x + cr.z * 0.5), hex_size * 1.5 * cr.z);
+	float d_own = length(rel);
+	float d_other = 99999.0;
+	for (int i = 0; i < 6; i++) {
+		d_other = min(d_other, length(rel - HEX_NB[i] * hex_size));
+	}
+	float edge_prox = (d_other - d_own) * 0.5;
+	// Top face only (mask the rim wall); faint etched traces, below bloom.
+	float seam = (1.0 - smoothstep(0.0, 0.9, edge_prox)) * grid_strength * step(y_top - 0.05, v_world.y);
 	ALBEDO = build_color.rgb * (0.6 + 0.5 * smoke);
 	METALLIC = 0.0;
 	ROUGHNESS = 1.0;
-	EMISSION = build_color.rgb * glow;
+	EMISSION = build_color.rgb * (glow + 0.30 * seam);
 	// Wispy partial transparency: denser smoke reads more solid, thin smoke clearer.
 	ALPHA = clamp(base_alpha + (smoke - 0.5) * 0.35, 0.25, 0.9);
+}
+"""
+
+# Neon path-border ribbon shader: constant base glow plus an energy pulse that
+# scrolls along the ribbon's arc length ("data flowing on the bus"). UV.x is
+# arc length / 40.0, written once at build time in _stroke_border; motion is
+# pure fragment work, the mesh is never touched again.
+const _BUS_EDGE_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+
+uniform vec4 bus_color : source_color = vec4(0.15, 0.85, 1.0, 1.0);
+
+void fragment() {
+	float pulse = pow(0.5 + 0.5 * sin(UV.x * 6.2832 - TIME * 2.0), 3.0);
+	ALBEDO = bus_color.rgb * 0.3;
+	EMISSION = bus_color.rgb * (2.2 + 1.6 * pulse);
 }
 """
 
@@ -148,24 +208,12 @@ func _build_materials() -> void:
 	_mat_bus.metallic = 0.95
 	_mat_bus.roughness = 0.04            # sharp mirror reflections
 	_mat_bus.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Trench side walls: the neon edge that outlines the sunken path.
-	_mat_bus_edge = StandardMaterial3D.new()
-	_mat_bus_edge.albedo_color = BUS_COLOR.darkened(0.7)
-	_mat_bus_edge.emission_enabled = true
-	_mat_bus_edge.emission = BUS_COLOR
-	_mat_bus_edge.emission_energy_multiplier = 3.0   # neon border ribbon
-	_mat_bus_edge.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Build plateau: purple-pink with a VERY DIM self-glow (emission < 1 so it
-	# reads as faintly lit but does not bloom), lightly glossy so it still catches
-	# the key light and a little reflection.
-	_mat_substrate = StandardMaterial3D.new()
-	_mat_substrate.albedo_color = SUBSTRATE_COLOR
-	_mat_substrate.metallic = 0.3
-	_mat_substrate.roughness = 0.42
-	_mat_substrate.emission_enabled = true
-	_mat_substrate.emission = Color(0.85, 0.35, 0.75)
-	_mat_substrate.emission_energy_multiplier = 0.18
-	_mat_substrate.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Neon border ribbon: opaque like the old StandardMaterial3D version, with a
+	# scrolling pulse driven by the arc-length UVs baked in _stroke_border.
+	_mat_bus_edge = ShaderMaterial.new()
+	_mat_bus_edge.shader = Shader.new()
+	_mat_bus_edge.shader.code = _BUS_EDGE_SHADER
+	_mat_bus_edge.set_shader_parameter("bus_color", BUS_COLOR)
 	# Build area: a thick slab of "FROZEN SMOKE" — a highly-diffuse, partially
 	# transparent frosted body whose surface is broken up by world-space fbm noise
 	# (wispy denser/thinner patches) and that is lit FROM BELOW: emission ramps up
@@ -178,35 +226,26 @@ func _build_materials() -> void:
 	_mat_glass.set_shader_parameter("smoke_tex", _smoke_texture())
 	_mat_glass.set_shader_parameter("y_top", BUS_TOP)
 	_mat_glass.set_shader_parameter("y_bottom", BUILD_BOTTOM)
+	_mat_glass.set_shader_parameter("hex_size", HEX_SIZE)
 	# Blocking walls: tall gunmetal-grey obstacles. LOW metallic + a faint self-glow
 	# so they read as solid grey — a high-metallic surface has nothing to reflect in
-	# this dark scene and just reads as a black hole.
+	# this dark scene and just reads as a black hole. Fully opaque: the old alpha
+	# ghosting needed a depth pre-pass + render_priority workaround against the
+	# transparent smoke slab; opaque walls sort correctly for free and read as the
+	# hard blockers they are.
 	_mat_wall = StandardMaterial3D.new()
-	# Very slight transparency so the walls read as a solid-but-glassy blocker
-	# rather than an opaque slab.
-	#
-	# Three things conspire to make naive ALPHA walls look like ghosts at certain
-	# angles, and we fix each one:
-	#   1) Without a depth pre-pass, transparent surfaces don't write depth, so
-	#      the prism's far face blends through its near face. -> DEPTH_PRE_PASS.
-	#   2) The huge frozen-smoke slab is ALSO transparent. In the transparent
-	#      queue, objects sort by bounding-box centre distance — at some camera
-	#      angles the smoke sorts AFTER the (smaller) wall and is drawn over it,
-	#      washing the wall out to nearly nothing. -> render_priority lifts the
-	#      wall above the smoke in the sort so it always wins.
-	#   3) With CULL_DISABLED both prism faces blend at the same fragment at
-	#      grazing angles. -> CULL_BACK so only the outward-facing face draws.
-	_mat_wall.albedo_color = Color(WALL_COLOR.r, WALL_COLOR.g, WALL_COLOR.b, 0.9)
-	_mat_wall.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
-	_mat_wall.render_priority = 5
+	_mat_wall.albedo_color = WALL_COLOR
 	_mat_wall.metallic = 0.25
 	_mat_wall.roughness = 0.55
 	_mat_wall.emission_enabled = true
 	_mat_wall.emission = WALL_COLOR
 	_mat_wall.emission_energy_multiplier = 0.15
-	# Back-face cull (see comment above) — _add_prism uses standard outward
-	# winding so back-face is the safe choice.
+	# _add_prism uses standard outward winding so back-face cull is safe and
+	# avoids double-lit fragments at grazing angles.
 	_mat_wall.cull_mode = BaseMaterial3D.CULL_BACK
+	# Amber "access denied" rim ring along the top edge of each wall region —
+	# hot enough to bloom, distinct from every other board hue.
+	_mat_wall_rim = _emissive_mat(WALL_RIM_COLOR)
 	_mat_spawn = _emissive_mat(SPAWN_COLOR)
 	_mat_goal = _emissive_mat(GOAL_COLOR)
 
@@ -222,9 +261,12 @@ func _emissive_mat(c: Color) -> StandardMaterial3D:
 
 func setup(m: HexMapData) -> void:
 	map = m
-	# Per-map build-area tint (frosted "frozen smoke" slab).
+	# Per-map build-area tint (frosted "frozen smoke" slab) + the hex-seam grid
+	# origin (the shader works in world xz, so it must share the board's plane
+	# origin offset).
 	if _mat_glass != null:
 		_mat_glass.set_shader_parameter("build_color", m.build_color)
+		_mat_glass.set_shader_parameter("grid_origin", origin)
 	blocking_set = {}
 	for cell in m.blocking:
 		blocking_set[cell] = true
@@ -260,12 +302,16 @@ func _build_board_meshes() -> void:
 	# holes — the board is solid, the path is a strip), so both are seamless.
 	var path_polys := _build_path_polys()
 	var board_polys := _build_region_outline(Callable(self, "has_cell"), 0)
-	var inlay_y := BUS_TOP + 0.04
+	# Layer gaps sized against depth-buffer precision at max zoom-out (0.03-0.05
+	# shimmers with a far-plane of 4000): inlay +0.08, ribbon +0.25 (see
+	# _stroke_border), markers ride on prism pads instead of coplanar caps.
+	var inlay_y := BUS_TOP + 0.08
 
 	var bus_st := SurfaceTool.new(); bus_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var glass_st := SurfaceTool.new(); glass_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var edge_st := SurfaceTool.new(); edge_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var wall_st := SurfaceTool.new(); wall_st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rim_st := SurfaceTool.new(); rim_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var spawn_st := SurfaceTool.new(); spawn_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var goal_st := SurfaceTool.new(); goal_st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var have_wall := false
@@ -276,27 +322,36 @@ func _build_board_meshes() -> void:
 	for bpoly in board_polys:
 		_emit_cap_tris(glass_st, bpoly, BUS_TOP)
 		_emit_wall_loop(glass_st, bpoly, BUS_TOP, BUILD_BOTTOM)
-		_emit_cap_tris(bus_st, bpoly, BUILD_BOTTOM)   # dark slab bottom
+		_emit_cap_tris(bus_st, bpoly, BUILD_BOTTOM, Vector3.DOWN)   # dark slab bottom
+	# amber rim ring along the top edge of each wall region (smoothed outline,
+	# same ribbon machinery as the path border; +0.08 clears the wall cap)
+	if not blocking_set.is_empty():
+		for wpoly in _build_region_outline(Callable(self, "_is_blocking_cell"), 2):
+			_stroke_border(rim_st, wpoly, WALL_TOP + 0.08, 1.2)
 
 	# flat glossy-black path inlay (on top of the slab) + neon border
 	for ppoly in path_polys:
 		_emit_cap_tris(bus_st, ppoly, inlay_y)
 		_stroke_border(edge_st, ppoly)
 
-	# blocking prisms (stand on the slab) + spawn/goal markers on the path inlay
+	# blocking prisms (stand on the slab) + spawn/goal pads on the path inlay
+	# (short prisms rather than flat caps: verticality + no coplanar z-fighting;
+	# sides sink to BUS_TOP so the pad meets the inlay with no open seam)
 	for cell in map.cells:
 		var hex := _hex_plane_polygon(_cell_to_pixel(cell))
 		if blocking_set.has(cell):
 			_add_prism(wall_st, hex, WALL_TOP, BUS_TOP); have_wall = true
 		elif cell == map.spawn:
-			_emit_cap_tris(spawn_st, hex, inlay_y + 0.03); have_spawn = true
+			_add_prism(spawn_st, hex, inlay_y + 0.6, BUS_TOP); have_spawn = true
 		elif cell == map.goal:
-			_emit_cap_tris(goal_st, hex, inlay_y + 0.03); have_goal = true
+			_add_prism(goal_st, hex, inlay_y + 0.6, BUS_TOP); have_goal = true
 
 	_commit(glass_st, _mat_glass)                        # frosted build slab
 	_commit(bus_st, _mat_bus, true)                # dark bottom + glossy path inlay
 	if path_polys.size() > 0: _commit(edge_st, _mat_bus_edge)   # neon border ribbon
-	if have_wall: _commit(wall_st, _mat_wall, true)
+	if have_wall:
+		_commit(wall_st, _mat_wall, true)
+		_commit(rim_st, _mat_wall_rim)             # amber wall-top rim
 	if have_spawn: _commit(spawn_st, _mat_spawn)
 	if have_goal: _commit(goal_st, _mat_goal)
 
@@ -403,17 +458,19 @@ func _smooth_loop(p: PackedVector2Array, iters: int) -> PackedVector2Array:
 	return pts
 
 # Triangulate a (possibly concave) plane polygon and emit it as a flat cap at
-# height y, with explicit +Y normals (so winding doesn't matter).
-func _emit_cap_tris(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
+# height y. Normals are explicit; a downward normal also reverses the winding
+# so a bottom cap faces out correctly for culled materials.
+func _emit_cap_tris(st: SurfaceTool, poly: PackedVector2Array, y: float, normal := Vector3.UP) -> void:
 	if poly.size() < 3:
 		return
 	var idx := Geometry2D.triangulate_polygon(poly)
 	if idx.is_empty():
 		return
+	var flip := normal.y < 0.0
 	for t in range(0, idx.size(), 3):
 		for j in range(3):
-			var p: Vector2 = poly[idx[t + j]]
-			st.set_normal(Vector3.UP)
+			var p: Vector2 = poly[idx[t + (2 - j)] if flip else idx[t + j]]
+			st.set_normal(normal)
 			st.add_vertex(Vector3(p.x, y, p.y))
 
 # Vertical wall around a CCW loop, from `top` down to `bottom`, outward normals.
@@ -437,8 +494,11 @@ func _emit_wall_loop(st: SurfaceTool, poly: PackedVector2Array, top: float, bott
 
 # Mitered flat neon ribbon along a (smoothed, CCW) loop, lifted proud of the cap.
 # Inset slightly inward so it covers the floor edge; outward offset is a proper
-# miter (RIM_WIDTH / cos(half-angle), miter-limited) for constant width.
-func _stroke_border(st: SurfaceTool, poly: PackedVector2Array) -> void:
+# miter (width / cos(half-angle), miter-limited) for constant width. UV.x is the
+# accumulated arc length / 40.0 so ribbon shaders can scroll pulses along the
+# loop; the loop total is normalized to a whole number of 40-unit waves so the
+# pulse phase has no seam where the loop closes.
+func _stroke_border(st: SurfaceTool, poly: PackedVector2Array, ry: float = BUS_TOP + 0.25, width: float = RIM_WIDTH) -> void:
 	var n := poly.size()
 	var outu := PackedVector2Array()
 	var mfac := PackedFloat32Array()
@@ -454,7 +514,16 @@ func _stroke_border(st: SurfaceTool, poly: PackedVector2Array) -> void:
 		var mdir: Vector2 = sv.normalized() if sv.length() > 0.0001 else n2
 		outu.append(mdir)
 		mfac.append(1.0 / maxf(mdir.dot(n2), 0.6))
-	var ry := BUS_TOP + 0.12   # just above the flat path inlay
+	var seglen := PackedFloat32Array()
+	var cum := PackedFloat32Array()
+	var total := 0.0
+	for i in range(n):
+		cum.append(total)
+		var l: float = poly[i].distance_to(poly[(i + 1) % n])
+		seglen.append(l)
+		total += l
+	var waves: float = maxf(1.0, roundf(total / 40.0))
+	var uscale: float = waves / maxf(total, 0.001)
 	var inset := 1.2
 	for i in range(n):
 		var j := (i + 1) % n
@@ -462,15 +531,27 @@ func _stroke_border(st: SurfaceTool, poly: PackedVector2Array) -> void:
 		var b: Vector2 = poly[j]
 		var ai: Vector2 = a - outu[i] * inset
 		var bi: Vector2 = b - outu[j] * inset
-		var ao: Vector2 = a + outu[i] * (RIM_WIDTH * mfac[i])
-		var bo: Vector2 = b + outu[j] * (RIM_WIDTH * mfac[j])
-		for v in [Vector3(ai.x, ry, ai.y), Vector3(bi.x, ry, bi.y), Vector3(bo.x, ry, bo.y),
-				Vector3(ai.x, ry, ai.y), Vector3(bo.x, ry, bo.y), Vector3(ao.x, ry, ao.y)]:
+		var ao: Vector2 = a + outu[i] * (width * mfac[i])
+		var bo: Vector2 = b + outu[j] * (width * mfac[j])
+		var ua := Vector2(cum[i] * uscale, 0.0)
+		var ub := Vector2((cum[i] + seglen[i]) * uscale, 0.0)
+		var quad: Array = [
+			[Vector3(ai.x, ry, ai.y), ua], [Vector3(bi.x, ry, bi.y), ub], [Vector3(bo.x, ry, bo.y), ub],
+			[Vector3(ai.x, ry, ai.y), ua], [Vector3(bo.x, ry, bo.y), ub], [Vector3(ao.x, ry, ao.y), ua],
+		]
+		for vu in quad:
+			var v: Vector3 = vu[0]
+			var uv: Vector2 = vu[1]
 			st.set_normal(Vector3.UP)
+			st.set_uv(uv)
 			st.add_vertex(v)
 
 func _is_path_cell(cell: Vector2i) -> bool:
 	return bus_set.has(cell) or cell == map.spawn or cell == map.goal
+
+# Region predicate for the wall-top rim outline.
+func _is_blocking_cell(cell: Vector2i) -> bool:
+	return blocking_set.has(cell)
 
 # Glossy-black trench walls (into `black_st`) for each clipped-floor edge that
 # borders a non-path cell — vertical quads from the sunken floor up to the rim.
@@ -706,7 +787,9 @@ func _add_cap(st: SurfaceTool, poly: PackedVector2Array, y: float) -> void:
 		st.set_normal(Vector3.UP); st.add_vertex(Vector3(b.x, y, b.y))
 		st.set_normal(Vector3.UP); st.add_vertex(Vector3(a.x, y, a.y))
 
-# A prism: top cap at `top`, vertical sides down to `bottom` with outward normals.
+# A prism: top cap at `top`, vertical sides down to `bottom` with outward
+# normals. Top-row side normals are bent upward (fake bevel) so the key light
+# wraps the top edge instead of cutting a hard 90-degree seam.
 func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
 	_add_cap(st, poly, top)
 	var center := Vector2.ZERO
@@ -720,13 +803,17 @@ func _add_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: f
 		var mid: Vector2 = (a + b) * 0.5
 		var ov: Vector2 = (mid - center).normalized()
 		var no := Vector3(ov.x, 0.0, ov.y)
+		var bent := (no + Vector3.UP * 0.5).normalized()
 		var at := Vector3(a.x, top, a.y)
 		var bt := Vector3(b.x, top, b.y)
 		var ab := Vector3(a.x, bottom, a.y)
 		var bb := Vector3(b.x, bottom, b.y)
-		for v in [at, bb, ab, at, bt, bb]:
-			st.set_normal(no)
-			st.add_vertex(v)
+		st.set_normal(bent); st.add_vertex(at)
+		st.set_normal(no); st.add_vertex(bb)
+		st.set_normal(no); st.add_vertex(ab)
+		st.set_normal(bent); st.add_vertex(at)
+		st.set_normal(bent); st.add_vertex(bt)
+		st.set_normal(no); st.add_vertex(bb)
 
 func _hex_plane_polygon(center: Vector2) -> PackedVector2Array:
 	var pts := PackedVector2Array()

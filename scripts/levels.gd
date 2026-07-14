@@ -28,21 +28,35 @@ static func count() -> int:
 	var n := map_paths().size()
 	return n if n > 0 else 1
 
-## Menu entries: one {name, path} per map file, plus a generated demo fallback.
+## Menu entries: one {name, path, tiles, path_len} per map file, plus a
+## generated demo fallback (whose counts are 0 = unknown; the menu hides them).
 static func map_entries() -> Array:
 	var entries: Array = []
 	for p in map_paths():
-		entries.append({"name": _name_of(p), "path": p})
+		entries.append(_meta_of(p))
 	if entries.is_empty():
-		entries.append({"name": "Generated Demo", "path": ""})
+		entries.append({"name": "Generated Demo", "path": "", "tiles": 0, "path_len": 0})
 	return entries
 
-static func _name_of(path: String) -> String:
+## Read-only metadata peek at a map file: display name plus board/route sizes
+## derived from the existing JSON arrays. Never writes anything back; maps
+## missing optional keys (old formats) still work — counts just fall back.
+static func _meta_of(path: String) -> Dictionary:
+	var meta := {"name": path.get_file(), "path": path, "tiles": 0, "path_len": 0}
 	var text := FileAccess.get_file_as_string(path)
 	var data = JSON.parse_string(text)
-	if typeof(data) == TYPE_DICTIONARY and data.has("name"):
-		return str(data["name"])
-	return path.get_file()
+	if typeof(data) == TYPE_DICTIONARY:
+		if data.has("name"):
+			meta["name"] = str(data["name"])
+		var route = data.get("path")
+		if typeof(route) == TYPE_ARRAY:
+			meta["path_len"] = route.size()
+		var cells = data.get("cells")
+		if typeof(cells) == TYPE_ARRAY and cells.size() > 0:
+			meta["tiles"] = cells.size()
+		else:
+			meta["tiles"] = meta["path_len"]   # old maps: cells falls back to path
+	return meta
 
 ## Load a specific map file, or the generated demo when the path is empty/invalid.
 static func get_by_path(path: String) -> HexMapData:
