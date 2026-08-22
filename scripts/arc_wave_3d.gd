@@ -9,6 +9,12 @@ extends Node3D
 ## (damage + ability flags) through the normal effect path and knows nothing about
 ## any specific ability: it just applies whatever it was handed. Encrypted enemies
 ## are gated by `can_see_encrypted`, the same as targeting and radial spokes.
+##
+## Deliberately NOT pooled, unlike Projectile3D / RadialProjectile3D: the hit
+## test depends on _half/_segs/_dirs, which _ready() derives from arc_angle and
+## damage — and _ready() does not re-run when a pooled node re-enters the tree,
+## so a reused wave would carry the previous wave's wedge. Pooling this needs
+## that derivation moved to an explicit post-setup call on the caller's side.
 
 var board                       # GameBoard3D (untyped)
 var origin := Vector2.ZERO      # PLANE position the wave radiates from (the tower)
