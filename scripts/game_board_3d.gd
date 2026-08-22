@@ -70,9 +70,15 @@ var enemies: Array = []
 var _buckets := {}             # Vector2i -> Array of enemies in that cell (broad phase)
 var _buckets_frame := -1       # last frame _refresh_buckets rebuilt (lazy, once per frame)
 var _compact_frame := -1       # last frame _compact_enemies ran (lazy, once per frame)
-var _range_cache := {}         # [center, n, rotated] -> hexes_in_range result; [center, n] -> range_cell_set disk
+# Range memo. Key ARITY namespaces the entry, so all three kinds share one dict
+# and one clear() in setup(): [center, n] -> range_cell_set disk,
+# [center, n, rotated] -> hexes_in_range result,
+# [center, n, rotated, "vis"] -> visible_range_set.
+var _range_cache := {}
 var _bounds := Rect2()
 var _entities: Node3D
+var _pool_holder: Node3D        # hidden parent for parked nodes (freed with the board)
+var _pools := {}                # StringName -> Array of parked nodes (free list)
 
 var _mat_bus: StandardMaterial3D
 var _mat_bus_edge: ShaderMaterial
@@ -1061,6 +1067,25 @@ func hexes_in_range(center: Vector2i, n: int, rotated := false) -> Dictionary:
 	_range_cache[key] = res
 	return res
 
+# The "visible" half of hexes_in_range as a SET (Vector2i -> true) — cell-granular
+# LOS lookups without scanning the visible Array. Memoized like the others (walls
+# and the map are static in-game, cleared only in setup()); the 4-element key can
+# never collide with the 2- and 3-element ones.
+# The returned Dictionary is the SHARED cached instance: callers must treat it as
+# READ-ONLY — mutating it corrupts the memo for every later caller.
+func visible_range_set(center: Vector2i, n: int, rotated := false) -> Dictionary:
+	var key: Array = [center, n, rotated, "vis"]
+	var cached: Variant = _range_cache.get(key)
+	if cached != null:
+		return cached
+	var info := hexes_in_range(center, n, rotated)
+	var vis: Array = info["visible"]
+	var res := {}
+	for c in vis:
+		res[c] = true
+	_range_cache[key] = res
+	return res
+
 # The standard hex disk around `center` (axial_distance <= n, on-map cells only)
 # as a set — the broad-phase companion to enemies_in_cell_set. Memoized beside
 # hexes_in_range (its 2-element key can never collide with the 3-element one).
@@ -1250,6 +1275,99 @@ func enemies_near_cell(c: Vector2i) -> Array:
 
 func add_projectile(p) -> void:
 	_entities.add_child(p)
+
+# ---------------------------------------------------------------- node pool
+# Generic free list for short-lived visual nodes (projectiles, impact flashes,
+# death FX) so their allocation cost is paid once instead of per shot.
+#
+# CONTRACT
+#   var n := board.pool_take(&"projectile")      # null when the list is empty
+#   if n == null: n = Projectile3D.new()         # caller builds a fresh one
+#   ... caller resets ALL of its own state ...   # transform, target, timers,
+#                                                # materials, damage, lifetime
+#   board.add_projectile(n)                      # caller re-adds to the tree
+#   ...
+#   board.pool_put(&"projectile", n)             # instead of queue_free()
+#
+# The pool owns ONLY what the pool touched: it parks a node out of the tree,
+# hidden and non-processing, and on take it restores visibility plus the
+# process/physics-process flags the node had at put time. Every other field is
+# the caller's responsibility — a reused node carries its previous state.
+# A node handed to pool_put must be considered GONE by its previous owner: no
+# references kept, no queue_free(), no further method calls.
+# Re-entering the tree does NOT re-run _ready() — one-time construction stays
+# done, which is the point, but per-shot setup must not live there.
+const POOL_FREE_MAX := 64            # per-key cap; overflow is freed, not parked
+const _POOL_PARKED := &"_pool_parked"
+const _POOL_WAS_PROCESS := &"_pool_was_process"
+const _POOL_WAS_PHYSICS := &"_pool_was_physics"
+
+# A previously released node for `key`, or null when the free list is empty.
+# The returned node has no parent — the caller re-adds it to the tree.
+func pool_take(key: StringName) -> Node:
+	var free_list: Array = _pools.get(key, [])
+	while not free_list.is_empty():
+		var n: Node = free_list.pop_back()
+		if n == null or not is_instance_valid(n) or n.is_queued_for_deletion():
+			continue
+		var was_process: bool = n.get_meta(_POOL_WAS_PROCESS, true)
+		var was_physics: bool = n.get_meta(_POOL_WAS_PHYSICS, false)
+		# Clearing the marker re-arms the double-put guard for the next release.
+		n.remove_meta(_POOL_PARKED)
+		n.remove_meta(_POOL_WAS_PROCESS)
+		n.remove_meta(_POOL_WAS_PHYSICS)
+		var parent: Node = n.get_parent()
+		if parent != null:
+			parent.remove_child(n)
+		n.set_process(was_process)
+		n.set_physics_process(was_physics)
+		_pool_set_visible(n, true)
+		return n
+	return null
+
+# Park `n` for reuse under `key`. Idempotent against a double put: a node parked
+# twice would sit in the free list twice and be handed to two owners at once.
+func pool_put(key: StringName, n: Node) -> void:
+	if n == null or not is_instance_valid(n) or n.is_queued_for_deletion():
+		return
+	if n.has_meta(_POOL_PARKED):
+		return
+	# Deactivate BEFORE the cap test, so an over-cap node cannot render or tick
+	# during the frame it spends waiting on queue_free either.
+	n.set_meta(_POOL_PARKED, true)
+	n.set_meta(_POOL_WAS_PROCESS, n.is_processing())
+	n.set_meta(_POOL_WAS_PHYSICS, n.is_physics_processing())
+	n.set_process(false)
+	n.set_physics_process(false)
+	_pool_set_visible(n, false)
+	var parent: Node = n.get_parent()
+	if parent != null:
+		parent.remove_child(n)
+	if not _pools.has(key):
+		_pools[key] = []
+	var free_list: Array = _pools[key]
+	if free_list.size() >= POOL_FREE_MAX:
+		n.queue_free()
+		return
+	# Parked under a child holder, so anything still pooled dies with the board.
+	_pool_holder_node().add_child(n)
+	free_list.append(n)
+
+func _pool_holder_node() -> Node3D:
+	if _pool_holder == null or not is_instance_valid(_pool_holder):
+		_pool_holder = Node3D.new()
+		_pool_holder.name = "PoolHolder"
+		_pool_holder.visible = false   # hides parked children whatever their own flag
+		add_child(_pool_holder)
+	return _pool_holder
+
+# `visible` lives on Node3D/CanvasItem, not on Node — pooled nodes are Node3D in
+# practice, but the pool takes a plain Node so it stays generic.
+func _pool_set_visible(n: Node, v: bool) -> void:
+	if n is Node3D:
+		(n as Node3D).visible = v
+	elif n is CanvasItem:
+		(n as CanvasItem).visible = v
 
 func _cell_to_pixel(axial: Vector2i) -> Vector2:
 	return HexUtils.axial_to_pixel(axial, HEX_SIZE) + origin
