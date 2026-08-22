@@ -72,6 +72,7 @@ func _ready() -> void:
 	_mat_ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_mat_ghost.cull_mode = BaseMaterial3D.CULL_BACK
 	_mat_ghost.vertex_color_use_as_albedo = true
+	_mat_ghost.render_priority = 3   # over the region fills/strokes
 
 # Breathe the region fills/outlines while a placement or selection is live.
 # Only cached material properties change here — never the meshes — so the
@@ -132,19 +133,15 @@ func _draw_region(cell: Vector2i, n: int, ignore_walls := false, rotated := fals
 		if not fp.has(c):
 			blocked_set[c] = true
 	if not range_set.is_empty():
-		var polys: Array = board.cell_set_outline(range_set, 2)
-		for poly in polys:
-			_draw_filled_poly(poly, _mat_range_fill)
+		_draw_cells_fill(range_set, _mat_range_fill)
+		for poly in board.cell_set_outline(range_set, 2):
 			_draw_poly_outline(poly, GameBoard3D.BUS_TOP + HOVER_LIFT + LINE_LIFT, 1.4, _mat_range_line)
 	if not hidden_set.is_empty():
-		var polys: Array = board.cell_set_outline(hidden_set, 2)
-		for poly in polys:
-			_draw_filled_poly(poly, _mat_hidden_fill)
+		_draw_cells_fill(hidden_set, _mat_hidden_fill)
+		for poly in board.cell_set_outline(hidden_set, 2):
 			_draw_poly_outline(poly, GameBoard3D.BUS_TOP + HOVER_LIFT + LINE_LIFT, 1.4, _mat_hidden_line)
 	if not blocked_set.is_empty():
-		var polys: Array = board.cell_set_outline(blocked_set, 2)
-		for poly in polys:
-			_draw_filled_poly(poly, _mat_blocked_fill)
+		_draw_cells_fill(blocked_set, _mat_blocked_fill)
 
 func _draw_footprint(cell: Vector2i, base: Color, validate: bool) -> void:
 	# Footprint floats slightly above the region fills so it reads as "the tower
@@ -158,20 +155,23 @@ func _draw_footprint(cell: Vector2i, base: Color, validate: bool) -> void:
 	var center: Vector2 = board.cell_center_world(cell)
 	_draw_poly_outline(board.hex_polygon(center), fill_y + 0.04, 1.0, _ring_mat_for(base))
 
-func _draw_filled_poly(poly: PackedVector2Array, mat: StandardMaterial3D) -> void:
-	if poly.size() < 3:
-		return
-	var idx := Geometry2D.triangulate_polygon(poly)
-	if idx.is_empty():
-		return
+# Region fill as one batched mesh of per-cell hex fans. Filling cells directly
+# (instead of triangulating the region's outline polygons) is immune to the
+# outline degeneracies a region can hit at the board edge, and to the outer
+# loop of an annular region spanning its hole.
+func _draw_cells_fill(cells: Dictionary, mat: StandardMaterial3D) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var y: float = GameBoard3D.BUS_TOP + HOVER_LIFT
-	for t in range(0, idx.size(), 3):
-		for j in range(3):
-			var p: Vector2 = poly[idx[t + j]]
-			st.add_vertex(Vector3(p.x, y, p.y))
-	st.generate_normals()
+	for cell in cells:
+		var hp: PackedVector2Array = board.hex_polygon(board.cell_center_world(cell))
+		for i in range(1, 5):
+			st.set_normal(Vector3.UP)
+			st.add_vertex(Vector3(hp[0].x, y, hp[0].y))
+			st.set_normal(Vector3.UP)
+			st.add_vertex(Vector3(hp[i].x, y, hp[i].y))
+			st.set_normal(Vector3.UP)
+			st.add_vertex(Vector3(hp[i + 1].x, y, hp[i + 1].y))
 	_add_overlay_mesh(st.commit(), mat)
 
 # A single flat hex tile floating just above the bus, as an unshaded
@@ -324,19 +324,22 @@ func _add_overlay_mesh(mesh: Mesh, mat: StandardMaterial3D) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_scene_root.add_child(mi)
 
-# Fills sort below strokes (render_priority) so the outline always wins.
+# Overlay layers order themselves EXPLICITLY above the board's transparent
+# frost slab (priority 0): distance-sorting transparents is unreliable once the
+# fill is one big batched mesh whose sort point can land behind the slab's.
+# Fills at 1, strokes at 2 so the outline always wins the fill.
 func _make_fill_mat(col: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = col
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	m.render_priority = -1
+	m.render_priority = 1
 	return m
 
 func _make_line_mat(col: Color, emit: Color, energy: float) -> StandardMaterial3D:
 	var m := _make_fill_mat(col)
-	m.render_priority = 0
+	m.render_priority = 2
 	if energy > 0.0:
 		m.emission_enabled = true
 		m.emission = emit
