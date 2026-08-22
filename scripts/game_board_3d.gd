@@ -62,7 +62,15 @@ var occupied := {}
 var blocking_set := {}
 var bus_set := {}
 var buildable_set := {}
+var cell_set := {}             # Vector2i -> true; O(1) has_cell (map.cells is an Array)
+# Untyped on purpose: typing it Array[Enemy3D] would add a GameBoard3D<->Enemy3D
+# class-reference cycle (Enemy3D already reads GameBoard3D constants) that can't
+# be runtime-verified here.
 var enemies: Array = []
+var _buckets := {}             # Vector2i -> Array of enemies in that cell (broad phase)
+var _buckets_frame := -1       # last frame _refresh_buckets rebuilt (lazy, once per frame)
+var _compact_frame := -1       # last frame _compact_enemies ran (lazy, once per frame)
+var _range_cache := {}         # [center, n, rotated] -> hexes_in_range result; [center, n] -> range_cell_set disk
 var _bounds := Rect2()
 var _entities: Node3D
 
@@ -81,6 +89,10 @@ func _ready() -> void:
 	add_child(_entities)
 
 func _process(_delta: float) -> void:
+	# Deferred enemy removal: compact once per frame even when nothing queries
+	# the spatial buckets, so `enemies` can't grow stale and Main3D's wave-clear
+	# check (board.enemies.is_empty()) lags a death by at most one frame.
+	_compact_enemies()
 	# Spawn/goal marker pulse: two material property writes per frame, no
 	# allocation, no mesh work. Goal is phase-shifted and slightly slower so the
 	# two objectives never beat in sync.
@@ -267,6 +279,9 @@ func setup(m: HexMapData) -> void:
 	if _mat_glass != null:
 		_mat_glass.set_shader_parameter("build_color", m.build_color)
 		_mat_glass.set_shader_parameter("grid_origin", origin)
+	cell_set = {}
+	for cell in m.cells:
+		cell_set[cell] = true
 	blocking_set = {}
 	for cell in m.blocking:
 		blocking_set[cell] = true
@@ -276,6 +291,11 @@ func setup(m: HexMapData) -> void:
 	buildable_set = {}
 	for cell in m.buildable:
 		buildable_set[cell] = true
+	# Walls/map are static for the whole game — the range caches only ever need
+	# invalidating here.
+	_range_cache.clear()
+	_buckets.clear()
+	_buckets_frame = -1
 	var raw := PackedVector2Array()
 	for cell in m.path:
 		raw.append(_cell_to_pixel(cell))
@@ -976,7 +996,9 @@ func get_bounds() -> Rect2:
 	return _bounds
 
 func has_cell(cell: Vector2i) -> bool:
-	return map != null and map.cells.has(cell)
+	# O(1) set lookup (map.cells is an Array; scanning it dominated hot loops).
+	# Same result pre-setup: no map -> empty set -> false.
+	return cell_set.has(cell)
 
 func is_buildable(cell: Vector2i) -> bool:
 	if map == null:
@@ -1002,8 +1024,7 @@ func tower_at(cell: Vector2i):
 	return occupied.get(cell, null)
 
 func world_cell(world_pos: Vector2) -> Vector2i:
-	var frac := HexUtils.pixel_to_axial(world_pos - origin, HEX_SIZE)
-	return HexUtils.axial_round(frac.x, frac.y)
+	return HexUtils.pixel_to_cell(world_pos - origin, HEX_SIZE)
 
 func cell_center_world(cell: Vector2i) -> Vector2:
 	return _cell_to_pixel(cell)
@@ -1012,6 +1033,13 @@ func hex_polygon(center: Vector2) -> PackedVector2Array:
 	return _hex_plane_polygon(center)
 
 func hexes_in_range(center: Vector2i, n: int, rotated := false) -> Dictionary:
+	# Memoized: walls/map are static in-game, so the LOS split for a given
+	# (center, n, rotated) never changes. Cleared only in setup(). Callers get a
+	# shared reference and must treat it as read-only (they all do).
+	var key: Array = [center, n, rotated]
+	var cached: Variant = _range_cache.get(key)
+	if cached != null:
+		return cached
 	var visible: Array[Vector2i] = []
 	var shadowed: Array[Vector2i] = []
 	var blocked: Array[Vector2i] = []
@@ -1020,12 +1048,7 @@ func hexes_in_range(center: Vector2i, n: int, rotated := false) -> Dictionary:
 	if rotated:
 		in_range = rotated_range_set(center, n)
 	else:
-		in_range = {}
-		for dq in range(-n, n + 1):
-			for dr in range(maxi(-n, -n - dq), mini(n, n - dq) + 1):
-				var c := center + Vector2i(dq, dr)
-				if has_cell(c):
-					in_range[c] = true
+		in_range = range_cell_set(center, n)
 	for c in in_range:
 		if blocking_set.has(c):
 			blocked.append(c)
@@ -1034,7 +1057,26 @@ func hexes_in_range(center: Vector2i, n: int, rotated := false) -> Dictionary:
 			visible.append(c)
 		else:
 			shadowed.append(c)
-	return {"visible": visible, "shadowed": shadowed, "blocked": blocked}
+	var res := {"visible": visible, "shadowed": shadowed, "blocked": blocked}
+	_range_cache[key] = res
+	return res
+
+# The standard hex disk around `center` (axial_distance <= n, on-map cells only)
+# as a set — the broad-phase companion to enemies_in_cell_set. Memoized beside
+# hexes_in_range (its 2-element key can never collide with the 3-element one).
+func range_cell_set(center: Vector2i, n: int) -> Dictionary:
+	var key: Array = [center, n]
+	var cached: Variant = _range_cache.get(key)
+	if cached != null:
+		return cached
+	var cells := {}
+	for dq in range(-n, n + 1):
+		for dr in range(maxi(-n, -n - dq), mini(n, n - dq) + 1):
+			var c := center + Vector2i(dq, dr)
+			if has_cell(c):
+				cells[c] = true
+	_range_cache[key] = cells
+	return cells
 
 func rotated_range_set(center: Vector2i, n: int) -> Dictionary:
 	var target_count: int = 3 * n * n + 3 * n + 1
@@ -1145,9 +1187,66 @@ func remove_tower(cell: Vector2i) -> void:
 		t.queue_free()
 
 func add_enemy(e) -> void:
+	# Hand the enemy the board's plane origin and seed its cached cell so the
+	# spatial index is valid before its first frame. Removal is DEFERRED: dead
+	# entries are swap-removed once per frame in _compact_enemies() instead of
+	# via a per-enemy tree_exited lambda (which made every death an O(n) erase).
+	e._grid_origin = origin
+	e.cell = world_cell(e.pp)
 	enemies.append(e)
 	_entities.add_child(e)
-	e.tree_exited.connect(func(): enemies.erase(e))
+
+# Reverse swap-remove of freed entries, lazily at most once per frame (called
+# from _process and _refresh_buckets). Dead-but-uncompacted entries may linger
+# within a frame; every consumer already filters is_instance_valid.
+func _compact_enemies() -> void:
+	var frame: int = Engine.get_process_frames()
+	if frame == _compact_frame:
+		return
+	_compact_frame = frame
+	for i in range(enemies.size() - 1, -1, -1):
+		if not is_instance_valid(enemies[i]):
+			var last: int = enemies.size() - 1
+			enemies[i] = enemies[last]
+			enemies.remove_at(last)
+
+# Spatial buckets (cell -> enemies), rebuilt lazily at most once per frame from
+# the compacted list using each enemy's cached `cell`. Broad phase only —
+# callers still run their exact per-enemy tests.
+func _refresh_buckets() -> void:
+	var frame: int = Engine.get_process_frames()
+	if frame == _buckets_frame:
+		return
+	_buckets_frame = frame
+	_compact_enemies()
+	_buckets.clear()
+	for e in enemies:
+		var c: Vector2i = e.cell
+		var bucket: Array = _buckets.get(c, [])
+		if bucket.is_empty():
+			_buckets[c] = bucket   # first enemy here — buckets never hold empty arrays
+		bucket.append(e)
+
+# All enemies whose cached cell is in `cells` (a set, e.g. range_cell_set).
+func enemies_in_cell_set(cells: Dictionary) -> Array:
+	_refresh_buckets()
+	var out: Array = []
+	for c in cells:
+		if _buckets.has(c):
+			out.append_array(_buckets[c])
+	return out
+
+# All enemies whose cached cell is `c` or one of its 6 neighbours.
+func enemies_near_cell(c: Vector2i) -> Array:
+	_refresh_buckets()
+	var out: Array = []
+	if _buckets.has(c):
+		out.append_array(_buckets[c])
+	for d in EDGE_NB:
+		var nc: Vector2i = c + d
+		if _buckets.has(nc):
+			out.append_array(_buckets[nc])
+	return out
 
 func add_projectile(p) -> void:
 	_entities.add_child(p)
