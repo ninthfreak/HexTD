@@ -14,8 +14,13 @@ var _value_col := Color(1, 1, 1)   # ¤ + digits tint (economy color coding)
 var _text_col := Color(1, 1, 1)    # prefix/suffix tint
 
 func set_cost(prefix: String, value: int, suffix: String, dim: bool, value_col := Color(1, 1, 1)) -> void:
+	# Callers push state every frame; only an actual change warrants a redraw.
+	var v := str(value)
+	if _prefix == prefix and _value == v and _suffix == suffix and _dim == dim \
+			and _value_col == value_col and _text_col == Color(1, 1, 1):
+		return
 	_prefix = prefix
-	_value = str(value)
+	_value = v
 	_suffix = suffix
 	_dim = dim
 	_value_col = value_col
@@ -23,6 +28,8 @@ func set_cost(prefix: String, value: int, suffix: String, dim: bool, value_col :
 	queue_redraw()
 
 func set_plain(text: String, dim: bool, col := Color(1, 1, 1)) -> void:
+	if _prefix == text and _value == "" and _suffix == "" and _dim == dim and _text_col == col:
+		return
 	_prefix = text
 	_value = ""
 	_suffix = ""

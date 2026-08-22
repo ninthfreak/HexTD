@@ -38,6 +38,11 @@ var selected_color := Color(0.45, 0.75, 1.0)
 var selected_ignore_walls := false
 var selected_rotated := false
 
+# Bumped by Main3D whenever a tower is placed or removed: footprint validation
+# reads board occupancy, which the input fields above can't see change.
+var occupancy_rev := 0
+var _last_key: Array = []          # inputs the current meshes were built from
+
 var _scene_root: Node3D            # all generated meshes hang off here
 
 # Materials are built once and reused across refreshes. refresh() rebuilds the
@@ -91,7 +96,21 @@ func _process(_delta: float) -> void:
 func refresh() -> void:
 	if board == null:
 		return
-	# Wipe the previous frame's meshes and rebuild from current state. The set
+	# refresh() is called every frame from Main3D; the meshes only depend on the
+	# state below (board walls are static, occupancy arrives via occupancy_rev),
+	# so an unchanged key means the current meshes are already correct.
+	var key: Array = [
+		preview_active, preview_cell, preview_range, preview_valid,
+		preview_color, preview_mode, preview_dirs, preview_ignore_walls,
+		preview_rotated,
+		selected_active, selected_cell, selected_range, selected_color,
+		selected_ignore_walls, selected_rotated,
+		occupancy_rev,
+	]
+	if key == _last_key:
+		return
+	_last_key = key
+	# Wipe the previous meshes and rebuild from current state. The set
 	# of overlay tiles is small (range hex disk for a single tower) so this
 	# trivially fits a per-input-event redraw.
 	for c in _scene_root.get_children():
