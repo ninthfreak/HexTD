@@ -72,6 +72,11 @@ var path_points: PackedVector2Array
 var health: float
 var heading := 0.0             # radians; 0 = facing +X in plane space
 var pp := Vector2.ZERO
+# Cached grid cell of pp (refreshed each movement step) — read by
+# towers/projectiles and the board's spatial buckets.
+var cell := Vector2i.ZERO
+var hit_radius := 0.0          # cached _radius_estimate(), kept fresh across setup/morph
+var _grid_origin := Vector2.ZERO   # board plane origin (set by GameBoard3D.add_enemy)
 var _index := 0
 var _alive := true
 
@@ -93,13 +98,13 @@ var _pop_tween: Tween
 var _pending_pop := 0.0        # spawn-pop duration deferred to _ready (setup runs pre-add_child)
 var _body_top := BODY_HEIGHT   # world height of the body's top (drives the health bar)
 var _bar: Sprite3D
-var _bar_tex: ImageTexture
 
 func setup(d: EnemyData, points: PackedVector2Array) -> void:
 	data = d
 	path_points = points
 	health = d.health
 	pp = points[0]
+	cell = HexUtils.pixel_to_cell(pp - _grid_origin, GameBoard3D.HEX_SIZE)
 	if points.size() > 1:
 		heading = (points[1] - points[0]).angle()
 	_bob_phase = randf() * TAU
@@ -130,12 +135,18 @@ func _build_visuals() -> void:
 	# regardless of camera angle, the way the 2D bar always sat above the sprite.
 	_bar.no_depth_test = true
 	_bar.render_priority = 8
+	# A HUD billboard must never darken the board below it.
+	_bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_bar)
 	_place_bar()
 
 # (Re)build the body under _body_root. Solids get a faceted shaded body PLUS a
 # glowing neon edge outline (two child meshes); the legacy extruded prism shapes
-# get the single extruded body. Callers clear _body_root first (morph rebuilds).
+# get the same pair from the extruded silhouette. Callers clear _body_root first
+# (morph rebuilds). Meshes are STATIC and shared by reference per shape+size via
+# _mesh_cache — only the materials are per-enemy (tint/flash/frost all live in
+# materials; nothing mutates a mesh after build, and _spawn_shard_fx already
+# shares the edge mesh by reference).
 func _build_body() -> void:
 	# Detach before queue_free so _collect_tint_mats below never snapshots the
 	# outgoing meshes (queued nodes remain children until end of frame).
@@ -143,21 +154,54 @@ func _build_body() -> void:
 		_body_root.remove_child(c)
 		c.queue_free()
 	_spin_node = null
+	var entry: Dictionary = _shared_meshes()
+	_body = MeshInstance3D.new()
+	_body.mesh = entry["faces"]
+	_body.material_override = _faces_material()
+	_edges_mi = MeshInstance3D.new()
+	_edges_mi.mesh = entry["edges"]
+	_edges_mi.material_override = _edge_material()
+	# The outline is an emissive sliver hugging the body — the body's own shadow
+	# already covers it, so it never needs to cast one.
+	_edges_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if data.shape in SOLIDS:
-		_build_solid_body()
+		# Solids sit under a spin wrapper so the idle rotation lives on the meshes
+		# while heading yaw (and the bob) stay on _body_root.
+		_spin_node = Node3D.new()
+		_body_root.add_child(_spin_node)
+		_spin_node.add_child(_body)
+		_spin_node.add_child(_edges_mi)
 	else:
-		_body = MeshInstance3D.new()
-		_body.mesh = _build_prism_mesh()
-		_body.material_override = _faces_material()
 		_body_root.add_child(_body)
-		_body_top = BODY_HEIGHT
-		# Prisms get the same neon edge outline as the solids: silhouette loops
-		# at top and bottom plus the vertical corner edges.
-		_edges_mi = _make_edge_outline(_prism_edge_segments())
 		_body_root.add_child(_edges_mi)
+	_body_top = float(entry["top"])
+	hit_radius = _radius_estimate()
 	# ECC scan band sweeps the body's full height, so tune it once the height is known.
 	_tune_scan(_body)
 	_collect_tint_mats()
+
+# Face/edge ArrayMeshes + body-top height for the current shape and size, built
+# once per distinct key and shared across enemies. The key carries every size
+# input the geometry reads (_local_shape_points, _radius_estimate and the solid
+# builder), so equal keys always mean identical meshes.
+static var _mesh_cache: Dictionary = {}
+
+func _shared_meshes() -> Dictionary:
+	var key := "%s|%.3f|%.3f|%.3f|%.3f|%d" % [data.shape, data.radius, data.length, data.width, data.side, data.sides]
+	var entry: Dictionary = _mesh_cache.get(key, {})
+	if entry.is_empty():
+		if data.shape in SOLIDS:
+			entry = _build_solid_meshes()
+		else:
+			# Prisms get the same neon edge outline as the solids: silhouette
+			# loops at top and bottom plus the vertical corner edges.
+			entry = {
+				"faces": _build_prism_mesh(),
+				"edges": _edge_outline_mesh(_prism_edge_segments()),
+				"top": BODY_HEIGHT,
+			}
+		_mesh_cache[key] = entry
+	return entry
 
 func _prism_edge_segments() -> Array:
 	var pts := _local_shape_points()
@@ -184,12 +228,13 @@ func _place_bar() -> void:
 		_bar.pixel_size = bar_w / float(BAR_PIX_W)
 		_bar.position = Vector3(0, _body_top + BAR_HEIGHT_PAD, 0)
 
-# A true 3D platonic solid (or dual compound) as the body. Each member is
+# A true 3D platonic solid (or dual compound) as the body meshes. Each member is
 # normalised to a circumradius of 1, scaled by data.radius, and shifted so the
 # body's lowest point rests on the board (y=0). Faces are flat-shaded metallic
 # (form from the key light) + a modest self-glow; edges are bright emissive
-# lines that bloom — the "faceted + edge glow" style.
-func _build_solid_body() -> void:
+# lines that bloom — the "faceted + edge glow" style. Returns a _mesh_cache
+# entry ({faces, edges, top}); node/material assembly happens in _build_body.
+func _build_solid_meshes() -> Dictionary:
 	var r: float = maxf(2.0, data.radius)
 	# Gather geometry in unit (circumradius ~1) coords as flat triangles + edges,
 	# then scale by r, lift so the lowest point rests on the board, and emit.
@@ -233,21 +278,14 @@ func _build_solid_body() -> void:
 		face_st.set_normal(nrm); face_st.add_vertex(a + up)
 		face_st.set_normal(nrm); face_st.add_vertex(b + up)
 		face_st.set_normal(nrm); face_st.add_vertex(c + up)
-	# Solids sit under a spin wrapper so the idle rotation lives on the meshes
-	# while heading yaw (and the bob) stay on _body_root.
-	_spin_node = Node3D.new()
-	_body_root.add_child(_spin_node)
-	var faces_mi := MeshInstance3D.new()
-	faces_mi.mesh = face_st.commit()
-	faces_mi.material_override = _faces_material()
-	_spin_node.add_child(faces_mi)
-	_body = faces_mi
 	var lifted: Array = []
 	for se in sedges:
 		lifted.append([se[0] + up, se[1] + up])
-	_edges_mi = _make_edge_outline(lifted)
-	_spin_node.add_child(_edges_mi)
-	_body_top = max_y + lift
+	return {
+		"faces": face_st.commit(),
+		"edges": _edge_outline_mesh(lifted),
+		"top": max_y + lift,
+	}
 
 # Fill `faces` (triangles) and `edges` (segments) in unit coords for the shape.
 # Convex solids & compounds come from per-member hull triangulation + min edges;
@@ -562,17 +600,15 @@ func _edge_material() -> StandardMaterial3D:
 # Edge outline as slim 4-sided prisms instead of 1px hardware lines: edge weight
 # scales with enemy size (half-width from the body radius), anti-aliases as real
 # geometry, and gives the bloom actual coverage. ~8 tris per edge — worst case
-# (dodeca_icosahedron, ~90 edges) is still trivial, rebuilt only on setup/morph.
-func _make_edge_outline(segs: Array) -> MeshInstance3D:
+# (dodeca_icosahedron, ~90 edges) is still trivial, built once per _mesh_cache
+# key and shared from then on.
+func _edge_outline_mesh(segs: Array) -> ArrayMesh:
 	var hw := clampf(_radius_estimate() * 0.03, 0.05, 0.12)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for se in segs:
 		_emit_edge_prism(st, se[0], se[1], hw)
-	var mi := MeshInstance3D.new()
-	mi.mesh = st.commit()
-	mi.material_override = _edge_material()
-	return mi
+	return st.commit()
 
 func _emit_edge_prism(st: SurfaceTool, a: Vector3, b: Vector3, hw: float) -> void:
 	var axis := b - a
@@ -704,6 +740,7 @@ func _process(delta: float) -> void:
 		_index += 1
 	else:
 		pp += to_target / dist * step
+	cell = HexUtils.pixel_to_cell(pp - _grid_origin, GameBoard3D.HEX_SIZE)
 	_sync_transform()
 	# Display-only motion: hover bob on _body_root (pp and the bar are untouched)
 	# and a slow idle spin for the platonic solids (on the mesh wrapper, so the
@@ -728,6 +765,13 @@ func apply_dos(freeze := DOS_STOP, slow_time := DOS_SLOW_TIME, slow_factor := DO
 	_slow_factor = slow_factor if not active else minf(_slow_factor, slow_factor)
 
 func _tick_dos(delta: float) -> void:
+	# Early-out for the common idle case: no freeze/slow/flash pending AND the
+	# visuals already restored. The churn guards sit at exactly 0.0 only after
+	# _apply_status_visual wrote the restored baseline (they start at -1.0 on
+	# every body rebuild), so this check can never skip a needed restore.
+	if _freeze_time <= 0.0 and _slow_time <= 0.0 and _flash == 0.0 \
+			and _dos_vis_k == 0.0 and _flash_vis == 0.0:
+		return
 	if _freeze_time > 0.0:
 		_freeze_time -= delta
 	elif _slow_time > 0.0:
@@ -810,8 +854,14 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) 
 	_refresh_bar_texture(health / data.health)
 	return false
 
+# AudioManager autoload, resolved once and shared (the per-death absolute-path
+# lookup showed up in profiles); re-resolved only if the cached node was freed.
+static var _am_cached: Node = null
+
 func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
-	var am = get_node_or_null("/root/AudioManager")
+	if _am_cached == null or not is_instance_valid(_am_cached):
+		_am_cached = get_node_or_null("/root/AudioManager")
+	var am := _am_cached
 	if am:
 		# A decay stage degrades rather than dies: it gets the split blip, so a
 		# 3-stage chain doesn't replay the same death sound three times. The
@@ -874,6 +924,7 @@ func _walk_back(seg: int, p: Vector2, back: float) -> Vector3:
 func place_on_path(seg: int, pos: Vector2) -> void:
 	_index = seg
 	pp = pos
+	cell = HexUtils.pixel_to_cell(pp - _grid_origin, GameBoard3D.HEX_SIZE)
 	if seg + 1 < path_points.size():
 		heading = (path_points[seg + 1] - pos).angle()
 	_sync_transform()
@@ -924,6 +975,8 @@ func _spawn_shard_fx(target_scale: Vector3, duration: float, tint: Color, spike:
 		return
 	var shard := MeshInstance3D.new()
 	shard.mesh = _edges_mi.mesh
+	# One-shot glow FX — like the outline it copies, it never casts a shadow.
+	shard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := _edge_material()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	shard.material_override = mat
@@ -948,23 +1001,39 @@ func _spawn_shard_fx(target_scale: Vector3, duration: float, tint: Color, spike:
 # (or on setup/morph), not every frame. 1px near-opaque frame + dark track so it
 # reads on any background; the fill ramps green -> amber -> red as health drops;
 # hidden entirely at full health so healthy waves stay clutter-free.
+#
+# The pixels are fully determined by (fill width, color band), so the textures
+# are pooled here and assigned by reference — at most ~41 distinct ones ever,
+# instead of a per-enemy Image + ImageTexture on every health change.
+static var _bar_tex_cache: Dictionary = {}
+
 func _refresh_bar_texture(frac: float) -> void:
 	var f := clampf(frac, 0.0, 1.0)
-	if _bar != null:
-		_bar.visible = f < 0.999
-	var img := Image.create(BAR_PIX_W, BAR_PIX_H, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0.9))
-	img.fill_rect(Rect2i(1, 1, BAR_PIX_W - 2, BAR_PIX_H - 2), Color(0.08, 0.10, 0.14, 0.85))
+	if _bar == null:
+		return
+	_bar.visible = f < 0.999
+	if not _bar.visible:
+		return   # full health: hidden, so skip all texture work
 	var fill: int = maxi(0, int(round(float(BAR_PIX_W - 2) * f)))
-	if fill > 0:
-		var col := Color(0.2, 0.9, 0.3)
-		if f < 0.2:
-			col = Color(0.95, 0.25, 0.2)
-		elif f <= 0.5:
-			col = Color(0.95, 0.75, 0.15)
-		img.fill_rect(Rect2i(1, 1, fill, BAR_PIX_H - 2), col)
-	if _bar_tex == null:
-		_bar_tex = ImageTexture.create_from_image(img)
-		_bar.texture = _bar_tex
-	else:
-		_bar_tex.update(img)
+	var band := 0   # 0 = green, 1 = red, 2 = amber (matches the f thresholds below)
+	if f < 0.2:
+		band = 1
+	elif f <= 0.5:
+		band = 2
+	var key: int = fill * 4 + band
+	var tex: ImageTexture = _bar_tex_cache.get(key)
+	if tex == null:
+		var img := Image.create(BAR_PIX_W, BAR_PIX_H, false, Image.FORMAT_RGBA8)
+		img.fill(Color(0, 0, 0, 0.9))
+		img.fill_rect(Rect2i(1, 1, BAR_PIX_W - 2, BAR_PIX_H - 2), Color(0.08, 0.10, 0.14, 0.85))
+		if fill > 0:
+			var col := Color(0.2, 0.9, 0.3)
+			if band == 1:
+				col = Color(0.95, 0.25, 0.2)
+			elif band == 2:
+				col = Color(0.95, 0.75, 0.15)
+			img.fill_rect(Rect2i(1, 1, fill, BAR_PIX_H - 2), col)
+		tex = ImageTexture.create_from_image(img)
+		_bar_tex_cache[key] = tex
+	if _bar.texture != tex:
+		_bar.texture = tex

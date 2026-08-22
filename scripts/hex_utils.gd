@@ -36,6 +36,30 @@ static func in_rotated_range(dq: int, dr: int, n: int) -> bool:
 	var c: int = (dq + 2 * dr) * (dq + 2 * dr)
 	return maxi(a, maxi(b, c)) <= 3 * n * n
 
+## Fused pixel_to_axial + axial_round: pixel -> nearest hex cell in one call
+## (the hot path for world_cell / bucket lookups). Bit-identical to the two-step
+## path: the fractional coords round-trip through a Vector2 exactly like
+## pixel_to_axial's return value, so single-precision truncation matches, and
+## the rounding below repeats axial_round's operations in the same order.
+static func pixel_to_cell(p: Vector2, size: float) -> Vector2i:
+	var frac := Vector2((SQRT3 / 3.0 * p.x - 1.0 / 3.0 * p.y) / size, (2.0 / 3.0 * p.y) / size)
+	var xf := frac.x
+	var zf := frac.y
+	var yf := -xf - zf
+	var rx := roundf(xf)
+	var ry := roundf(yf)
+	var rz := roundf(zf)
+	var dx := absf(rx - xf)
+	var dy := absf(ry - yf)
+	var dz := absf(rz - zf)
+	if dx > dy and dx > dz:
+		rx = -ry - rz
+	elif dy > dz:
+		ry = -rx - rz
+	else:
+		rz = -rx - ry
+	return Vector2i(int(rx), int(rz))
+
 ## Round fractional axial coords to the nearest hex (cube rounding).
 static func axial_round(qf: float, rf: float) -> Vector2i:
 	var xf := qf

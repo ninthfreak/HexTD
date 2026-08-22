@@ -32,6 +32,10 @@ const BAND := 6.0               # visual front thickness (world units)
 const CREST_H := 4.0            # height of the vertical crest wall at the wavefront
 const FROST := Color(0.5, 0.85, 1.0)   # matches enemy_3d.gd's DOS_FROST freeze cue
 const HIT_PAD := 8.0            # slack added to the enemy radius when the front "crosses" it
+# Conservative upper bound on any enemy's hit_radius, for the coarse band gate.
+# The largest shape in data/enemies.json (great_icosahedron) has radius 40, so
+# 48 leaves generous headroom; the exact per-enemy test below stays authoritative.
+const MAX_R := 48.0
 
 var _radius := 0.0
 var _range_world := 0.0
@@ -40,6 +44,8 @@ var _im: ImmediateMesh
 var _mat: StandardMaterial3D
 var _segs := 12                 # segments proportional to arc angle (set in _ready)
 var _dashed := false            # zero-damage waves render dashed (set in _ready)
+var _half := 0.0                # wedge half-angle, radians (set in _ready)
+var _dirs := PackedVector2Array()   # unit direction per segment boundary (set in _ready)
 
 func setup(origin_plane: Vector2, aim_dir: Vector2, dmg: float, spd: float,
 		origin_cellv: Vector2i, tiles: int, c: Color, b) -> void:
@@ -65,6 +71,15 @@ func _ready() -> void:
 	_segs = clampi(int(round(minf(arc_angle, 360.0) / 360.0 * 64.0)), 8, 64)
 	# a pure-control wave (no damage) renders dashed — a field, not a blade
 	_dashed = damage == 0.0
+	# half = pi at 360° (clamped), so the angular gate then admits every
+	# direction and the band closes into a full ring
+	_half = deg_to_rad(minf(arc_angle, 360.0) * 0.5)
+	# per-segment unit direction table: aim/_half/_segs are all fixed from here
+	# on, so the cos/sin happen once instead of per segment per frame
+	_dirs.resize(_segs + 1)
+	for i in range(_segs + 1):
+		var a: float = aim - _half + (2.0 * _half) * float(i) / float(_segs)
+		_dirs[i] = Vector2(cos(a), sin(a))
 	if applies_dos and _mat != null:
 		# frost tint: share a hue with the enemies' DoS freeze cue so the
 		# cause (this wave) and the effect (frozen enemy) read as one thing
@@ -102,25 +117,35 @@ func _process(delta: float) -> void:
 func _check_hits() -> void:
 	if board == null:
 		return
-	for e in board.enemies.duplicate():
+	# worst-case reach this frame: front radius + pad + the largest enemy radius
+	var band: float = _radius + HIT_PAD + MAX_R
+	var band2: float = band * band
+	# Deferred compaction makes board.enemies safe to iterate without a
+	# duplicate(); capping at the pre-loop size keeps the old snapshot
+	# semantics (split children appended mid-loop are not visited this frame).
+	var count: int = board.enemies.size()
+	for i in range(count):
+		var e = board.enemies[i]   # untyped on purpose (Variant from array indexing)
 		if not is_instance_valid(e) or _hit.has(e):
+			continue
+		var to_e: Vector2 = e.pp - origin
+		# cheap gates first: squared-distance band, then the wedge; the exact
+		# radius and the authoritative axial gate run only for the survivors
+		if to_e.length_squared() > band2:
 			continue
 		if e.data.encrypted and not can_see_encrypted:
 			continue
-		var to_e: Vector2 = e.pp - origin
 		var dist := to_e.length()
 		if dist < 0.001:
 			continue
-		# half = pi at 360° (clamped), so the gate then admits every direction.
-		var half := deg_to_rad(minf(arc_angle, 360.0) * 0.5)
-		if absf(angle_difference(aim, to_e.angle())) > half:
+		if absf(angle_difference(aim, to_e.angle())) > _half:
 			continue
-		if HexUtils.axial_distance(origin_cell, board.world_cell(e.pp)) > range_tiles:
-			continue
-		var reach := _radius + HIT_PAD
-		if e.has_method("_radius_estimate"):
-			reach += e._radius_estimate()
+		var reach: float = _radius + HIT_PAD + e.hit_radius
 		if dist > reach:
+			continue
+		# authoritative range gate: exact world_cell (e.cell can be a frame
+		# stale), kept last so it only runs for confirmed candidates
+		if HexUtils.axial_distance(origin_cell, board.world_cell(e.pp)) > range_tiles:
 			continue
 		_hit[e] = true
 		e.take_damage(damage, pierces_ecc)
@@ -137,16 +162,14 @@ func _update_visual() -> void:
 	_im.clear_surfaces()
 	var inner: float = maxf(0.0, _radius - BAND)
 	var outer: float = _radius + BAND
-	var half := deg_to_rad(minf(arc_angle, 360.0) * 0.5)   # pi at 360° -> a full ring
 	var lift := Vector3(0.0, CREST_H, 0.0)
 	_im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in range(_segs):
 		if _dashed and i % 3 == 2:   # dashed: skip every 3rd segment
 			continue
-		var a0: float = aim - half + (2.0 * half) * float(i) / float(_segs)
-		var a1: float = aim - half + (2.0 * half) * float(i + 1) / float(_segs)
-		var d0 := Vector2(cos(a0), sin(a0))
-		var d1 := Vector2(cos(a1), sin(a1))
+		# unit directions from the _ready table — only the radii change per frame
+		var d0: Vector2 = _dirs[i]
+		var d1: Vector2 = _dirs[i + 1]
 		var c0 := Vector3(d0.x * _radius, 0.0, d0.y * _radius)   # crest
 		var c1 := Vector3(d1.x * _radius, 0.0, d1.y * _radius)
 		# flat band, two strips: inner (alpha 0) -> crest (1) -> outer (0)

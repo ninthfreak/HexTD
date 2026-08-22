@@ -17,16 +17,63 @@ var pp := Vector2.ZERO               # plane position (the tower's center)
 var target_priority := "first"
 var range_rotated := false            # false = standard (wider) hex range; true = 30° rotated (taller)
 var _rotated_cells := {}
+var _range_cells := {}               # broad-phase cell set of the current range (shared board ref in standard mode — READ-ONLY)
+var _reach := 0                      # cached board.tower_reach(data.range_tiles); refreshed with _range_cells
+
+# target_priority resolved to an int once (setup / cycle) so the hot scans
+# switch on an int instead of matching a String per candidate.
+const PRI_FIRST := 0
+const PRI_LAST := 1
+const PRI_STRONGEST := 2
+const PRI_WEAKEST := 3
+var _priority_id := PRI_FIRST
+
+# data.fire_mode resolved to an int once (_apply_levels) for the per-frame match.
+const MODE_SINGLE := 0
+const MODE_RADIAL := 1
+const MODE_LASER := 2
+const MODE_ARC := 3
+var _fire_mode_id := MODE_SINGLE
 
 func toggle_range_rotation() -> bool:
 	range_rotated = not range_rotated
-	if range_rotated:
-		_rebuild_rotated_cache()
+	_refresh_range_cache()
 	return range_rotated
 
-func _rebuild_rotated_cache() -> void:
-	var reach: int = board.tower_reach(data.range_tiles)
-	_rotated_cells = board.rotated_range_set(cell, reach)
+# Cache reach + the range's cell set whenever range or rotation changes (setup,
+# upgrade, rotation toggle). Standard mode holds the board's memoized disk by
+# shared reference and only ever reads it; rotated mode rebuilds its own set.
+func _refresh_range_cache() -> void:
+	if board == null:
+		return
+	_reach = board.tower_reach(data.range_tiles)
+	if range_rotated:
+		_rotated_cells = board.rotated_range_set(cell, _reach)
+		_range_cells = _rotated_cells
+	else:
+		_range_cells = board.range_cell_set(cell, _reach)
+
+static func _priority_to_id(p: String) -> int:
+	match p:
+		"last":
+			return PRI_LAST
+		"strongest":
+			return PRI_STRONGEST
+		"weakest":
+			return PRI_WEAKEST
+		_:
+			return PRI_FIRST
+
+static func _mode_to_id(mode: String) -> int:
+	match mode:
+		"radial":
+			return MODE_RADIAL
+		"laser":
+			return MODE_LASER
+		"arc":
+			return MODE_ARC
+		_:
+			return MODE_SINGLE
 
 var _cooldown := 0.0
 var _laser_target = null
@@ -47,8 +94,16 @@ var _aims := false                   # single/arc carry a directional feature on
 var _aim_yaw := 0.0
 var _aim_timer := 0.0
 var _selected := false
-var _flash_tween: Tween
+var _flash_tween: Tween              # upgrade pop only (rare); fire flashes use the manual envelope below
+var _flash_t := -1.0                 # elapsed fire-flash envelope time; < 0 = idle
 var _breathe_tween: Tween
+var _hum_buf := PackedVector2Array() # scratch buffer for batched hum pushes
+var _beam_last_frac := -1.0          # last charge frac written to the beam materials
+# Selection scratch (multi-target volleys): parallel sort keys + picks reused
+# across calls so acquisition allocates nothing per shot.
+var _sel_keys := PackedInt32Array()
+var _sel_ties := PackedInt32Array()
+var _sel_picks: Array = []
 var _beam: MeshInstance3D            # laser beam sheath (null until first needed)
 var _beam_cyl: CylinderMesh
 var _beam_mat: StandardMaterial3D
@@ -58,6 +113,7 @@ var _beam_impact: MeshInstance3D     # bright dot at the target end
 var _impact_mat: StandardMaterial3D
 var _beam_origin_y := 0.0            # laser cone apex height (plinth + cone, upgrade-scaled)
 static var _plinth_mat_res: StandardMaterial3D = null
+static var _audio_mgr: Node = null   # cached /root/AudioManager (one lookup, not one per volley)
 
 # --- ability badges (real world-space children of the tower) ---
 # A row of billboarded hex "windows" hung off the (unscaled) tower root at a
@@ -73,6 +129,8 @@ static var _plinth_mat_res: StandardMaterial3D = null
 var _badge_anchor: Node3D = null
 var _badge_mats: Array = []          # ShaderMaterial per live badge (zoom_t updated per frame)
 var _badge_info: Array = []          # {mi: MeshInstance3D, tip: String} per live badge (hover tooltips)
+var _badge_cam_tf := Transform3D()   # camera transform at the last reveal update (skip when unchanged)
+var _badge_cam_seen := false
 # Display order. `prop` is the TowerData flag; art is art/<file>_{glyph,backplate,rim}.png.
 # focal/reveal_* drive the per-icon parallax window (see ABILITY_BADGE_PARALLAX_SPEC).
 const ABILITY_BADGES := [
@@ -156,6 +214,10 @@ const ARC_THROAT_F := 0.85           # arc horn: throat dish / rim-lip split fra
 const SHELL_EMISSION := 0.35         # idle shell glow — below the bloom threshold
 const ACCENT_EMISSION := 1.4         # hot accents — cross the bloom threshold
 const FLASH_EMISSION := 1.8          # fire-flash shell spike (blooms for a blink)
+const FLASH_GLOW_TIME := 0.18        # fire-flash emission ease-back duration
+const FLASH_SCALE_TIME := 0.15       # fire-flash scale punch recovery duration
+const FLASH_SCALE_FROM := Vector3(1.07, 0.94, 1.07)   # squash factor composed on _base_scale
+const BACK_OVERSHOOT := 1.70158      # Tween TRANS_BACK constant (matched by the manual envelope)
 const SELECT_BREATHE_HI := 0.9       # selection breathe peak — still below bloom
 const AIM_RELAX_TIME := 1.0          # yaw back to rest after this long targetless
 const TIER_RING_H := 1.4             # tier progression ring dimensions
@@ -193,6 +255,7 @@ func setup(d: TowerData, b, pos_plane: Vector2) -> void:
 	slot_levels = []
 	for _i in range(slot_count()):
 		slot_levels.append(0)
+	_priority_id = _priority_to_id(target_priority)
 	_apply_levels()
 	_sync_transform()
 	_rebuild_body()
@@ -255,8 +318,6 @@ func upgrade(s: int) -> void:
 	invested += next_cost(s)
 	slot_levels[s] += 1
 	_apply_levels()
-	if range_rotated:
-		_rebuild_rotated_cache()
 	_rebuild_body()
 	_upgrade_pop()
 
@@ -318,6 +379,8 @@ func _apply_levels() -> void:
 		var tiers = base_data.upgrades[s].get("tiers", [])
 		for i in range(slot_levels[s]):
 			_apply_tier(tiers[i])
+	_fire_mode_id = _mode_to_id(data.fire_mode)
+	_refresh_range_cache()
 
 func _apply_tier(tier: Dictionary) -> void:
 	data.damage += float(tier.get("damage", 0.0))
@@ -354,15 +417,17 @@ func _apply_flag(key: String, tier: Dictionary) -> void:
 func _process(delta: float) -> void:
 	if data == null:
 		return
-	match data.fire_mode:
-		"radial":
+	match _fire_mode_id:
+		MODE_RADIAL:
 			_process_radial(delta)
-		"laser":
+		MODE_LASER:
 			_process_laser(delta)
-		"arc":
+		MODE_ARC:
 			_process_arc(delta)
 		_:
 			_process_targeted(delta)
+	if _flash_t >= 0.0:
+		_advance_flash(delta)
 	if _aims and _turret != null and is_instance_valid(_turret):
 		_update_aim(delta)
 	if _badge_anchor != null and not _badge_mats.is_empty():
@@ -375,6 +440,8 @@ func _update_aim(delta: float) -> void:
 	if _aim_timer > 0.0:
 		_aim_timer -= delta
 		tgt = _aim_yaw
+	elif absf(wrapf(_turret.rotation.y, -PI, PI)) < 0.001:
+		return   # settled at rest — nothing left to lerp
 	_turret.rotation.y = lerp_angle(_turret.rotation.y, tgt, minf(1.0, 10.0 * delta))
 
 # Plane dir (dx, dy) maps to 3D (dx, 0, dy); the aim features are built along
@@ -389,14 +456,23 @@ func _process_targeted(delta: float) -> void:
 	_cooldown -= delta
 	if _cooldown <= 0.0:
 		# `targets` lets one fire cycle engage that many DISTINCT enemies (one shot
-		# each, no overkill), furthest-along first; default 1 = the classic single shot.
-		var ts := _acquire_targets(maxi(1, data.targets))
-		if not ts.is_empty():
-			for tt in ts:
-				_shoot(tt)
-			_fire_flash()
-			_play_sfx("tower_fire")   # once per volley, not per target
-			_cooldown = 1.0 / data.fire_rate
+		# each, no overkill), furthest-along first; default 1 = the classic single
+		# shot, which skips the multi-target bookkeeping entirely.
+		if data.targets <= 1:
+			var t = _acquire_target()
+			if t != null:
+				_shoot(t)
+				_fire_flash()
+				_play_sfx("tower_fire")
+				_cooldown = 1.0 / data.fire_rate
+		else:
+			var ts := _acquire_targets(data.targets)
+			if not ts.is_empty():
+				for tt in ts:
+					_shoot(tt)
+				_fire_flash()
+				_play_sfx("tower_fire")   # once per volley, not per target
+				_cooldown = 1.0 / data.fire_rate
 
 func _process_radial(delta: float) -> void:
 	_cooldown -= delta
@@ -437,16 +513,17 @@ func _fire_arc(t) -> void:
 func _cell_in_range(target_cell: Vector2i) -> bool:
 	if range_rotated:
 		return _rotated_cells.has(target_cell)
-	var reach: int = board.tower_reach(data.range_tiles)
-	return HexUtils.axial_distance(cell, target_cell) <= reach
+	return HexUtils.axial_distance(cell, target_cell) <= _reach
 
 func _any_enemy_in_range() -> bool:
-	for e in board.enemies:
+	# Broad phase: only enemies bucketed in the range's own cells are visited.
+	var cands: Array = board.enemies_in_cell_set(_range_cells)
+	for e in cands:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
 			continue
-		if _cell_in_range(board.world_cell(e.pp)):
+		if _range_cells.has(e.cell):
 			return true
 	return false
 
@@ -506,9 +583,10 @@ func _process_laser(delta: float) -> void:
 		_update_beam(0.0, false)
 
 func _play_sfx(sound_name: String) -> void:
-	var am = get_node_or_null("/root/AudioManager")
-	if am:
-		am.play_sfx(sound_name)
+	if _audio_mgr == null or not is_instance_valid(_audio_mgr):
+		_audio_mgr = get_node_or_null("/root/AudioManager")
+	if _audio_mgr != null:
+		_audio_mgr.play_sfx(sound_name)
 
 func _set_hum(active: bool, charge_ratio: float) -> void:
 	if active:
@@ -539,20 +617,27 @@ func _fill_hum() -> void:
 	var n := tbl.size()
 	var inc: float = _hum_freq / HUM_MIX_RATE * float(n)
 	var avail := _hum_pb.get_frames_available()
+	if avail <= 0:
+		return
+	# Batch: fill one PackedVector2Array and hand it over in a single
+	# push_buffer() instead of one push_frame() call per sample.
+	if _hum_buf.size() != avail:
+		_hum_buf.resize(avail)
 	for i in avail:
 		var i0 := int(_hum_phase) % n
 		var i1 := (i0 + 1) % n
 		var frac: float = _hum_phase - floor(_hum_phase)
 		var s: float = lerpf(tbl[i0], tbl[i1], frac)
-		_hum_pb.push_frame(Vector2(s, s))
+		_hum_buf[i] = Vector2(s, s)
 		_hum_phase += inc
 		if _hum_phase >= float(n):
 			_hum_phase -= float(n)
+	_hum_pb.push_buffer(_hum_buf)
 
 func _target_still_valid(t) -> bool:
 	if t == null or not is_instance_valid(t):
 		return false
-	if not _cell_in_range(board.world_cell(t.pp)):
+	if not _cell_in_range(t.cell):
 		return false
 	return data.ignore_walls or board.has_los(pp, t.pp)
 
@@ -567,28 +652,32 @@ func _acquire_target():
 	var best_key := 0
 	var best_tie := 0
 	var first := true
-	for e in board.enemies:
+	# Broad phase: the bucketed query visits only enemies whose cached cell is
+	# inside the range's cell set; every exact per-enemy gate below is unchanged.
+	var cands: Array = board.enemies_in_cell_set(_range_cells)
+	for e in cands:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
 			continue
-		if not _cell_in_range(board.world_cell(e.pp)):
+		if not _range_cells.has(e.cell):
 			continue
 		if not data.ignore_walls and not board.has_los(pp, e.pp):
 			continue
+		var prog: int = e.progress()
 		var key: int
 		var tie := 0
-		match target_priority:
-			"last":
-				key = -e.progress()
-			"strongest":
+		match _priority_id:
+			PRI_LAST:
+				key = -prog
+			PRI_STRONGEST:
 				key = e.data.rank
-				tie = e.progress()
-			"weakest":
+				tie = prog
+			PRI_WEAKEST:
 				key = -e.data.rank
-				tie = e.progress()
+				tie = prog
 			_:
-				key = e.progress()
+				key = prog
 		if first or key > best_key or (key == best_key and tie > best_tie):
 			first = false
 			best_key = key
@@ -598,39 +687,60 @@ func _acquire_target():
 
 # Up to `n` distinct valid enemies, ordered by the current target priority
 # (furthest-along / last / strongest first). Same range/LOS/Cipher gates as
-# _acquire_target. Used by single mode's multi-target fire.
+# _acquire_target. Used by single mode's multi-target fire. Returns a scratch
+# array reused across calls — consume it before the next acquisition.
 func _acquire_targets(n: int) -> Array:
-	var cands: Array = []
-	for e in board.enemies:
+	_sel_keys.clear()
+	_sel_ties.clear()
+	_sel_picks.clear()
+	var cands: Array = board.enemies_in_cell_set(_range_cells)
+	for e in cands:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
 			continue
-		if not _cell_in_range(board.world_cell(e.pp)):
+		if not _range_cells.has(e.cell):
 			continue
 		if not data.ignore_walls and not board.has_los(pp, e.pp):
 			continue
+		var prog: int = e.progress()
 		var key: int
 		var tie := 0
-		match target_priority:
-			"last":
-				key = -e.progress()
-			"strongest":
+		match _priority_id:
+			PRI_LAST:
+				key = -prog
+			PRI_STRONGEST:
 				key = e.data.rank
-				tie = e.progress()
-			"weakest":
+				tie = prog
+			PRI_WEAKEST:
 				key = -e.data.rank
-				tie = e.progress()
+				tie = prog
 			_:
-				key = e.progress()
-		cands.append({"e": e, "key": key, "tie": tie})
-	cands.sort_custom(func(a, b): return a["key"] > b["key"] or (a["key"] == b["key"] and a["tie"] > b["tie"]))
-	var out: Array = []
-	for c in cands:
-		out.append(c["e"])
-		if out.size() >= n:
-			break
-	return out
+				key = prog
+		# Bounded descending insertion — the same (key, tie) order the old
+		# sort_custom produced, without per-candidate Dictionaries or a sort.
+		var size: int = _sel_picks.size()
+		if size >= n:
+			var wk: int = _sel_keys[size - 1]
+			var wt: int = _sel_ties[size - 1]
+			if not (key > wk or (key == wk and tie > wt)):
+				continue
+		var idx: int = size
+		while idx > 0:
+			var pk: int = _sel_keys[idx - 1]
+			var pt: int = _sel_ties[idx - 1]
+			if key > pk or (key == pk and tie > pt):
+				idx -= 1
+			else:
+				break
+		_sel_keys.insert(idx, key)
+		_sel_ties.insert(idx, tie)
+		_sel_picks.insert(idx, e)
+		if _sel_picks.size() > n:
+			_sel_keys.remove_at(n)
+			_sel_ties.remove_at(n)
+			_sel_picks.remove_at(n)
+	return _sel_picks
 
 func cycle_target_priority() -> String:
 	match target_priority:
@@ -642,6 +752,7 @@ func cycle_target_priority() -> String:
 			target_priority = "weakest"
 		_:
 			target_priority = "first"
+	_priority_id = _priority_to_id(target_priority)
 	_laser_target = null
 	_charge = 0.0
 	return target_priority
@@ -753,6 +864,9 @@ func _rebuild_body() -> void:
 	# Laser beam origin: the cone apex (plinth + cone height, upgrade-scaled),
 	# backed off a touch so the beam visibly leaves the very tip.
 	_beam_origin_y = (PLINTH_H + LASER_CONE_H * 0.985) * _base_scale.y
+	# An upgrade may recolour the tower; drop the beam-material memo so the next
+	# _update_beam rewrites the charge-driven values with the new colour.
+	_beam_last_frac = -1.0
 	if _selected:
 		_apply_selection_mat()
 
@@ -990,6 +1104,7 @@ func _kill_body_tweens() -> void:
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()
 	_flash_tween = null
+	_flash_t = -1.0
 	_stop_breathe()
 
 func _stop_breathe() -> void:
@@ -999,10 +1114,40 @@ func _stop_breathe() -> void:
 
 # Muzzle pulse: the shell emission spikes over the bloom threshold and the body
 # gets a quick squash-and-recover composed on the upgrade-derived base scale.
+# Driven as a manual envelope in _process (no Tween allocation per shot);
+# refiring restarts the envelope, matching the old kill-and-restart semantics.
 func _fire_flash() -> void:
-	_body_pulse(FLASH_EMISSION, 0.18, _base_scale * Vector3(1.07, 0.94, 1.07), 0.15)
+	if _body == null or not is_instance_valid(_body) or _shell_mat == null:
+		return
+	_kill_body_tweens()
+	_flash_t = 0.0
 
-# Upgrade juice: a bigger pop from below final size after the rebuild.
+# Advance the fire-flash envelope: the same curves the old Tween ran — emission
+# TRANS_QUAD EASE_OUT from FLASH_EMISSION back to idle over FLASH_GLOW_TIME,
+# scale TRANS_BACK EASE_OUT from the squash back to _base_scale over
+# FLASH_SCALE_TIME — then the usual idle-glow restore.
+func _advance_flash(delta: float) -> void:
+	_flash_t += delta
+	if _shell_mat != null:
+		if _flash_t < FLASH_GLOW_TIME:
+			var u: float = _flash_t / FLASH_GLOW_TIME
+			_shell_mat.emission_energy_multiplier = FLASH_EMISSION + (SHELL_EMISSION - FLASH_EMISSION) * (u * (2.0 - u))
+		else:
+			_shell_mat.emission_energy_multiplier = SHELL_EMISSION
+	if _body != null and is_instance_valid(_body):
+		if _flash_t < FLASH_SCALE_TIME:
+			var v: float = _flash_t / FLASH_SCALE_TIME - 1.0
+			var k: float = 1.0 + (BACK_OVERSHOOT + 1.0) * v * v * v + BACK_OVERSHOOT * v * v
+			var from_scale := _base_scale * FLASH_SCALE_FROM
+			_body.scale = from_scale + (_base_scale - from_scale) * k
+		else:
+			_body.scale = _base_scale
+	if _flash_t >= FLASH_GLOW_TIME and _flash_t >= FLASH_SCALE_TIME:
+		_flash_t = -1.0
+		_restore_idle_glow()
+
+# Upgrade juice: a bigger pop from below final size after the rebuild. Rare
+# event, so it keeps the Tween path (_body_pulse).
 func _upgrade_pop() -> void:
 	_body_pulse(2.5, 0.3, _base_scale * 0.8, 0.25)
 
@@ -1033,8 +1178,9 @@ func _apply_selection_mat() -> void:
 	if _selected:
 		_shell_mat.rim = 0.5
 		_shell_mat.rim_tint = 0.2
-		# A running fire flash owns the emission; its finish callback restarts the breathe.
-		if _flash_tween == null or not _flash_tween.is_running():
+		# A running pulse (upgrade-pop tween or fire-flash envelope) owns the
+		# emission; its finish restarts the breathe.
+		if (_flash_tween == null or not _flash_tween.is_running()) and _flash_t < 0.0:
 			_start_breathe()
 	else:
 		_stop_breathe()
@@ -1053,9 +1199,12 @@ func _start_breathe() -> void:
 func _ensure_beam() -> void:
 	if _beam != null and is_instance_valid(_beam):
 		return
+	# UNIT cylinder (radius/height 1): _update_beam drives real thickness and
+	# length through the instance basis scale — writing the primitive's
+	# radius/height would regenerate the mesh every frame.
 	_beam_cyl = CylinderMesh.new()
-	_beam_cyl.top_radius = BEAM_BASE_THICK
-	_beam_cyl.bottom_radius = BEAM_BASE_THICK
+	_beam_cyl.top_radius = 1.0
+	_beam_cyl.bottom_radius = 1.0
 	_beam_cyl.height = 1.0
 	_beam_cyl.radial_segments = 10
 	_beam_cyl.rings = 1
@@ -1072,10 +1221,10 @@ func _ensure_beam() -> void:
 	# Beam lives at world scope on the board entities root so its global
 	# transform isn't twisted by future tower-local transforms.
 	board._entities.add_child(_beam)
-	# White-hot core: same transform as the sheath, drawn on top of it.
+	# White-hot core: another unit cylinder, scaled to 35% of the sheath width.
 	_beam_core_cyl = CylinderMesh.new()
-	_beam_core_cyl.top_radius = BEAM_BASE_THICK * 0.35
-	_beam_core_cyl.bottom_radius = BEAM_BASE_THICK * 0.35
+	_beam_core_cyl.top_radius = 1.0
+	_beam_core_cyl.bottom_radius = 1.0
 	_beam_core_cyl.height = 1.0
 	_beam_core_cyl.radial_segments = 8
 	_beam_core_cyl.rings = 1
@@ -1113,6 +1262,7 @@ func _update_beam(frac: float, on: bool) -> void:
 			_beam.visible = false
 			_beam_core.visible = false
 			_beam_impact.visible = false
+		_beam_last_frac = -1.0
 		return
 	_ensure_beam()
 	_beam.visible = true
@@ -1122,14 +1272,16 @@ func _update_beam(frac: float, on: bool) -> void:
 	if frac > 0.8:
 		# sizzle: a maxed beam vibrates instead of freezing at full width
 		thick *= 1.0 + 0.06 * sin(float(Time.get_ticks_msec()) * 0.04)
-	var alpha := lerpf(0.35, 0.9, frac)
-	_beam_cyl.top_radius = thick
-	_beam_cyl.bottom_radius = thick
-	_beam_core_cyl.top_radius = thick * 0.35
-	_beam_core_cyl.bottom_radius = thick * 0.35
-	_beam_mat.albedo_color = Color(data.color.r, data.color.g, data.color.b, alpha)
-	# Glow ramps with the quadratic damage ramp so charge is visible.
-	_beam_mat.emission_energy_multiplier = lerpf(1.1, 3.2, frac)
+	# Material writes only when the charge frac actually changed — they stop
+	# once the ramp saturates (the sizzle above is transform-only).
+	if frac != _beam_last_frac:
+		_beam_last_frac = frac
+		var alpha := lerpf(0.35, 0.9, frac)
+		_beam_mat.albedo_color = Color(data.color.r, data.color.g, data.color.b, alpha)
+		# Glow ramps with the quadratic damage ramp so charge is visible.
+		_beam_mat.emission_energy_multiplier = lerpf(1.1, 3.2, frac)
+		# The impact tint whitens as the beam charges so full ramp reads white-hot.
+		_impact_mat.emission = data.color.lerp(Color(1, 1, 1), frac)
 	# Endpoints in world coords. Pull the target's plane pos through an
 	# explicit Vector2 first so the Vector3 constructor sees typed floats
 	# rather than Variant member accesses on an untyped reference.
@@ -1144,23 +1296,22 @@ func _update_beam(frac: float, on: bool) -> void:
 		_beam_core.visible = false
 		_beam_impact.visible = false
 		return
-	_beam_cyl.height = dlen
-	_beam_core_cyl.height = dlen
-	# Orient the cylinder's Y axis along `dir`. Build an explicit basis to avoid
-	# look_at edge-cases (target directly above the source).
+	# Orient the unit cylinder's Y axis along `dir` and compose thickness and
+	# length into the basis columns (the meshes themselves never change). Build
+	# an explicit basis to avoid look_at edge-cases (target directly above the
+	# source).
 	var y_axis := dir / dlen
 	var ref := Vector3.RIGHT if absf(y_axis.y) > 0.99 else Vector3.UP
 	var x_axis := y_axis.cross(ref).normalized()
 	var z_axis := x_axis.cross(y_axis).normalized()
 	var mid := from + dir * 0.5
-	_beam.global_transform = Transform3D(Basis(x_axis, y_axis, z_axis), mid)
-	_beam_core.global_transform = _beam.global_transform
+	_beam.global_transform = Transform3D(Basis(x_axis * thick, y_axis * dlen, z_axis * thick), mid)
+	var core_t := thick * 0.35
+	_beam_core.global_transform = Transform3D(Basis(x_axis * core_t, y_axis * dlen, z_axis * core_t), mid)
 	_beam_impact.global_transform = Transform3D(Basis(), to)
-	# Impact dot: per-frame jitter sells contact sparking; the tint whitens as
-	# the beam charges so full ramp reads white-hot.
+	# Impact dot: per-frame jitter sells contact sparking.
 	var impact_scale: float = lerpf(0.6, 1.4, frac) * randf_range(0.88, 1.14)
 	_beam_impact.scale = Vector3(impact_scale, impact_scale, impact_scale)
-	_impact_mat.emission = data.color.lerp(Color(1, 1, 1), frac)
 
 # Clean up the externally-parented beam nodes when the tower is removed.
 func _exit_tree() -> void:
@@ -1188,6 +1339,7 @@ func _clear_badges() -> void:
 	_badge_anchor = null
 	_badge_mats.clear()
 	_badge_info.clear()
+	_badge_cam_seen = false   # fresh badges must get one reveal update even from a still camera
 
 func _build_badges() -> void:
 	if data == null:
@@ -1256,6 +1408,13 @@ func _update_badge_zoom() -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
+	# The reveal scalars only depend on the camera, and the badges never move —
+	# skip the shader writes while the camera transform is unchanged.
+	var cam_tf := cam.global_transform
+	if _badge_cam_seen and cam_tf == _badge_cam_tf:
+		return
+	_badge_cam_tf = cam_tf
+	_badge_cam_seen = true
 	var d: float = cam.global_position.distance_to(_badge_anchor.global_position)
 	var span: float = maxf(0.001, cam_dist_far - cam_dist_near)
 	var t: float = clampf((cam_dist_far - d) / span, 0.0, 1.0)

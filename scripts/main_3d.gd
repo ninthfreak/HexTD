@@ -136,6 +136,27 @@ var badge_tip_glyph: TextureRect      # full-glyph preview (right of the text)
 var _tip_file := ""                   # icon currently shown in the preview (skip redundant reloads)
 var _art_cache := {}                  # art file base -> Texture2D
 
+# --- per-frame UI dirty state ---
+# Mass kills/leaks arrive dozens per frame; the bounty/leak handlers only
+# accumulate here and _flush_hud folds them into one label update + one pulse.
+var _hud_dirty := false
+var _money_pulse_pending := false
+var _lives_pulse_pending := false
+# Label pulses decay manually off the wall clock: Tweens run on scaled time (so
+# pulses froze at time_scale 0) and per-kill Tween kill/create churned.
+var _label_pulses := {}               # Label -> {"color": Color, "t": float 1→0}
+var _pulse_last_ms := 0
+# The remaining UI refreshers run every frame but their outputs rarely change;
+# each caches the state key its widgets currently show and skips a re-apply
+# (add_theme_color_override & co. dirty + repaint even for identical values).
+var _ui_was_idle := false             # last frame had no placement and no selection
+var _upgrade_rev := 0                 # bumped on upgrade/sell/selection change
+var _btn_key: Array = []              # (tower id, money, rev) the upgrade/sell buttons show
+var _wave_btn_key: Array = []
+var _pause_btn_key: Array = []
+var _cam_readout_key: Array = []
+var _tip_probe_key: Array = []        # (mouse, cam, tower id, rev) of the last badge probe
+
 func _ready() -> void:
 	Engine.time_scale = 1.0
 	is_game = GameState.mode == "game" or GameState.mode == "tutorial"
@@ -359,6 +380,8 @@ func _process(delta: float) -> void:
 			else:
 				_play_sfx("wave_clear")
 				_set_info("Wave cleared — +%d bonus." % WAVE_CLEAR_BONUS, "success")
+	_flush_hud()
+	_decay_pulses()
 	_update_pause_button()
 	_update_wave_button()
 	_update_banner(delta)
@@ -368,13 +391,31 @@ func _process(delta: float) -> void:
 	_update_cam_readout()
 	_cheat_tick(delta)
 
+# Apply the frame's accumulated bounty/leak changes in one pass: one label
+# update, one affordability sweep, at most one pulse per label.
+func _flush_hud() -> void:
+	if not _hud_dirty:
+		return
+	_hud_dirty = false
+	_update_labels()
+	if _money_pulse_pending:
+		_money_pulse_pending = false
+		_pulse_label(money_label, Color(1.5, 1.3, 0.6))
+	if _lives_pulse_pending:
+		_lives_pulse_pending = false
+		_pulse_label(lives_label, Color(1.6, 0.5, 0.5))
+
 # Live camera readout: orbit distance (the zoom metric) plus the camera's world
 # position, so it's clear where the camera sits at any zoom/pan.
 func _update_cam_readout() -> void:
 	if cam_label == null or camera == null:
 		return
 	var p: Vector3 = camera.global_position
-	cam_label.text = "cam d:%d  (%d, %d, %d)" % [int(round(cam_distance)), int(round(p.x)), int(round(p.y)), int(round(p.z))]
+	var key: Array = [int(round(cam_distance)), int(round(p.x)), int(round(p.y)), int(round(p.z))]
+	if key == _cam_readout_key:
+		return
+	_cam_readout_key = key
+	cam_label.text = "cam d:%d  (%d, %d, %d)" % key
 
 func _camera_keys(delta: float) -> void:
 	var dir := Vector2.ZERO
@@ -403,6 +444,13 @@ func _pan_plane(d: Vector2) -> void:
 	_update_camera_transform()
 
 func _update_preview() -> void:
+	# Idle steady state (nothing being placed or selected): the transition frame
+	# below already cleared the overlay, badges, control row and buttons, so
+	# repeating the sweeps would be pure redundancy.
+	var idle := placing_id == "" and not has_selected
+	if idle and _ui_was_idle:
+		return
+	_ui_was_idle = idle
 	if placing_id == "" or _mouse_over_pane():
 		overlay.preview_active = false
 	else:
@@ -421,8 +469,8 @@ func _update_preview() -> void:
 			overlay.preview_active = false
 	overlay.selected_active = has_selected
 	overlay.selected_cell = selected_cell
-	overlay.selected_range = (board.tower_reach(board.tower_at(selected_cell).data.range_tiles) if has_selected and board.tower_at(selected_cell) != null else 0)
 	var sel_t = board.tower_at(selected_cell) if has_selected else null
+	overlay.selected_range = (board.tower_reach(sel_t.data.range_tiles) if sel_t != null else 0)
 	if sel_t != null:
 		overlay.selected_color = sel_t.data.color
 		overlay.selected_ignore_walls = sel_t.data.ignore_walls
@@ -430,9 +478,9 @@ func _update_preview() -> void:
 	overlay.refresh()
 	_set_badged_tower(sel_t)
 	_update_badge_tooltip()
-	_update_tower_control_row()
-	_update_target_button()
-	_update_tower_buttons()
+	_update_tower_control_row(sel_t)
+	_update_target_button(sel_t)
+	_update_tower_buttons(sel_t)
 
 # Cast a ray from the cursor through the camera onto the y=0 plane and
 # return the intersection as plane coords. This is the 3D counterpart of
@@ -476,8 +524,11 @@ func _priority_label(p: String) -> String:
 		_:
 			return "First"
 
-func _update_target_button() -> void:
-	var t = board.tower_at(selected_cell) if has_selected else null
+# The selected tower can be passed in by _update_preview (which already looked
+# it up); a null/omitted arg falls back to the lookup, matching the old behavior
+# (a stale selection also resolves to null either way).
+func _update_target_button(sel_t = null) -> void:
+	var t = sel_t if sel_t != null else (board.tower_at(selected_cell) if has_selected else null)
 	if t != null:
 		target_button.texture_normal = _load_art(_priority_art(t.target_priority))
 		target_button.tooltip_text = "Target: %s (tap to cycle)." % _priority_label(t.target_priority)
@@ -492,8 +543,8 @@ func _on_target_pressed() -> void:
 	_update_target_button()
 	_set_info("%s now targets: %s." % [t.data.display_name, _priority_label(p)])
 
-func _update_tower_control_row() -> void:
-	var t = board.tower_at(selected_cell) if has_selected else null
+func _update_tower_control_row(sel_t = null) -> void:
+	var t = sel_t if sel_t != null else (board.tower_at(selected_cell) if has_selected else null)
 	_tower_control_row.visible = t != null
 
 func _on_facing_pressed() -> void:
@@ -518,8 +569,15 @@ func _attach_cost_label(btn: Button) -> void:
 func btn_cl(btn: Button) -> CostLabel:
 	return btn.get_meta("cl") as CostLabel
 
-func _update_tower_buttons() -> void:
-	var t = (board.tower_at(selected_cell) if has_selected else null)
+func _update_tower_buttons(sel_t = null) -> void:
+	var t = sel_t if sel_t != null else (board.tower_at(selected_cell) if has_selected else null)
+	# Everything below is a pure function of (tower, its tiers, money); the tiers
+	# only move through _upgrade_rev bumps, so an unchanged key means the buttons
+	# already show exactly this state.
+	var key: Array = [t.get_instance_id() if t != null else 0, money, _upgrade_rev]
+	if key == _btn_key:
+		return
+	_btn_key = key
 	var any_locked := false
 	for s in range(upgrade_buttons.size()):
 		var b: Button = upgrade_buttons[s]
@@ -570,11 +628,12 @@ func _on_upgrade_pressed(s: int) -> void:
 		return
 	money -= c
 	t.upgrade(s)
+	_upgrade_rev += 1
 	# A new tier can flip an ability flag, so rebuild the badge row.
 	if t == _badged_tower:
 		t.set_badges_visible(true)
 	_update_labels()
-	_update_tower_buttons()
+	_update_tower_buttons(t)
 	_set_info("%s: %s now at tier %d." % [t.data.display_name, t.slot_name(s), t.slot_level(s)])
 	_play_sfx("upgrade")
 
@@ -587,6 +646,8 @@ func _on_sell_pressed() -> void:
 	var refund: int = t.sell_value()
 	var nm: String = t.data.display_name
 	board.remove_tower(t.cell)
+	overlay.occupancy_rev += 1
+	_upgrade_rev += 1
 	money += refund
 	has_selected = false
 	_update_labels()
@@ -694,6 +755,7 @@ func _try_place(cell: Vector2i) -> bool:
 	t.cell = cell
 	t.setup(td, board, board.cell_center_world(cell))
 	board.place_tower(cell, t)
+	overlay.occupancy_rev += 1
 	_update_labels()
 	_play_sfx("build_place")
 	return true
@@ -701,6 +763,7 @@ func _try_place(cell: Vector2i) -> bool:
 func _select_tower(cell: Vector2i, t) -> void:
 	has_selected = true
 	selected_cell = t.cell
+	_upgrade_rev += 1
 	_set_info("%s selected — range shown." % t.data.display_name)
 
 func _cancel() -> void:
@@ -853,34 +916,50 @@ func _on_wave_button_pressed() -> void:
 # when a wave can be started, the "in progress" art with the live wave number
 # while one runs, and a cleared marker once every wave is done. Sandbox can always
 # start, so it just shows the currently selected wave.
+# Runs per frame; the target state is computed first and only applied on change
+# (add_theme_color_override dirties + repaints the label even for equal values).
 func _update_wave_button() -> void:
 	if wave_button == null:
 		return
 	if is_game:
+		var disabled := true
+		var icon := ""
+		var num := ""
+		var num_col := WAVE_RUN_COL
 		if game_wave_index >= waves.size():
 			var cleared := not _combat_active() and _spawn_timeline.is_empty()
-			wave_button.disabled = true
-			wave_button.texture_normal = _load_icon("wave_start" if cleared else "wave_inprogress")
-			wave_num_label.text = "✓" if cleared else str(game_wave_index)
-			wave_num_label.add_theme_color_override("font_color", WAVE_DONE_COL if cleared else WAVE_RUN_COL)
+			icon = "wave_start" if cleared else "wave_inprogress"
+			num = "✓" if cleared else str(game_wave_index)
+			num_col = WAVE_DONE_COL if cleared else WAVE_RUN_COL
 		elif _can_start_next():
-			wave_button.disabled = false
-			wave_button.texture_normal = _load_icon("wave_start")
-			wave_num_label.text = str(game_wave_index + 1)
-			wave_num_label.add_theme_color_override("font_color", WAVE_START_COL)
+			disabled = false
+			icon = "wave_start"
+			num = str(game_wave_index + 1)
+			num_col = WAVE_START_COL
 		else:
-			wave_button.disabled = true
-			wave_button.texture_normal = _load_icon("wave_inprogress")
-			wave_num_label.text = str(game_wave_index)
-			wave_num_label.add_theme_color_override("font_color", WAVE_RUN_COL)
+			icon = "wave_inprogress"
+			num = str(game_wave_index)
+			num_col = WAVE_RUN_COL
+		var key: Array = [disabled, icon, num, num_col]
+		if key == _wave_btn_key:
+			return
+		_wave_btn_key = key
+		wave_button.disabled = disabled
+		wave_button.texture_normal = _load_icon(icon)
+		wave_num_label.text = num
+		wave_num_label.add_theme_color_override("font_color", num_col)
 		# A button that disables under the cursor never gets mouse_exited — drop
 		# any stuck hover brightness, and dim the art like pause does.
-		if wave_button.disabled:
+		if disabled:
 			_clear_hover(wave_button)
-		wave_button.self_modulate = Color(1, 1, 1) if not wave_button.disabled else Color(0.6, 0.6, 0.6, 0.9)
+		wave_button.self_modulate = Color(1, 1, 1) if not disabled else Color(0.6, 0.6, 0.6, 0.9)
 	else:
 		# Sandbox: a plain wave_start hex (no number overlay); the dropdown names the
 		# wave. Can always start (stacks onto a running wave) unless there are none.
+		var key: Array = [waves.is_empty()]
+		if key == _wave_btn_key:
+			return
+		_wave_btn_key = key
 		wave_button.disabled = waves.is_empty()
 		wave_button.texture_normal = _load_icon("wave_start")
 
@@ -895,21 +974,27 @@ func _update_pause_button() -> void:
 		# Combat ended while paused (shouldn't normally happen) — restore time flow.
 		paused = false
 		Engine.time_scale = speed_steps[speed_index]
+	var key: Array = [active, paused]
+	if key == _pause_btn_key:
+		return
+	_pause_btn_key = key
 	pause_button.disabled = not active
 	pause_button.texture_normal = _load_icon("play" if paused else "pause")
 	pause_button.self_modulate = Color(1, 1, 1) if active else Color(0.42, 0.42, 0.42, 0.85)
 	if pause_button.disabled:
 		_clear_hover(pause_button)
 
+# Bounty/leak can fire dozens of times per frame during a wipe — only the money
+# math runs here; _flush_hud does the label/affordability/pulse work once.
 func _on_enemy_bounty(amount: int) -> void:
 	money += amount
-	_update_labels()
-	_pulse_label(money_label, Color(1.5, 1.3, 0.6))
+	_hud_dirty = true
+	_money_pulse_pending = true
 
 func _on_enemy_reached_goal() -> void:
 	lives = maxi(0, lives - 1)
-	_update_labels()
-	_pulse_label(lives_label, Color(1.6, 0.5, 0.5))
+	_hud_dirty = true
+	_lives_pulse_pending = true
 	_play_sfx("enemy_leak")
 	if lives <= 0 and is_game and not game_over:
 		_trigger_defeat()
@@ -1310,9 +1395,22 @@ func _load_art(file: String) -> Texture2D:
 func _update_badge_tooltip() -> void:
 	if badge_tip_panel == null:
 		return
+	# The probe result only moves with the cursor, the camera (badges billboard),
+	# the badged tower, or a badge-row rebuild (upgrade) — skip re-probing until
+	# one of those changes.
+	var mp: Vector2 = get_viewport().get_mouse_position()
+	var key: Array = [
+		mp,
+		camera.global_transform if camera != null else Transform3D(),
+		_badged_tower.get_instance_id() if (_badged_tower != null and is_instance_valid(_badged_tower)) else 0,
+		_upgrade_rev,
+	]
+	if key == _tip_probe_key:
+		return
+	_tip_probe_key = key
 	var hit := {}
 	if _badged_tower != null and is_instance_valid(_badged_tower) and camera != null and not _mouse_over_pane():
-		hit = _badged_tower.badge_tip_at(camera, get_viewport().get_mouse_position())
+		hit = _badged_tower.badge_tip_at(camera, mp)
 	if hit.is_empty():
 		badge_tip_panel.visible = false
 		_tip_file = ""
@@ -1325,7 +1423,6 @@ func _update_badge_tooltip() -> void:
 	badge_tip_panel.visible = true
 	# Keep the tip on screen: flip to the other side of the cursor at the
 	# right/bottom edges instead of clipping off.
-	var mp: Vector2 = get_viewport().get_mouse_position()
 	var vp: Vector2 = get_viewport().get_visible_rect().size
 	var sz: Vector2 = badge_tip_panel.get_combined_minimum_size()
 	var pos: Vector2 = mp + Vector2(16, 16)
@@ -1835,19 +1932,40 @@ func _update_labels() -> void:
 		b.set_affordable(money >= b.cost)
 
 # Brief tint flash so a label's change registers at the edge of vision (income,
-# life loss, new info text). Kills the previous pulse so spam can't stack.
+# life loss, new info text). Re-arming overwrites the previous pulse so spam
+# can't stack. Not a Tween: _decay_pulses drives the fade off the wall clock,
+# so pulses keep fading while frozen (time_scale 0) and spammy callers don't
+# churn Tween objects.
 func _pulse_label(l: Label, c: Color) -> void:
 	if l == null:
 		return
-	var prev: Tween = l.get_meta("pulse_tw") if l.has_meta("pulse_tw") else null
-	if prev != null and prev.is_valid():
-		prev.kill()
 	l.modulate = c
-	# Tweens run on scaled time (4.3 has no ignore_time_scale); a pulse fired
-	# into a freeze (defeat) just holds its tint until time resumes — fine.
-	var tw := l.create_tween()
-	tw.tween_property(l, "modulate", Color(1, 1, 1), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	l.set_meta("pulse_tw", tw)
+	_label_pulses[l] = {"color": c, "t": 1.0}
+
+# Fade each armed pulse back to white over 0.35s with the same quad ease-out
+# shape the old Tween used (eased = 1 - t², t running 1 → 0).
+func _decay_pulses() -> void:
+	var now := Time.get_ticks_msec()
+	var dt := clampf(float(now - _pulse_last_ms) / 1000.0, 0.0, 0.1)
+	_pulse_last_ms = now
+	if _label_pulses.is_empty():
+		return
+	var done: Array = []
+	for l in _label_pulses:
+		if not is_instance_valid(l):
+			done.append(l)
+			continue
+		var st: Dictionary = _label_pulses[l]
+		var t: float = float(st["t"]) - dt / 0.35
+		if t <= 0.0:
+			l.modulate = Color(1, 1, 1)
+			done.append(l)
+		else:
+			st["t"] = t
+			var c: Color = st["color"]
+			l.modulate = c.lerp(Color(1, 1, 1), 1.0 - t * t)
+	for l in done:
+		_label_pulses.erase(l)
 
 # kind: "info" (neutral), "error" (rejections), "success" (confirmations) — the
 # same slot used to render all three identically.

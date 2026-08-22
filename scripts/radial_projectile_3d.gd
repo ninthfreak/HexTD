@@ -28,13 +28,21 @@ const STRETCH := 2.8           # velocity stretch along the travel axis
 const HIT_PAD := 8.0           # projectile-radius slack added to enemy radius
 const WALL_SPARK := Color(0.75, 0.85, 1.0)   # cool-white "blocked by a wall" flash
 const FADE_FRAC := 0.15        # dissolve over the last 15% of flight
+# Conservative upper bound on any enemy's hit_radius, for the coarse hit gate.
+# The largest shape in data/enemies.json (great_icosahedron) has radius 40, so
+# 48 leaves generous headroom; the exact per-enemy test below stays authoritative.
+const MAX_R := 48.0
+const COARSE_R2 := (HIT_PAD + MAX_R) * (HIT_PAD + MAX_R)
 
 static var _spoke_mesh: ArrayMesh   # shared unit geometry (colour lives in the material)
+static var _am_cached: Node = null  # AudioManager, resolved once (shared pattern)
 
 var _safety := 0.0
 var _safety_start := 0.0       # initial _safety, for the range-edge fade
 var _hit := {}                 # enemy -> true (one hit per enemy)
-var _mat: StandardMaterial3D
+var _mi: MeshInstance3D
+var _cell := Vector2i.ZERO     # cached world_cell(pp) — wall/range checks re-run on change
+var _cell_known := false
 
 func setup(start_plane: Vector2, direction: Vector2, dmg: float, spd: float,
 		origin: Vector2i, tiles: int, c: Color, b) -> void:
@@ -56,22 +64,15 @@ func _build_mesh() -> void:
 	# makes the pierce line legible, unlike the old featureless sphere
 	var mi := MeshInstance3D.new()
 	mi.mesh = _diamond_mesh()
-	# per-instance material (never the shared cache): the range-edge fade
-	# animates this spoke's alpha
-	_mat = StandardMaterial3D.new()
-	var bright: Color = col.lightened(0.3)
-	_mat.albedo_color = bright
-	_mat.emission_enabled = true
-	_mat.emission = bright
-	_mat.emission_energy_multiplier = GLOW
-	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mi.material_override = _mat
+	# shared per-colour material (Projectile3D's cache — identical recipe); the
+	# range-edge fade is driven per-instance via `mi.transparency`, so nothing
+	# here is ever animated on the material itself
+	mi.material_override = Projectile3D._shared_mat(col)
 	# long axis along travel (plane +x -> 3D +x, plane +y -> 3D +z, so yaw =
 	# -plane angle); dir never changes, so this is set once
 	mi.rotation.y = -dir.angle()
 	mi.scale = Vector3(STRETCH, 1.0, 1.0)   # velocity stretch
+	_mi = mi
 	add_child(mi)
 
 # Shared unit geometry: a faceted hexagonal bipyramid — nose/tail apexes on ±x,
@@ -103,39 +104,62 @@ func _process(delta: float) -> void:
 	pp += dir * step
 	_safety -= step
 	if board != null:
+		# one world_cell per frame; the wall / off-board / range checks depend
+		# only on the cell, so they re-run only when the cell changes (a cell
+		# that survived them last frame survives them now — walls and the map
+		# are static, origin_cell/range_tiles fixed)
 		var here: Vector2i = board.world_cell(pp)
-		if not ignore_walls and board.blocking_set.has(here):
-			# a wall absorbed the shot — spark in cool white so the rule
-			# (walls stop spokes) is actually visible
-			var parent := get_parent()
-			if parent != null:
-				ImpactFlash3D.spawn(parent, Vector3(pp.x, GameBoard3D.ENEMY_Y, pp.y), WALL_SPARK, 1.25)
-			queue_free()
-			return
-		if HexUtils.axial_distance(origin_cell, here) > range_tiles \
-				or not board.has_cell(here):
-			queue_free()
-			return
+		if not _cell_known or here != _cell:
+			_cell = here
+			_cell_known = true
+			if not ignore_walls and board.blocking_set.has(here):
+				# a wall absorbed the shot — spark in cool white so the rule
+				# (walls stop spokes) is actually visible
+				var parent := get_parent()
+				if parent != null:
+					ImpactFlash3D.spawn(parent, Vector3(pp.x, GameBoard3D.ENEMY_Y, pp.y), WALL_SPARK, 1.25)
+				queue_free()
+				return
+			if HexUtils.axial_distance(origin_cell, here) > range_tiles \
+					or not board.has_cell(here):
+				queue_free()
+				return
 	_check_hits()
 	if _safety <= 0.0:
 		queue_free()
 	else:
-		# range-edge death fades instead of popping: dissolve the last 15% of flight
-		_mat.albedo_color.a = clampf(_safety / maxf(_safety_start * FADE_FRAC, 0.001), 0.0, 1.0)
+		# range-edge death fades instead of popping: dissolve the last 15% of
+		# flight (per-instance transparency; the material stays shared, and the
+		# write only happens once inside the fade window)
+		var alpha := clampf(_safety / maxf(_safety_start * FADE_FRAC, 0.001), 0.0, 1.0)
+		if alpha < 1.0:
+			_mi.transparency = 1.0 - alpha
 		_sync_transform()
+
+func _audio() -> Node:
+	if _am_cached == null or not is_instance_valid(_am_cached):
+		_am_cached = get_node_or_null("/root/AudioManager")
+	return _am_cached
 
 func _check_hits() -> void:
 	if board == null:
 		return
-	var am = get_node_or_null("/root/AudioManager")
-	for e in board.enemies.duplicate():
+	# Deferred compaction makes board.enemies safe to iterate without a
+	# duplicate(); capping at the pre-loop size keeps the old snapshot
+	# semantics (split children appended mid-loop are not visited this frame).
+	var count: int = board.enemies.size()
+	var played := false
+	for i in range(count):
+		var e = board.enemies[i]   # untyped on purpose (Variant from array indexing)
 		if not is_instance_valid(e) or _hit.has(e):
+			continue
+		# cheap coarse gate first: squared distance against the worst-case hit
+		# radius rejects almost every enemy without touching its data
+		if pp.distance_squared_to(e.pp) > COARSE_R2:
 			continue
 		if e.data.encrypted and not can_see_encrypted:
 			continue
-		var r := HIT_PAD
-		if e.has_method("_radius_estimate"):
-			r += e._radius_estimate()
+		var r: float = HIT_PAD + e.hit_radius
 		if pp.distance_to(e.pp) <= r:
 			_hit[e] = true
 			var contact: Vector2 = e.pp
@@ -145,5 +169,10 @@ func _check_hits() -> void:
 			var parent := get_parent()
 			if parent != null:
 				ImpactFlash3D.spawn(parent, Vector3(contact.x, GameBoard3D.ENEMY_Y, contact.y), col)
-			if am:
-				am.play_sfx("projectile_hit")
+			# at most one hit sfx per spoke per frame — a burst through a pack
+			# stacked N identical samples into one loud click
+			if not played:
+				played = true
+				var am: Node = _audio()
+				if am:
+					am.play_sfx("projectile_hit")

@@ -25,6 +25,7 @@ const SPIN := 8.0              # roll speed around the travel axis, rad/s
 # Shared material cache: the recipe below is deterministic per colour and never
 # animated per instance, so every shot of a colour reuses one material.
 static var _mat_cache := {}    # rgba32 -> StandardMaterial3D
+static var _am_cached: Node = null  # AudioManager, resolved once (shared pattern)
 
 var _mesh: MeshInstance3D
 var _roll := 0.0
@@ -71,6 +72,11 @@ func _sync_transform() -> void:
 	# cruise at the enemies' hover height so shots meet them
 	position = Vector3(pp.x, GameBoard3D.ENEMY_Y, pp.y)
 
+func _audio() -> Node:
+	if _am_cached == null or not is_instance_valid(_am_cached):
+		_am_cached = get_node_or_null("/root/AudioManager")
+	return _am_cached
+
 # Target.pp is the enemy's plane position; we move pp toward it and resync the
 # 3D transform. On contact we deal damage, flash at the contact point, and
 # self-destruct.
@@ -89,7 +95,7 @@ func _process(delta: float) -> void:
 		var parent := get_parent()
 		if parent != null:
 			ImpactFlash3D.spawn(parent, Vector3(contact.x, GameBoard3D.ENEMY_Y, contact.y), col)
-		var am = get_node_or_null("/root/AudioManager")
+		var am: Node = _audio()
 		if am:
 			am.play_sfx("projectile_hit")
 		queue_free()

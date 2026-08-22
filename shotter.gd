@@ -38,7 +38,10 @@ func _ready() -> void:
 
 	for i in frames:
 		await get_tree().process_frame
-	var img := get_viewport().get_texture().get_image()
-	img.save_png(out)
-	print("SHOT SAVED: ", out)
+	# Headless (benchmark) runs have no viewport texture — skip the capture but
+	# still quit cleanly.
+	var tex := get_viewport().get_texture()
+	if tex != null and DisplayServer.get_name() != "headless":
+		tex.get_image().save_png(out)
+		print("SHOT SAVED: ", out)
 	get_tree().quit()
