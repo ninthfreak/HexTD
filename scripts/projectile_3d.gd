@@ -21,6 +21,7 @@ const GLOW := 2.0              # shared ordnance glow (the laser beam stays brig
 const BIT_HALF := 1.6          # octahedron "bit" half-extent
 const STRETCH := 2.8           # velocity stretch along the travel axis
 const SPIN := 8.0              # roll speed around the travel axis, rad/s
+const POOL_KEY := &"projectile3d"   # private to this class: a take can only return a Projectile3D
 
 # Shared material cache: the recipe below is deterministic per colour and never
 # animated per instance, so every shot of a colour reuses one material.
@@ -29,6 +30,57 @@ static var _am_cached: Node = null  # AudioManager, resolved once (shared patter
 
 var _mesh: MeshInstance3D
 var _roll := 0.0
+# Board that handed this instance out (untyped: pool_take/pool_put are not Node
+# methods, so a typed reference would not compile). Only obtain() sets it; an
+# instance built with new() keeps the plain queue_free lifetime.
+var _pool_board
+var _dead := false             # released already — makes a double release impossible
+
+# Pooled construction: a parked shot or a fresh one, out of the tree, with every
+# per-life field reset. The caller then runs setup() and board.add_projectile().
+static func obtain(b) -> Projectile3D:
+	var p: Projectile3D = null
+	if b != null:
+		var n: Node = b.pool_take(POOL_KEY)
+		if n is Projectile3D:
+			p = n
+		elif n != null:
+			n.queue_free()   # wrong class under our key: drop it rather than orphan it
+	if p == null:
+		p = Projectile3D.new()
+	p._pool_board = b
+	p._reset()
+	return p
+
+# Full per-life reset. EVERY field a shot writes belongs here — a pooled instance
+# carries its predecessor's state otherwise, and a stale target or damage is a
+# gameplay bug, not a cosmetic one. Add new fields to this list when adding them
+# above. Covered: target, speed, damage, col, pierces_ecc, buffer_overflow,
+# applies_dos, dos_freeze, dos_slow_time, dos_slow_factor, pp, _roll, _dead,
+# node transform / visibility / processing, mesh rotation / scale / transparency /
+# visibility. `_mesh.material_override` is (re)assigned from `col` by setup().
+func _reset() -> void:
+	target = null
+	speed = 0.0
+	damage = 0.0
+	col = Color(1, 1, 1)
+	pierces_ecc = false
+	buffer_overflow = false
+	applies_dos = false
+	dos_freeze = 0.5
+	dos_slow_time = 2.0
+	dos_slow_factor = 0.5
+	pp = Vector2.ZERO
+	_roll = 0.0
+	_dead = false
+	transform = Transform3D.IDENTITY
+	visible = true
+	set_process(true)
+	_ensure_mesh()
+	_mesh.rotation = Vector3.ZERO
+	_mesh.scale = Vector3(BIT_HALF * STRETCH, BIT_HALF, BIT_HALF)   # velocity stretch on x
+	_mesh.transparency = 0.0
+	_mesh.visible = true
 
 func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := false, overflow := false, dos := false) -> void:
 	pp = start_plane
@@ -39,15 +91,25 @@ func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := 
 	pierces_ecc = pierce
 	buffer_overflow = overflow
 	applies_dos = dos
-	_build_mesh()
+	_ensure_mesh()
+	_mesh.material_override = _shared_mat(col)
+	# Aim on the spawn frame: _process would otherwise be the first thing to set
+	# the yaw, so a reused instance could render one frame at its last shot's angle.
+	if t != null and is_instance_valid(t):
+		var to_t: Vector2 = t.pp - pp
+		if to_t.length_squared() > 0.0:
+			_mesh.rotation = Vector3(_roll, -to_t.angle(), 0.0)
 	_sync_transform()
 
-func _build_mesh() -> void:
+# One-time mesh child: a pooled instance keeps the one it built on its first
+# life. Per-shot mesh state belongs in _reset() / setup(), not here.
+func _ensure_mesh() -> void:
+	if _mesh != null and is_instance_valid(_mesh):
+		return
 	# a small faceted octahedron "bit", elongated along its travel axis — matches
 	# the hand-built low-poly tower bodies instead of a smooth sphere
 	_mesh = MeshInstance3D.new()
 	_mesh.mesh = ImpactFlash3D.unit_octahedron()
-	_mesh.material_override = _shared_mat(col)
 	_mesh.scale = Vector3(BIT_HALF * STRETCH, BIT_HALF, BIT_HALF)   # velocity stretch on x
 	add_child(_mesh)
 
@@ -82,7 +144,7 @@ func _audio() -> Node:
 # self-destruct.
 func _process(delta: float) -> void:
 	if not is_instance_valid(target):
-		queue_free()
+		_release()
 		return
 	var to_target: Vector2 = target.pp - pp
 	var dist := to_target.length()
@@ -98,7 +160,7 @@ func _process(delta: float) -> void:
 		var am: Node = _audio()
 		if am:
 			am.play_sfx("projectile_hit")
-		queue_free()
+		_release()
 	else:
 		pp += to_target / dist * step
 		# roll the bit around its long axis and keep that axis pointed at the
@@ -106,3 +168,21 @@ func _process(delta: float) -> void:
 		_roll += SPIN * delta
 		_mesh.rotation = Vector3(_roll, -to_target.angle(), 0.0)
 		_sync_transform()
+
+# Death path. Parking instead of freeing is only safe because nothing outlives a
+# shot that references it: the firing tower drops its reference on the frame it
+# fires, the board keeps no projectile list (add_projectile is a bare add_child),
+# and no signal is ever connected to a shot. `target` is dropped here so a parked
+# shot cannot pin a dead enemy. After pool_put the node is out of the tree and
+# not processing — callers must return immediately.
+func _release() -> void:
+	if _dead:
+		return
+	_dead = true
+	target = null
+	var b = _pool_board
+	_pool_board = null
+	if b != null and is_instance_valid(b):
+		b.pool_put(POOL_KEY, self)
+	else:
+		queue_free()

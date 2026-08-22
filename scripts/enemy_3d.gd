@@ -3,8 +3,19 @@ extends Node3D
 ## 3D enemy. All path / damage / split logic is ported verbatim from the 2D
 ## Enemy, operating on `pp` (plane position, Vector2). The 3D transform is
 ## synced from `pp` for display only. Body is an extruded prism rotated to face
-## travel; the health bar above it is a billboarded Sprite3D so it always
-## reads upright regardless of body yaw or camera tilt.
+## travel; the health bar above it is one instance in the board-wide
+## HealthBarField, billboarded there so it reads upright regardless of body yaw
+## or camera tilt.
+##
+## Two nodes per enemy: this root (pp) and _body (one MeshInstance3D carrying the
+## merged faces+edges mesh plus heading yaw, idle spin, hover bob and the pop
+## scale). Materials are SHARED per enemy type — every per-enemy visual
+## (hit flash, DoS frost, ECC scan phase) rides instance shader uniforms on
+## _body, so combat never writes a material property. That is the fast path and
+## needs a RenderingDevice renderer; on the Compatibility renderer the shared
+## material is a TEMPLATE that is duplicated per enemy instead (see
+## _instance_uniforms_ok). Both paths draw the same image, and every per-enemy
+## write goes through the one _set_inst_param helper.
 
 signal bounty(amount: int)
 signal reached_goal()
@@ -22,7 +33,7 @@ const ECC_RESIST := 0.9
 const GLOW_HDR_BOOST := 0.9
 const BODY_HEIGHT := 4.0
 const HIT_FLASH_RATE := 8.0     # hit flash decays at ~8/s so each hit reads as a distinct blink
-const BOB_AMPLITUDE := 0.45     # hover bob on _body_root — display only, pp/hit logic untouched
+const BOB_AMPLITUDE := 0.45     # hover bob on _body — display only, pp/hit logic untouched
 const BOB_RATE := 2.2
 const SPIN_RATE := 0.5          # idle spin (rad/s) for platonic solids only
 
@@ -63,9 +74,21 @@ const SOLID_VERTS := {
 		Vector3(-1,-PHI,0), Vector3(-1,PHI,0), Vector3(1,-PHI,0), Vector3(1,PHI,0),
 		Vector3(-PHI,0,-1), Vector3(-PHI,0,1), Vector3(PHI,0,-1), Vector3(PHI,0,1)],
 }
-const BAR_PIX_W := 40
-const BAR_PIX_H := 6
 const BAR_HEIGHT_PAD := 3.0     # bar sits above the body's top by this many units
+# Mass-kill cap: at most this many shard FX may START in one frame (death shatter
+# and goal-leak share the budget). Past it the enemy still dies normally and
+# silently — an accepted visual trade-off, since nobody counts shards in a wipe.
+const DEATH_FX_PER_FRAME := 12
+# Whether enemy bodies cast into the shadow map. Measured at 400 enemies: casting
+# costs ~585 objects, ~585 draw calls and ~178k primitives — 43% of ALL draw calls
+# in the frame — because every enemy is a shadow caster on top of its own draw.
+# Enemies hover one unit over a near-black board lit by a dim (0.55) key light, so
+# their shadows are not discernible in a side-by-side render; towers, walls and the
+# board keep casting normally, which is where the grounding actually reads. Flip
+# this to true to get them back (that also puts the merged edge outline in the
+# shadow pass, which the pre-merge code excluded).
+const ENEMY_CASTS_SHADOW := false
+const FX_POOL_KEY := &"enemy_shard_fx"
 
 var data: EnemyData
 var path_points: PackedVector2Array
@@ -84,20 +107,40 @@ var _alive := true
 var _freeze_time := 0.0
 var _slow_time := 0.0
 var _slow_factor := 1.0         # active slow multiplier (set per-tower by apply_dos)
-var _tint_mats: Array = []      # body materials driven by frost/flash (standard + shader; see _gather_tint_mats)
 var _dos_vis_k := -1.0          # last-applied tint strength (avoid per-frame churn)
 var _flash := 0.0               # hit-flash strength; set on damage, decayed in _process
 var _flash_vis := -1.0          # last-applied flash strength (churn guard, like _dos_vis_k)
 var _bob_time := 0.0
 var _bob_phase := 0.0           # per-enemy random phase so hover bobs de-sync across the wave
-var _body_root: Node3D         # rotates with heading (body only — bar stays upright)
-var _body: MeshInstance3D      # the body faces (prism for legacy shapes, hull faces for solids)
-var _edges_mi: MeshInstance3D  # neon edge outline; doubles as the source mesh for shard FX
-var _spin_node: Node3D         # solids only: idle-spin wrapper (heading yaw stays on _body_root)
+# The one body node: merged faces (surface 0) + edge outline (surface 1), and the
+# carrier of heading yaw + idle spin + hover bob + pop scale (bar stays upright).
+var _body: MeshInstance3D
+var _edges_mesh: ArrayMesh     # edges-only copy of surface 1; the shard FX draws this
+# Fallback renderer ONLY (see _instance_uniforms_ok): this node's own duplicated
+# materials, which carry the per-enemy values that cannot ride the instance there.
+# Body enemies hold two (faces + edges); an FX carrier holds one. Always EMPTY on
+# the capable path, where those same values are written to the instance instead.
+var _own_mats: Array[ShaderMaterial] = []
+var _spins := false            # platonic solids only — prisms never gain idle spin
+var _spin_angle := 0.0         # idle spin, folded into the body yaw
 var _pop_tween: Tween
 var _pending_pop := 0.0        # spawn-pop duration deferred to _ready (setup runs pre-add_child)
 var _body_top := BODY_HEIGHT   # world height of the body's top (drives the health bar)
-var _bar: Sprite3D
+# Health bar: an instance in the shared HealthBarField, held only while damaged.
+var _bar_slot := -1            # instance index in that field; -1 = no bar
+var _bar_field: HealthBarField
+var _bar_width := 0.0          # bar's world width (scales with the body)
+var _bar_y := 0.0              # bar height above this root, in local units
+
+# Shard-FX mode. A released FX carrier is a MeshInstance3D wearing THIS script
+# (see _spawn_shard_fx); _is_fx keeps it out of every enemy code path for good.
+var _is_fx := false
+var _fx_mi: MeshInstance3D     # == self in FX mode, re-typed so the mesh API is reachable
+var _fx_board = null           # board that owns the FX free list (untyped: GameBoard3D API)
+var _fx_t := 0.0
+var _fx_duration := 0.0
+var _fx_start_scale := Vector3.ONE
+var _fx_end_scale := Vector3.ONE
 
 func setup(d: EnemyData, points: PackedVector2Array) -> void:
 	data = d
@@ -110,7 +153,7 @@ func setup(d: EnemyData, points: PackedVector2Array) -> void:
 	_bob_phase = randf() * TAU
 	_build_visuals()
 	_sync_transform()
-	_refresh_bar_texture(1.0)
+	_refresh_bar(1.0)
 	# Spawn-in pop: the same helper covers wave spawns and split children (both
 	# arrive through setup()), so nothing materialises at full size in one frame.
 	_pop_body(0.05, 0.25)
@@ -123,67 +166,60 @@ func progress() -> int:
 
 # --------------------------------------------------------------- mesh
 func _build_visuals() -> void:
-	_body_root = Node3D.new()
-	add_child(_body_root)
+	_body = MeshInstance3D.new()
+	add_child(_body)
 	_build_body()
-	_bar = Sprite3D.new()
-	_bar.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_bar.shaded = false
-	# Nearest filtering: the 40x6 texture must stay crisp texels, not a smear.
-	_bar.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	# Draw the bar on top of everything (body, walls) so it reads as a HUD element
-	# regardless of camera angle, the way the 2D bar always sat above the sprite.
-	_bar.no_depth_test = true
-	_bar.render_priority = 8
-	# A HUD billboard must never darken the board below it.
-	_bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_bar)
 	_place_bar()
 
-# (Re)build the body under _body_root. Solids get a faceted shaded body PLUS a
-# glowing neon edge outline (two child meshes); the legacy extruded prism shapes
-# get the same pair from the extruded silhouette. Callers clear _body_root first
-# (morph rebuilds). Meshes are STATIC and shared by reference per shape+size via
-# _mesh_cache — only the materials are per-enemy (tint/flash/frost all live in
-# materials; nothing mutates a mesh after build, and _spawn_shard_fx already
-# shares the edge mesh by reference).
+# (Re)build the body on _body. Solids get a faceted shaded body PLUS a glowing
+# neon edge outline; the legacy extruded prism shapes get the same pair from the
+# extruded silhouette. Both live in ONE mesh (surface 0 = faces, surface 1 =
+# edges) with a per-surface material, so an enemy needs a single MeshInstance3D.
+# Meshes AND materials are STATIC and shared by reference (per shape+size via
+# _mesh_cache, per enemy type via _body_mats/_edge_mats); nothing per-enemy lives
+# in either, so a morph is just a re-point of both. On the fallback renderer the
+# two materials are per-enemy duplicates of those same shared ones instead
+# (_per_enemy_material) — a morph then re-duplicates from the new type's pair,
+# which is still a re-point of everything that is actually built once.
 func _build_body() -> void:
-	# Detach before queue_free so _collect_tint_mats below never snapshots the
-	# outgoing meshes (queued nodes remain children until end of frame).
-	for c in _body_root.get_children():
-		_body_root.remove_child(c)
-		c.queue_free()
-	_spin_node = null
 	var entry: Dictionary = _shared_meshes()
-	_body = MeshInstance3D.new()
-	_body.mesh = entry["faces"]
-	_body.material_override = _faces_material()
-	_edges_mi = MeshInstance3D.new()
-	_edges_mi.mesh = entry["edges"]
-	_edges_mi.material_override = _edge_material()
-	# The outline is an emissive sliver hugging the body — the body's own shadow
-	# already covers it, so it never needs to cast one.
-	_edges_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	if data.shape in SOLIDS:
-		# Solids sit under a spin wrapper so the idle rotation lives on the meshes
-		# while heading yaw (and the bob) stay on _body_root.
-		_spin_node = Node3D.new()
-		_body_root.add_child(_spin_node)
-		_spin_node.add_child(_body)
-		_spin_node.add_child(_edges_mi)
-	else:
-		_body_root.add_child(_body)
-		_body_root.add_child(_edges_mi)
+	# ECC scan band sweeps the body's full height, so the height must be known
+	# before the (height-tuned) shared material is asked for.
 	_body_top = float(entry["top"])
+	_edges_mesh = entry["edges"]
+	var m: ArrayMesh = entry["mesh"]
+	_body.mesh = m
+	# Drop any materials a previous form owned (fallback path only — no-op on the
+	# capable path, where this list is always empty) before the new pair is taken.
+	_own_mats.clear()
+	if m.get_surface_count() > 0:
+		_body.set_surface_override_material(0, _per_enemy_material(_body_material()))
+	if m.get_surface_count() > 1:
+		_body.set_surface_override_material(1, _per_enemy_material(_edge_material()))
+	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if ENEMY_CASTS_SHADOW \
+		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Solids spin; prisms must not. A morph restarts the spin from zero, as the
+	# rebuilt spin wrapper used to.
+	_spins = data.shape in SOLIDS
+	_spin_angle = 0.0
 	hit_radius = _radius_estimate()
-	# ECC scan band sweeps the body's full height, so tune it once the height is known.
-	_tune_scan(_body)
-	_collect_tint_mats()
+	# Per-enemy shader state. scan_phase de-syncs the ECC sweep across enemies;
+	# flash/frost start clean so a morph shows the new form at rest for one frame
+	# exactly as the freshly built materials used to.
+	_set_inst_param(&"scan_phase", randf())
+	_set_inst_param(&"flash", 0.0)
+	_set_inst_param(&"frost", 0.0)
+	_dos_vis_k = -1.0
+	_flash_vis = -1.0
+	# Re-seat the yaw now that the spin was zeroed, so a morph snaps in the same
+	# frame the rebuilt spin wrapper used to.
+	_sync_transform()
 
-# Face/edge ArrayMeshes + body-top height for the current shape and size, built
-# once per distinct key and shared across enemies. The key carries every size
-# input the geometry reads (_local_shape_points, _radius_estimate and the solid
-# builder), so equal keys always mean identical meshes.
+# Merged body mesh + an edges-only copy (the shard FX draws it alone) + body-top
+# height for the current shape and size, built once per distinct key and shared
+# across enemies. The key carries every size input the geometry reads
+# (_local_shape_points, _radius_estimate and the solid builder), so equal keys
+# always mean identical meshes.
 static var _mesh_cache: Dictionary = {}
 
 func _shared_meshes() -> Dictionary:
@@ -195,11 +231,11 @@ func _shared_meshes() -> Dictionary:
 		else:
 			# Prisms get the same neon edge outline as the solids: silhouette
 			# loops at top and bottom plus the vertical corner edges.
-			entry = {
-				"faces": _build_prism_mesh(),
-				"edges": _edge_outline_mesh(_prism_edge_segments()),
-				"top": BODY_HEIGHT,
-			}
+			var mesh := ArrayMesh.new()
+			_build_prism_surface().commit(mesh)
+			var edge_st := _edge_outline_surface(_prism_edge_segments())
+			edge_st.commit(mesh)
+			entry = {"mesh": mesh, "edges": edge_st.commit(), "top": BODY_HEIGHT}
 		_mesh_cache[key] = entry
 	return entry
 
@@ -219,21 +255,25 @@ func _prism_edge_segments() -> Array:
 		segs.append([at, ab])
 	return segs
 
+# Size + anchor of this enemy's health bar. The bar itself is an instance in the
+# shared HealthBarField, so this only recomputes what that field reads and pushes
+# the change through when a bar is already live (a decay morph resizes the body
+# under an enemy that is by definition already damaged).
 func _place_bar() -> void:
-	if _bar != null:
-		# Size the bar to roughly the enemy's width so it's clearly readable
-		# (a fixed tiny bar got lost against the larger 3D bodies). pixel_size is
-		# chosen so the 40-texel-wide texture spans ~2.4 * the body radius.
-		var bar_w: float = maxf(9.0, _radius_estimate() * 2.4)
-		_bar.pixel_size = bar_w / float(BAR_PIX_W)
-		_bar.position = Vector3(0, _body_top + BAR_HEIGHT_PAD, 0)
+	# Size the bar to roughly the enemy's width so it's clearly readable
+	# (a fixed tiny bar got lost against the larger 3D bodies): the 40-texel-wide
+	# bar spans ~2.4 * the body radius.
+	_bar_width = maxf(9.0, _radius_estimate() * 2.4)
+	_bar_y = _body_top + BAR_HEIGHT_PAD
+	if _bar_slot >= 0:
+		_bar_field.set_metrics(_bar_slot, _bar_width, _bar_y)
 
 # A true 3D platonic solid (or dual compound) as the body meshes. Each member is
 # normalised to a circumradius of 1, scaled by data.radius, and shifted so the
 # body's lowest point rests on the board (y=0). Faces are flat-shaded metallic
 # (form from the key light) + a modest self-glow; edges are bright emissive
 # lines that bloom — the "faceted + edge glow" style. Returns a _mesh_cache
-# entry ({faces, edges, top}); node/material assembly happens in _build_body.
+# entry ({mesh, edges, top}); node/material assembly happens in _build_body.
 func _build_solid_meshes() -> Dictionary:
 	var r: float = maxf(2.0, data.radius)
 	# Gather geometry in unit (circumradius ~1) coords as flat triangles + edges,
@@ -281,9 +321,13 @@ func _build_solid_meshes() -> Dictionary:
 	var lifted: Array = []
 	for se in sedges:
 		lifted.append([se[0] + up, se[1] + up])
+	var mesh := ArrayMesh.new()
+	face_st.commit(mesh)
+	var edge_st := _edge_outline_surface(lifted)
+	edge_st.commit(mesh)
 	return {
-		"faces": face_st.commit(),
-		"edges": _edge_outline_mesh(lifted),
+		"mesh": mesh,
+		"edges": edge_st.commit(),
 		"top": max_y + lift,
 	}
 
@@ -460,63 +504,111 @@ func _min_edges(verts: PackedVector3Array) -> Array:
 				out.append([i, j])
 	return out
 
-# Faces: lit metallic (form from the key light) + a modest self-glow so the body
-# reads on the dark board without washing out the edge outline. Enemies carrying
-# a special property (ECC / Encrypted / both = "TLS") get a ShaderMaterial that
-# adds the property visuals instead; plain enemies keep the cheap StandardMaterial.
-func _faces_material() -> Material:
-	if data.ecc or data.encrypted:
-		return _property_material()
-	var mat := StandardMaterial3D.new()
-	var fill: Color = data.color
-	mat.albedo_color = fill
-	mat.metallic = 0.2
-	mat.roughness = 0.5
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	# Rim term so grazing faces pick up a halo — silhouettes separate from the
-	# dark board instead of flattening into color blobs.
-	mat.rim_enabled = true
-	mat.rim = 0.6
-	mat.rim_tint = 0.2
-	if data.glow > 0.0:
-		mat.emission_enabled = true
-		mat.emission = fill
-		mat.emission_energy_multiplier = 0.3 + data.glow * 0.25
-	return mat
+# --------------------------------------------------------------- materials
+# Every body material is SHARED per enemy type and never written to during play.
+# The three shaders below carry the per-enemy state (hit flash, DoS frost, ECC
+# scan phase, shard-FX envelope) as `instance uniform`s, which live in the
+# instance's own data rather than the material (Forward+/Mobile only; the project
+# is forward_plus). On the Compatibility renderer, which has no instance uniforms,
+# the same shaders compile with plain uniforms and each enemy duplicates the
+# shared material — see _instance_uniforms_ok / _per_enemy_material / _set_inst_param.
+#
+# RENDERER CAPABILITY. `instance uniform` is not merely slower elsewhere, it is a
+# HARD COMPILE ERROR on the Compatibility (OpenGL) renderer:
+#     SHADER ERROR: Uniform instances are not supported in gl_compatibility shaders.
+# All three shaders below fail to compile there, so every enemy renders broken —
+# which also breaks any future web / low-end export. So each per-instance
+# declaration is written with the _INST token and expanded at Shader build time:
+# "instance uniform float flash;" where instance uniforms exist, "uniform float
+# flash;" where they do not. There is ONE source string per shader and only the
+# qualifier differs, so the two renderers cannot drift visually.
+#
+# DETECTION. RenderingServer.get_rendering_device() is non-null on Forward+ and
+# Mobile (both are RenderingDevice backends) and null on Compatibility. Headless
+# also reports null, but headless compiles no shaders at all and
+# set_instance_shader_parameter is a harmless no-op there — so headless is treated
+# as CAPABLE, keeping a headless profiling run on the same path (shared materials,
+# no duplicates) as the shipping game. Measured in-engine:
+#     headless          -> RD null,     DisplayServer "headless"
+#     gl_compatibility  -> RD null,     DisplayServer "X11"
+#     Forward+          -> RD non-null
+# Probed ONCE and cached: the renderer cannot change while the process runs.
+#
+# COLOUR SPACE. What these replace lerped an sRGB Color on the CPU (frost/flash
+# tints on albedo_color and emission, and the shard's colour tween) and let Godot
+# convert the RESULT to linear. So the colour uniforms here are passed RAW — no
+# `source_color` hint — and every mix happens before srgb_to_lin() below. Doing
+# it the other way round is a visible shift, not a rounding difference.
+#
+# INSTANCE-UNIFORM SLOTS. Instance uniforms are addressed by slot index, assigned
+# in declaration order per shader, and the body's two surfaces sit on ONE
+# MeshInstance3D — so the body and edge shaders must declare `flash` then `frost`
+# first and in that order, or a write to one would land in the other's slot.
+# (The fallback path addresses plain uniforms by name, so order is free there —
+# but the declarations are shared source, so the rule still governs them.)
+const _INST := "@INST@"   # expands to "instance uniform" or "uniform"
 
-# Shader for the special-property body. Replicates the plain look (lit metallic +
-# self-glow + Fresnel rim) and adds, per uniform flags:
+static var _inst_uniform_support := -1   # -1 = not probed, 0 = fallback, 1 = capable
+
+static func _instance_uniforms_ok() -> bool:
+	if _inst_uniform_support < 0:
+		var headless := DisplayServer.get_name() == "headless"
+		_inst_uniform_support = 1 if (headless or RenderingServer.get_rendering_device() != null) else 0
+	return _inst_uniform_support == 1
+
+const _SRGB_FN := """
+vec3 srgb_to_lin(vec3 c) {
+	// Matches Color::srgb_to_linear() (what a source_color uniform gets on upload).
+	vec3 hi = pow((c + vec3(0.055)) * (1.0 / 1.055), vec3(2.4));
+	vec3 lo = c * (1.0 / 12.92);
+	return mix(lo, hi, step(vec3(0.04045), c));
+}
+"""
+
+# One shader for every enemy body.
+#
+# standard_mode = 1 reproduces the plain enemy's StandardMaterial3D term for term
+# (albedo, metallic 0.2, roughness 0.5, emission colour x energy gated on
+# emission_enabled, and the built-in rim light at rim 0.6 / rim_tint 0.2), frost
+# and flash included — those lerped the material's own albedo/emission, so they
+# are reproduced in sRGB.
+#
+# standard_mode = 0 is the special-property body (ECC / Encrypted / both = "TLS"),
+# which trades the built-in rim for an emissive Fresnel rim and adds:
 #  - ECC: a horizontal emission band scanning bottom-to-top at constant speed
 #    (wrapping ramp with a brief off-time between passes, not a sine slosh).
 #  - Encrypted: a 2px screen-space checkerboard discard — stays in the opaque
 #    pipeline (no transparency-sorting shimmer) and the opaque wireframe edges
 #    show through the discarded pixels as a "revealed wireframe".
 #  - both (TLS): both — the scan band is kept solid, never dithered away.
-#  - frost / flash: status uniforms driven from _apply_status_visual, so DoS ice
-#    and the hit flash read on shader bodies exactly like on standard ones.
-const _PROPERTY_SHADER := """
+const _BODY_SHADER := """
 shader_type spatial;
 render_mode cull_disabled, depth_draw_opaque;
 
-uniform vec4 body_color : source_color = vec4(1.0);
-uniform float emission_energy = 0.4;
+uniform vec4 body_color = vec4(1.0);
+uniform float standard_mode = 1.0;
+uniform float emi_on = 0.0;           // standard: emission_enabled
+uniform float base_energy = 1.0;      // standard: emission_energy_multiplier
+uniform float emission_energy = 0.0;  // property: baked glow energy
 uniform float base_alpha = 1.0;
 uniform float scan_enabled = 0.0;
 uniform float scan_top = 1.0;
 uniform float scan_half_width = 1.0;
 uniform float scan_speed = 0.45;
 uniform float scan_boost = 2.4;
-uniform float scan_phase = 0.0;
-uniform float frost = 0.0;
-uniform float flash = 0.0;
+
+@INST@ float flash;
+@INST@ float frost;
+@INST@ float scan_phase;
 
 varying float v_y;
-
+%s
 void vertex() {
 	v_y = VERTEX.y;
 }
 
 void fragment() {
+	vec3 frost_c = vec3(0.5, 0.85, 1.0);
 	float band = 0.0;
 	if (scan_enabled > 0.5) {
 		// Wrapping linear ramp: constant-speed sweep past both ends of the body,
@@ -532,83 +624,238 @@ void fragment() {
 			discard;
 		}
 	}
-	vec3 frost_c = vec3(0.5, 0.85, 1.0);
-	ALBEDO = mix(body_color.rgb, frost_c, frost);
 	METALLIC = 0.2;
 	ROUGHNESS = 0.5;
-	vec3 emis = body_color.rgb * emission_energy;
-	emis += body_color.rgb * band * scan_boost;
-	// Fresnel rim: grazing faces emit a halo that lifts the silhouette off the board.
-	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
-	emis += body_color.rgb * rim * 0.5;
-	// Frost after the band so a frozen ECC enemy's scan frosts too; flash last so
-	// a hit always reads white even through frost.
-	emis = mix(emis, frost_c * emission_energy, frost);
-	emis += vec3(1.0) * flash * 2.0;
-	EMISSION = emis;
+	// Rim term so grazing faces pick up a halo — silhouettes separate from the
+	// dark board instead of flattening into color blobs. The property body puts
+	// its rim in EMISSION instead, so it takes rim 0 (no contribution).
+	RIM = 0.6 * standard_mode;
+	RIM_TINT = 0.2;
+	if (standard_mode > 0.5) {
+		ALBEDO = srgb_to_lin(mix(body_color.rgb, frost_c, frost));
+		vec3 emi = mix(body_color.rgb * emi_on, frost_c, frost);
+		if (flash > 0.0) {
+			EMISSION = srgb_to_lin(mix(emi, vec3(1.0), flash * 0.7)) * (base_energy + flash * 2.0);
+		} else {
+			EMISSION = srgb_to_lin(emi) * base_energy * emi_on;
+		}
+	} else {
+		vec3 lin = srgb_to_lin(body_color.rgb);
+		ALBEDO = mix(lin, frost_c, frost);
+		vec3 emis = lin * emission_energy;
+		emis += lin * band * scan_boost;
+		// Fresnel rim: grazing faces emit a halo that lifts the silhouette off the board.
+		float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
+		emis += lin * rim * 0.5;
+		// Frost after the band so a frozen ECC enemy's scan frosts too; flash last so
+		// a hit always reads white even through frost.
+		emis = mix(emis, frost_c * emission_energy, frost);
+		emis += vec3(1.0) * flash * 2.0;
+		EMISSION = emis;
+	}
 }
 """
 
-static var _property_shader: Shader
+# Edges: unshaded emission for a crisp glowing outline. Kept modest — too bright
+# and the bloom swallows the body into a formless blob. Frost/flash drive it the
+# same way they drove the StandardMaterial3D this replaces.
+const _EDGE_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_opaque;
 
-func _property_material() -> ShaderMaterial:
-	if _property_shader == null:
-		_property_shader = Shader.new()
-		_property_shader.code = _PROPERTY_SHADER
+uniform vec4 edge_color = vec4(1.0);
+uniform float base_energy = 1.2;
+
+@INST@ float flash;
+@INST@ float frost;
+%s
+void fragment() {
+	vec3 frost_c = vec3(0.5, 0.85, 1.0);
+	vec3 c = mix(edge_color.rgb, frost_c, frost);
+	ALBEDO = srgb_to_lin(c);
+	if (flash > 0.0) {
+		EMISSION = srgb_to_lin(mix(c, vec3(1.0), flash * 0.7)) * (base_energy + flash * 2.0);
+	} else {
+		EMISSION = srgb_to_lin(c) * base_energy;
+	}
+}
+"""
+
+# Shard FX: the edge wireframe blowing outward as the enemy dies. fx_u is the
+# 0..1 envelope position driven by _tick_fx, replacing the colour/energy tweens
+# (the scale half stays on the node). The energy spike still peaks at a quarter
+# of the way through and rides down to zero over the rest.
+const _FX_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_disabled, blend_mix, depth_draw_opaque;
+
+uniform vec4 start_color = vec4(1.0);
+uniform vec4 end_color = vec4(1.0);
+uniform float base_energy = 1.2;
+uniform float spike = 6.0;
+
+@INST@ float fx_u;
+%s
+void fragment() {
+	vec4 c = mix(start_color, end_color, fx_u);
+	vec3 lin = srgb_to_lin(c.rgb);
+	ALBEDO = lin;
+	ALPHA = c.a;
+	float e = fx_u < 0.25
+		? mix(base_energy, spike, fx_u / 0.25)
+		: mix(spike, 0.0, (fx_u - 0.25) / 0.75);
+	EMISSION = lin * e;
+}
+"""
+
+static var _body_shader: Shader
+static var _edge_shader: Shader
+static var _fx_shader: Shader
+static var _body_mats: Dictionary = {}
+static var _edge_mats: Dictionary = {}
+static var _fx_mats: Dictionary = {}
+
+# Compile one shader from its single source string, expanding _INST to the
+# qualifier this renderer accepts. Only the qualifier changes — the shader body is
+# character-identical on both paths, so both renderers produce the same image.
+static func _shader_of(cached: Shader, src: String) -> Shader:
+	if cached != null:
+		return cached
+	var s := Shader.new()
+	var qualifier := "instance uniform" if _instance_uniforms_ok() else "uniform"
+	s.code = (src % _SRGB_FN).replace(_INST, qualifier)
+	return s
+
+# The material this node actually wears for one shared per-type material.
+# Capable path: the shared material itself, untouched — one material per enemy
+# type for the whole wave, and per-enemy state rides the instance. Fallback path:
+# the shared material is only a TEMPLATE (so the Shader object and every
+# type-constant uniform are still built exactly once, and the duplicate keeps the
+# shader by reference), and this node gets its own copy to write per-enemy values
+# into. Recorded in _own_mats, which is what _set_inst_param writes through.
+func _per_enemy_material(shared: ShaderMaterial) -> ShaderMaterial:
+	if _instance_uniforms_ok():
+		return shared
+	var own := shared.duplicate() as ShaderMaterial
+	if own == null:
+		return shared
+	_own_mats.append(own)
+	return own
+
+# THE one write path for every per-enemy shader value (flash, frost, scan_phase,
+# fx_u). Capable: a single instance-uniform write on this node's visual, materials
+# never touched. Fallback: the same value by name on each material this node owns
+# — both body surfaces for an enemy (the edge shader declares flash/frost too, so
+# edges follow faces exactly as they do through the shared instance slots), the
+# single shard material for an FX carrier. Names not present in a given shader are
+# ignored by the renderer, exactly as an unused instance slot is.
+# The colour uniforms are plain `vec4` (no `source_color` hint — these shaders
+# do their own sRGB conversion, and the hint would convert twice). A Color
+# assigned to one of those survives the immediate readback but is dropped back
+# to the uniform's default once the material is resolved against the shader,
+# which rendered every enemy white. Vector4 is the type-exact match and sticks.
+static func _v4(c: Color) -> Vector4:
+	return Vector4(c.r, c.g, c.b, c.a)
+
+func _set_inst_param(pname: StringName, value: Variant) -> void:
+	if _instance_uniforms_ok():
+		var gi: GeometryInstance3D = _fx_mi if _is_fx else _body
+		if gi != null:
+			gi.set_instance_shader_parameter(pname, value)
+		return
+	for m in _own_mats:
+		m.set_shader_parameter(pname, value)
+
+# Everything the body/edge materials read that is constant for an enemy type:
+# geometry (the scan band is tuned to the body height), colour, glow and the
+# property flags. Equal keys therefore always mean an identical material.
+func _type_key() -> String:
+	return "%s|%.3f|%.3f|%.3f|%.3f|%d|%d|%.3f|%d|%d" % [data.shape, data.radius,
+		data.length, data.width, data.side, data.sides, data.color.to_rgba32(),
+		data.glow, int(data.ecc), int(data.encrypted)]
+
+func _body_material() -> ShaderMaterial:
+	var key := _type_key()
+	var cached: ShaderMaterial = _body_mats.get(key)
+	if cached != null:
+		return cached
+	_body_shader = _shader_of(_body_shader, _BODY_SHADER)
 	var m := ShaderMaterial.new()
-	m.shader = _property_shader
-	var fill: Color = data.color
+	m.shader = _body_shader
+	var glowing := data.glow > 0.0
 	var energy := 0.0
-	if data.glow > 0.0:
+	if glowing:
 		energy = 0.3 + data.glow * 0.25
-	m.set_shader_parameter("body_color", fill)
+	m.set_shader_parameter("body_color", _v4(data.color))
+	m.set_shader_parameter("standard_mode", 0.0 if (data.ecc or data.encrypted) else 1.0)
+	# emission_enabled / emission_energy_multiplier of the StandardMaterial3D this
+	# stands in for: with no glow the material had emission off and the untouched
+	# default multiplier of 1.0, which the flash path still reads.
+	m.set_shader_parameter("emi_on", 1.0 if glowing else 0.0)
+	m.set_shader_parameter("base_energy", energy if glowing else 1.0)
 	m.set_shader_parameter("emission_energy", energy)
 	# Encrypted: base_alpha < 1 gates the checkerboard discard (the opaque edge
 	# wireframe then reads through the discarded pixels).
 	m.set_shader_parameter("base_alpha", 0.4 if data.encrypted else 1.0)
-	# ECC: enable the sweeping band (extents are set in _tune_scan once the height is known).
 	m.set_shader_parameter("scan_enabled", 1.0 if data.ecc else 0.0)
-	m.set_shader_parameter("scan_phase", randf())   # de-sync the sweep across enemies
+	# ECC scan band ramps across the full [0, _body_top] span; half-width
+	# 0.15 * height keeps it a line even on short bodies.
+	var top: float = maxf(_body_top, 0.001)
+	m.set_shader_parameter("scan_top", top)
+	m.set_shader_parameter("scan_half_width", top * 0.15)
+	_body_mats[key] = m
 	return m
 
-# Set the ECC scan band's vertical extents from the finished body height. The
-# band ramps across the full [0, _body_top] span; half-width 0.15 * height keeps
-# it a line even on short bodies.
-func _tune_scan(mi: MeshInstance3D) -> void:
-	if mi == null:
-		return
-	var m = mi.material_override
-	if m is ShaderMaterial:
-		var top: float = maxf(_body_top, 0.001)
-		m.set_shader_parameter("scan_top", top)
-		m.set_shader_parameter("scan_half_width", top * 0.15)
+func _edge_material() -> ShaderMaterial:
+	var bright: Color = data.color.lightened(0.3)
+	var energy: float = 1.2 + data.glow * 0.4
+	var key := "%d|%.3f" % [bright.to_rgba32(), energy]
+	var cached: ShaderMaterial = _edge_mats.get(key)
+	if cached != null:
+		return cached
+	_edge_shader = _shader_of(_edge_shader, _EDGE_SHADER)
+	var m := ShaderMaterial.new()
+	m.shader = _edge_shader
+	m.set_shader_parameter("edge_color", _v4(bright))
+	m.set_shader_parameter("base_energy", energy)
+	_edge_mats[key] = m
+	return m
 
-# Edges: unshaded emission for a crisp glowing outline. Kept modest — too bright
-# and the bloom swallows the body into a formless blob.
-func _edge_material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	var fill: Color = data.color
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	# Edge prisms are seen from every side; winding must never cull them away.
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.albedo_color = fill.lightened(0.3)
-	mat.emission_enabled = true
-	mat.emission = fill.lightened(0.3)
-	mat.emission_energy_multiplier = 1.2 + data.glow * 0.4
-	return mat
+# Shard material for one (tint, spike) variation of the edge look. Deterministic
+# per colour pair, so death shatters and goal leaks each collapse to one material
+# per enemy type.
+func _shard_material(tint: Color, spike: float) -> ShaderMaterial:
+	var bright: Color = data.color.lightened(0.3)
+	var energy: float = 1.2 + data.glow * 0.4
+	var fade := Color(tint.r, tint.g, tint.b, 0.0)
+	var key := "%d|%d|%.3f|%.3f" % [bright.to_rgba32(), fade.to_rgba32(), energy, spike]
+	var cached: ShaderMaterial = _fx_mats.get(key)
+	if cached != null:
+		return cached
+	_fx_shader = _shader_of(_fx_shader, _FX_SHADER)
+	var m := ShaderMaterial.new()
+	m.shader = _fx_shader
+	m.set_shader_parameter("start_color", _v4(bright))
+	m.set_shader_parameter("end_color", _v4(fade))
+	m.set_shader_parameter("base_energy", energy)
+	m.set_shader_parameter("spike", spike)
+	_fx_mats[key] = m
+	return m
 
 # Edge outline as slim 4-sided prisms instead of 1px hardware lines: edge weight
 # scales with enemy size (half-width from the body radius), anti-aliases as real
 # geometry, and gives the bloom actual coverage. ~8 tris per edge — worst case
 # (dodeca_icosahedron, ~90 edges) is still trivial, built once per _mesh_cache
-# key and shared from then on.
-func _edge_outline_mesh(segs: Array) -> ArrayMesh:
+# key and shared from then on. Returns the SurfaceTool so the caller can commit
+# it twice: once as surface 1 of the merged body mesh, once as the standalone
+# edges mesh the shard FX draws.
+func _edge_outline_surface(segs: Array) -> SurfaceTool:
 	var hw := clampf(_radius_estimate() * 0.03, 0.05, 0.12)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for se in segs:
 		_emit_edge_prism(st, se[0], se[1], hw)
-	return st.commit()
+	return st
 
 func _emit_edge_prism(st: SurfaceTool, a: Vector3, b: Vector3, hw: float) -> void:
 	var axis := b - a
@@ -627,14 +874,14 @@ func _emit_edge_prism(st: SurfaceTool, a: Vector3, b: Vector3, hw: float) -> voi
 
 # Extrude the 2D silhouette into a prism (legacy non-solid shapes). Winding
 # mirrors GameBoard3D._add_prism (top cap + outward side walls).
-func _build_prism_mesh() -> ArrayMesh:
+func _build_prism_surface() -> SurfaceTool:
 	var pts := _local_shape_points()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_smooth_group(-1)   # flat facets, so the body's edges stay crisp
 	_emit_prism(st, pts, BODY_HEIGHT, 0.0)
 	st.generate_normals()
-	return st.commit()
+	return st
 
 func _emit_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: float) -> void:
 	var center := Vector2.ZERO
@@ -658,7 +905,7 @@ func _emit_prism(st: SurfaceTool, poly: PackedVector2Array, top: float, bottom: 
 		st.add_vertex(at); st.add_vertex(bb); st.add_vertex(ab)
 		st.add_vertex(at); st.add_vertex(bt); st.add_vertex(bb)
 
-# Local (un-rotated) shape, in plane coords. Heading is applied via _body_root yaw.
+# Local (un-rotated) shape, in plane coords. Heading is applied via the _body yaw.
 func _local_shape_points() -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	if data.shape in SOLIDS:
@@ -715,10 +962,15 @@ func _radius_estimate() -> float:
 func _sync_transform() -> void:
 	# Enemies hover above the board (over the sunken path), not resting on it.
 	position = Vector3(pp.x, GameBoard3D.ENEMY_Y, pp.y)
-	_body_root.rotation = Vector3(0.0, -heading, 0.0)
+	# Both terms are rotations about Y, so summing them is exactly what the old
+	# heading node + spin child composed to.
+	_body.rotation = Vector3(0.0, -heading + _spin_angle, 0.0)
 
 # --------------------------------------------------------------- per-frame
 func _process(delta: float) -> void:
+	if _is_fx:
+		_tick_fx(delta)
+		return
 	if not _alive:
 		return
 	if _index >= path_points.size() - 1:
@@ -741,14 +993,14 @@ func _process(delta: float) -> void:
 	else:
 		pp += to_target / dist * step
 	cell = HexUtils.pixel_to_cell(pp - _grid_origin, GameBoard3D.HEX_SIZE)
+	# Display-only motion: hover bob and a slow idle spin for the platonic solids,
+	# both on _body (pp and the bar are untouched). The spin is advanced before the
+	# yaw is written, since the two now share one rotation.
+	if _spins:
+		_spin_angle += delta * SPIN_RATE
 	_sync_transform()
-	# Display-only motion: hover bob on _body_root (pp and the bar are untouched)
-	# and a slow idle spin for the platonic solids (on the mesh wrapper, so the
-	# heading yaw on _body_root survives).
 	_bob_time += delta
-	_body_root.position.y = sin(_bob_time * BOB_RATE + _bob_phase) * BOB_AMPLITUDE
-	if _spin_node != null:
-		_spin_node.rotation.y += delta * SPIN_RATE
+	_body.position.y = sin(_bob_time * BOB_RATE + _bob_phase) * BOB_AMPLITUDE
 
 # --------------------------------------------------------------- Denial of Service
 # Apply (or refresh) the freeze-then-slow debuff. Re-hits take the longer remaining
@@ -780,32 +1032,12 @@ func _tick_dos(delta: float) -> void:
 		_flash = maxf(0.0, _flash - delta * HIT_FLASH_RATE)
 	_apply_status_visual()
 
-# Snapshot the body materials the status visuals drive: StandardMaterial3D gets
-# base albedo/emission/energy for frost + flash lerps; the property shader is
-# driven through its frost/flash uniforms. Rebuilt whenever the body is.
-func _collect_tint_mats() -> void:
-	_tint_mats.clear()
-	_dos_vis_k = -1.0
-	_flash_vis = -1.0
-	if _body_root != null:
-		_gather_tint_mats(_body_root)
-
-func _gather_tint_mats(n: Node) -> void:
-	if n is MeshInstance3D:
-		var m: Material = (n as MeshInstance3D).material_override
-		if m is StandardMaterial3D:
-			var sm := m as StandardMaterial3D
-			_tint_mats.append({"mat": sm, "is_shader": false, "alb": sm.albedo_color,
-				"emi": sm.emission, "emi_on": sm.emission_enabled,
-				"energy": sm.emission_energy_multiplier})
-		elif m is ShaderMaterial:
-			_tint_mats.append({"mat": m, "is_shader": true})
-	for c in n.get_children():
-		_gather_tint_mats(c)
-
 # Frost (icy lerp while frozen/slowed) + hit flash (toward white with an energy
-# boost past the bloom threshold), restored when both lapse. Property writes
-# only, churn-guarded: nothing is written while both strengths are unchanged.
+# boost past the bloom threshold), restored when both lapse. Two per-enemy writes
+# through _set_inst_param — instance uniforms on the body where they exist (the
+# shared per-type materials are never touched), this enemy's own duplicated
+# materials otherwise — and churn-guarded: nothing is written while both strengths
+# are unchanged. Surfaces 0 and 1 both read flash/frost, so edges follow faces.
 func _apply_status_visual() -> void:
 	var k := 0.0
 	if _freeze_time > 0.0:
@@ -816,23 +1048,10 @@ func _apply_status_visual() -> void:
 		return
 	_dos_vis_k = k
 	_flash_vis = _flash
-	for t in _tint_mats:
-		if t["is_shader"]:
-			var shm: ShaderMaterial = t["mat"]
-			shm.set_shader_parameter("frost", k)
-			shm.set_shader_parameter("flash", _flash)
-			continue
-		var sm: StandardMaterial3D = t["mat"]
-		sm.albedo_color = (t["alb"] as Color).lerp(DOS_FROST, k)
-		var emi: Color = (t["emi"] as Color).lerp(DOS_FROST, k)
-		if _flash > 0.0:
-			sm.emission_enabled = true
-			sm.emission = emi.lerp(Color(1, 1, 1), _flash * 0.7)
-			sm.emission_energy_multiplier = float(t["energy"]) + _flash * 2.0
-		else:
-			sm.emission_enabled = bool(t["emi_on"])
-			sm.emission = emi
-			sm.emission_energy_multiplier = float(t["energy"])
+	if _body == null:
+		return
+	_set_inst_param(&"frost", k)
+	_set_inst_param(&"flash", _flash)
 
 # --------------------------------------------------------------- damage / reduction
 func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> bool:
@@ -851,7 +1070,7 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) 
 		_on_depleted(carry, pierces_ecc)
 		return true
 	_flash = 1.0
-	_refresh_bar_texture(health / data.health)
+	_refresh_bar(health / data.health)
 	return false
 
 # AudioManager autoload, resolved once and shared (the per-death absolute-path
@@ -871,6 +1090,7 @@ func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	var lesser: EnemyData = data.reduces_to
 	if lesser == null:
 		_alive = false
+		_release_bar()
 		# Shatter: the edge wireframe blows outward and blooms, then fades.
 		_spawn_shard_fx(Vector3.ONE * 1.6, 0.3, data.color.lightened(0.3), 6.0)
 		queue_free()
@@ -888,7 +1108,7 @@ func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	health = data.health
 	_build_body()
 	_place_bar()
-	_refresh_bar_texture(1.0)
+	_refresh_bar(1.0)
 	# Punch the morphed body in + a white flash so the decay reads as a split,
 	# not a glitch. Split children pop in via setup()'s spawn animation.
 	_flash = 1.0
@@ -931,22 +1151,23 @@ func place_on_path(seg: int, pos: Vector2) -> void:
 
 func _reach_goal() -> void:
 	_alive = false
+	_release_bar()
 	# Life loss is immediate — only the visual lingers behind the free below.
 	reached_goal.emit()
 	# Sucked-into-the-port: vertical stretch, tinted toward the goal marker's red.
 	_spawn_shard_fx(Vector3(0.05, 1.4, 0.05), 0.25, GameBoard3D.GOAL_COLOR, 3.0)
 	queue_free()
 
-# Punch-in on _body_root (display only — pp-based hit logic and the billboarded
-# bar are untouched). Shared by spawn-in, split children, and the decay morph.
+# Punch-in on _body (display only — pp-based hit logic and the billboarded bar
+# are untouched). Shared by spawn-in, split children, and the decay morph.
 # Spawners call setup() before add_child, so outside the tree the tween is
 # deferred to _ready (the body just starts at from_scale until then).
 func _pop_body(from_scale: float, duration: float) -> void:
-	if _body_root == null:
+	if _body == null:
 		return
 	if _pop_tween != null and _pop_tween.is_valid():
 		_pop_tween.kill()
-	_body_root.scale = Vector3.ONE * from_scale
+	_body.scale = Vector3.ONE * from_scale
 	if not is_inside_tree():
 		_pending_pop = duration
 		return
@@ -960,80 +1181,158 @@ func _ready() -> void:
 
 func _start_pop_tween(duration: float) -> void:
 	_pop_tween = create_tween()
-	_pop_tween.tween_property(_body_root, "scale", Vector3.ONE, duration) \
+	_pop_tween.tween_property(_body, "scale", Vector3.ONE, duration) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
-# One-shot detached copy of the edge wireframe, tweened in the parent and freed.
-# The death shatter (scale out, emission spike) and the goal-leak suck-in
-# (vertical stretch, goal-red tint) are parameter variations of this. Costs one
-# already-built mesh + one material; the enemy node itself can free immediately.
+# --------------------------------------------------------------- shard FX
+# One-shot detached copy of the edge wireframe, animated in the parent and
+# released. The death shatter (scale out, emission spike) and the goal-leak
+# suck-in (vertical stretch, goal-red tint) are parameter variations of this;
+# the enemy node itself can free immediately.
+#
+# The carrier is a POOLED MeshInstance3D wearing this script, which is the only
+# way it can run its own envelope: with the enemy gone there is nobody left to
+# tick it, and a per-FX Tween is exactly what this replaces. _is_fx is set before
+# it ever enters the tree and never cleared, so such a node can never fall into
+# an enemy code path.
+static var _fx_frame := -1
+static var _fx_spawned := 0
+
 func _spawn_shard_fx(target_scale: Vector3, duration: float, tint: Color, spike: float) -> void:
-	if _edges_mi == null or not is_inside_tree():
+	if _body == null or _edges_mesh == null or not is_inside_tree():
 		return
 	var parent := get_parent()
 	if parent == null:
 		return
-	var shard := MeshInstance3D.new()
-	shard.mesh = _edges_mi.mesh
+	# GameBoard3D.add_enemy parents enemies under the board's entity holder, so the
+	# board (which owns the free list) is one hop above this node's parent.
+	var bd = parent.get_parent()
+	if bd == null or not bd.has_method("pool_take"):
+		return
+	var frame: int = Engine.get_process_frames()
+	if frame != _fx_frame:
+		_fx_frame = frame
+		_fx_spawned = 0
+	if _fx_spawned >= DEATH_FX_PER_FRAME:
+		return   # mass wipe: this death is silent, everything else about it is normal
+	_fx_spawned += 1
+	var shard = bd.pool_take(FX_POOL_KEY)   # untyped: a MeshInstance3D wearing this script
+	if shard == null:
+		var mi := MeshInstance3D.new()
+		mi.set_script(get_script())
+		shard = mi
+	shard._fx_begin(parent, _body.global_transform, _edges_mesh,
+		_shard_material(tint, spike), target_scale, duration, bd)
+
+# Arm this node as a shard FX and put it on screen. Everything the previous life
+# left behind is overwritten here — the pool guarantees nothing else.
+func _fx_begin(parent: Node, at: Transform3D, mesh_ref: ArrayMesh, mat: Material,
+		target_scale: Vector3, duration: float, bd) -> void:
+	_is_fx = true
+	_fx_mi = _as_mesh_instance()
+	if _fx_mi == null:
+		return
+	_fx_t = 0.0
+	_fx_duration = maxf(duration, 0.0001)
+	_fx_board = bd
+	_fx_mi.mesh = mesh_ref
+	# The shard material is shared per (tint, spike) exactly like the body ones, so
+	# on the fallback path this carrier needs its own copy to hold fx_u. Whatever a
+	# previous life left in _own_mats is dropped here — the pool guarantees nothing.
+	_own_mats.clear()
+	var use_mat: Material = mat
+	if not _instance_uniforms_ok() and mat is ShaderMaterial:
+		var own := mat.duplicate() as ShaderMaterial
+		if own != null:
+			_own_mats.append(own)
+			use_mat = own
+	_fx_mi.material_override = use_mat
 	# One-shot glow FX — like the outline it copies, it never casts a shadow.
-	shard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var mat := _edge_material()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	shard.material_override = mat
-	parent.add_child(shard)
-	shard.global_transform = _edges_mi.global_transform
-	var end_scale: Vector3 = shard.scale * target_scale
-	var end_albedo := Color(tint.r, tint.g, tint.b, 0.0)
-	var tw := shard.create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(shard, "scale", end_scale, duration) \
-		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(mat, "albedo_color", end_albedo, duration)
-	tw.tween_property(mat, "emission", tint, duration)
-	tw.chain().tween_callback(shard.queue_free)
-	# Emission spikes hard into the bloom, then dies with the fade.
-	var tw2 := shard.create_tween()
-	tw2.tween_property(mat, "emission_energy_multiplier", spike, duration * 0.25)
-	tw2.tween_property(mat, "emission_energy_multiplier", 0.0, duration * 0.75)
+	_fx_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_set_inst_param(&"fx_u", 0.0)
+	_fx_mi.visible = true
+	parent.add_child(_fx_mi)
+	_fx_mi.global_transform = at
+	_fx_start_scale = _fx_mi.scale
+	_fx_end_scale = _fx_start_scale * target_scale
+	_fx_mi.set_process(true)
+
+# The FX carrier is a MeshInstance3D even though this script extends Node3D, so
+# `self` has to be re-typed through Node to expose the mesh API. Null on an enemy.
+func _as_mesh_instance() -> MeshInstance3D:
+	var me: Node = self
+	return me as MeshInstance3D
+
+# The envelope the two per-FX Tweens used to run: cubic ease-out on the scale,
+# linear on the colour/energy ramp (that half rides fx_u, via _set_inst_param).
+# Driven by the process delta, so it still tracks Engine.time_scale exactly.
+func _tick_fx(delta: float) -> void:
+	if _fx_duration <= 0.0 or _fx_mi == null:
+		return
+	_fx_t += delta
+	var u: float = clampf(_fx_t / _fx_duration, 0.0, 1.0)
+	_fx_mi.scale = _fx_start_scale.lerp(_fx_end_scale, 1.0 - pow(1.0 - u, 3.0))
+	_set_inst_param(&"fx_u", u)
+	if _fx_t >= _fx_duration:
+		_release_fx()
+
+func _release_fx() -> void:
+	_fx_duration = 0.0
+	_fx_t = 0.0
+	var bd = _fx_board
+	_fx_board = null
+	if _fx_mi != null:
+		# Drop the shared mesh/material so a parked carrier holds nothing and draws
+		# nothing; _fx_begin re-points both on the next life. The envelope is reset
+		# before the material goes, so the instance slot (capable path) is left clean
+		# for the next life exactly as it was.
+		_set_inst_param(&"fx_u", 0.0)
+		_fx_mi.mesh = null
+		_fx_mi.material_override = null
+		_own_mats.clear()
+	if bd != null and is_instance_valid(bd):
+		bd.pool_put(FX_POOL_KEY, self)
+	else:
+		queue_free()
 
 # --------------------------------------------------------------- health bar
-# A tiny billboarded sprite. Cheap to redraw — only happens when health changes
-# (or on setup/morph), not every frame. 1px near-opaque frame + dark track so it
-# reads on any background; the fill ramps green -> amber -> red as health drops;
-# hidden entirely at full health so healthy waves stay clutter-free.
+# The bar is ONE instance in the board-wide HealthBarField (a single MultiMesh
+# draw call for the whole wave) instead of a per-enemy billboarded Sprite3D. Only
+# DAMAGED enemies hold an instance: at full health the slot is released, so a
+# wave nobody has hit yet costs nothing and stays clutter-free — the same read
+# the hidden sprite gave. The frame / track / fill ramp all live in the field's
+# shader now; this side owns nothing but the fraction, size and anchor.
 #
-# The pixels are fully determined by (fill width, color band), so the textures
-# are pooled here and assigned by reference — at most ~41 distinct ones ever,
-# instead of a per-enemy Image + ImageTexture on every health change.
-static var _bar_tex_cache: Dictionary = {}
-
-func _refresh_bar_texture(frac: float) -> void:
+# The field is looked up from this enemy's own parent (the board's entity holder)
+# and so is freed with the board — there is nothing to leak across a scene change.
+func _refresh_bar(frac: float) -> void:
 	var f := clampf(frac, 0.0, 1.0)
-	if _bar == null:
+	if f >= 0.999:
+		_release_bar()
 		return
-	_bar.visible = f < 0.999
-	if not _bar.visible:
-		return   # full health: hidden, so skip all texture work
-	var fill: int = maxi(0, int(round(float(BAR_PIX_W - 2) * f)))
-	var band := 0   # 0 = green, 1 = red, 2 = amber (matches the f thresholds below)
-	if f < 0.2:
-		band = 1
-	elif f <= 0.5:
-		band = 2
-	var key: int = fill * 4 + band
-	var tex: ImageTexture = _bar_tex_cache.get(key)
-	if tex == null:
-		var img := Image.create(BAR_PIX_W, BAR_PIX_H, false, Image.FORMAT_RGBA8)
-		img.fill(Color(0, 0, 0, 0.9))
-		img.fill_rect(Rect2i(1, 1, BAR_PIX_W - 2, BAR_PIX_H - 2), Color(0.08, 0.10, 0.14, 0.85))
-		if fill > 0:
-			var col := Color(0.2, 0.9, 0.3)
-			if band == 1:
-				col = Color(0.95, 0.25, 0.2)
-			elif band == 2:
-				col = Color(0.95, 0.75, 0.15)
-			img.fill_rect(Rect2i(1, 1, fill, BAR_PIX_H - 2), col)
-		tex = ImageTexture.create_from_image(img)
-		_bar_tex_cache[key] = tex
-	if _bar.texture != tex:
-		_bar.texture = tex
+	if _bar_slot < 0:
+		_acquire_bar(f)
+		return
+	_bar_field.set_fraction(_bar_slot, f)
+
+func _acquire_bar(f: float) -> void:
+	# setup() runs before add_child, so a spawn has no parent yet — but it also
+	# spawns at full health, and the first damage always lands in-tree.
+	var parent := get_parent()
+	if parent == null:
+		return
+	_bar_field = HealthBarField.for_parent(parent)
+	if _bar_field == null:
+		return
+	_bar_slot = _bar_field.acquire(self, _bar_width, _bar_y, f)
+
+func _release_bar() -> void:
+	if _bar_slot < 0:
+		return
+	if _bar_field != null and is_instance_valid(_bar_field):
+		_bar_field.release(_bar_slot)
+	_bar_slot = -1
+
+# Called by HealthBarField when a swap-remove moves this enemy's instance.
+func set_bar_slot(i: int) -> void:
+	_bar_slot = i

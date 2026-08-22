@@ -16,8 +16,9 @@ var cell: Vector2i
 var pp := Vector2.ZERO               # plane position (the tower's center)
 var target_priority := "first"
 var range_rotated := false            # false = standard (wider) hex range; true = 30° rotated (taller)
-var _rotated_cells := {}
 var _range_cells := {}               # broad-phase cell set of the current range (shared board ref in standard mode — READ-ONLY)
+var _visible_cells := {}             # LOS-visible subset of the range (shared board ref — READ-ONLY)
+var _scan_cells := {}                # the set the targeting scans walk: _visible_cells, or _range_cells when the tower shoots through walls
 var _reach := 0                      # cached board.tower_reach(data.range_tiles); refreshed with _range_cells
 
 # target_priority resolved to an int once (setup / cycle) so the hot scans
@@ -43,15 +44,23 @@ func toggle_range_rotation() -> bool:
 # Cache reach + the range's cell set whenever range or rotation changes (setup,
 # upgrade, rotation toggle). Standard mode holds the board's memoized disk by
 # shared reference and only ever reads it; rotated mode rebuilds its own set.
+# The LOS-visible subset is cached the same way, so targeting resolves visibility
+# per CELL instead of walking a point-to-point ray per candidate per frame.
+# DELIBERATE trade-off: visibility now flips at cell boundaries rather than at the
+# enemy's exact point — which is exactly where the range overlay already draws the
+# visible / wall-shadowed split for the player, so the two now agree by
+# construction. Tunneling towers ignore the split and scan the whole disk.
 func _refresh_range_cache() -> void:
 	if board == null:
 		return
 	_reach = board.tower_reach(data.range_tiles)
 	if range_rotated:
-		_rotated_cells = board.rotated_range_set(cell, _reach)
-		_range_cells = _rotated_cells
+		_range_cells = board.rotated_range_set(cell, _reach)
 	else:
 		_range_cells = board.range_cell_set(cell, _reach)
+	_visible_cells = board.visible_range_set(cell, _reach, range_rotated)
+	_scan_cells = _range_cells if data.ignore_walls else _visible_cells
+	_idle_cd = 0.0   # the scan set just changed — look again on the next frame
 
 static func _priority_to_id(p: String) -> int:
 	match p:
@@ -75,10 +84,25 @@ static func _mode_to_id(mode: String) -> int:
 		_:
 			return MODE_SINGLE
 
+# Idle-scan gating. A tower whose acquisition scan finds nothing waits this long
+# before scanning again instead of re-scanning every frame. The instant a scan
+# DOES find a target the normal cooldown-driven path resumes with no added delay,
+# so only the FIRST engagement of an enemy entering an empty tower's range can be
+# late, by at most IDLE_RESCAN.
+const IDLE_RESCAN := 0.1
+# Per-tower stagger: the largest fraction of IDLE_RESCAN a tower's wait may be
+# shortened by. Derived from the tower's cell, so it is stable for the tower's
+# lifetime and towers that go idle on the same frame run at different periods and
+# de-phase within a cycle. Shortening (never lengthening) keeps every wait
+# <= IDLE_RESCAN, which is what bounds the worst-case engagement delay.
+const IDLE_RESCAN_STAGGER := 0.5
+
 var _cooldown := 0.0
 var _laser_target = null
 var _charge := 0.0
 var _focus_cd := 0.0                 # post-kill blind/idle timer (focus_time)
+var _idle_cd := 0.0                  # time left before the next acquisition scan (0 = scan now)
+var _idle_wait := IDLE_RESCAN        # this tower's staggered idle interval (set in setup)
 var _hum: AudioStreamPlayer = null
 var _hum_pb: AudioStreamGeneratorPlayback = null
 var _hum_phase := 0.0
@@ -251,6 +275,8 @@ func setup(d: TowerData, b, pos_plane: Vector2) -> void:
 	board = b
 	pp = pos_plane
 	cell = b.world_cell(pos_plane)
+	# Stable per-tower idle-scan phase (see IDLE_RESCAN_STAGGER).
+	_idle_wait = IDLE_RESCAN * (1.0 - IDLE_RESCAN_STAGGER * float(posmod(hash(cell), 64)) / 64.0)
 	invested = d.cost
 	slot_levels = []
 	for _i in range(slot_count()):
@@ -453,7 +479,12 @@ func _note_aim(dir: Vector2) -> void:
 	_aim_timer = AIM_RELAX_TIME
 
 func _process_targeted(delta: float) -> void:
+	# The cooldown keeps ticking through an idle gate, so a gated tower is never
+	# behind on its cadence once something walks into range.
 	_cooldown -= delta
+	if _idle_cd > 0.0:
+		_idle_cd -= delta
+		return
 	if _cooldown <= 0.0:
 		# `targets` lets one fire cycle engage that many DISTINCT enemies (one shot
 		# each, no overkill), furthest-along first; default 1 = the classic single
@@ -465,6 +496,8 @@ func _process_targeted(delta: float) -> void:
 				_fire_flash()
 				_play_sfx("tower_fire")
 				_cooldown = 1.0 / data.fire_rate
+			else:
+				_idle_cd = _idle_wait
 		else:
 			var ts := _acquire_targets(data.targets)
 			if not ts.is_empty():
@@ -473,24 +506,37 @@ func _process_targeted(delta: float) -> void:
 				_fire_flash()
 				_play_sfx("tower_fire")   # once per volley, not per target
 				_cooldown = 1.0 / data.fire_rate
+			else:
+				_idle_cd = _idle_wait
 
 func _process_radial(delta: float) -> void:
 	_cooldown -= delta
+	if _idle_cd > 0.0:
+		_idle_cd -= delta
+		return
 	if _cooldown <= 0.0:
 		if _any_enemy_in_range():
 			_fire_volley()
 			_cooldown = 1.0 / data.fire_rate
 		else:
+			# Cooldown still parks at 0 so the volley leaves on the very frame the
+			# gate reopens with an enemy present.
 			_cooldown = 0.0
+			_idle_cd = _idle_wait
 
 # Arc: aim at the prioritised target and emit one expanding wave per shot.
 func _process_arc(delta: float) -> void:
 	_cooldown -= delta
+	if _idle_cd > 0.0:
+		_idle_cd -= delta
+		return
 	if _cooldown <= 0.0:
 		var t = _find_target()
 		if t != null:
 			_fire_arc(t)
 			_cooldown = 1.0 / data.fire_rate
+		else:
+			_idle_cd = _idle_wait
 
 func _fire_arc(t) -> void:
 	var w := ArcWave3D.new()
@@ -510,12 +556,9 @@ func _fire_arc(t) -> void:
 	# frost-vs-color tint the wave itself renders with.
 	_play_sfx("dos_wave" if data.dos else "arc_fire")
 
-func _cell_in_range(target_cell: Vector2i) -> bool:
-	if range_rotated:
-		return _rotated_cells.has(target_cell)
-	return HexUtils.axial_distance(cell, target_cell) <= _reach
-
 func _any_enemy_in_range() -> bool:
+	# Radial ignores line of sight on purpose (the spokes themselves are what walls
+	# stop), so this gate stays on the full range disk, not _scan_cells.
 	# Broad phase: only enemies bucketed in the range's own cells are visited.
 	var cands: Array = board.enemies_in_cell_set(_range_cells)
 	for e in cands:
@@ -531,7 +574,10 @@ func _fire_volley() -> void:
 	var n: int = maxi(1, data.directions)
 	for i in range(n):
 		var ang := TAU * float(i) / float(n)
-		var p := RadialProjectile3D.new()
+		# obtain() reuses a parked spoke (fully reset) instead of allocating one
+		# per shot; a volley is `directions` nodes, so this is the hottest
+		# allocation site in the game.
+		var p := RadialProjectile3D.obtain(board)
 		p.setup(pp, Vector2(cos(ang), sin(ang)), data.damage, data.projectile_speed,
 				cell, board.tower_reach(data.range_tiles), data.color, board)
 		p.ignore_walls = data.ignore_walls
@@ -546,6 +592,8 @@ func _fire_volley() -> void:
 	_play_sfx("radial_fire")
 
 func _process_laser(delta: float) -> void:
+	if _idle_cd > 0.0:
+		_idle_cd -= delta
 	# focus_time: after a kill the beam is blind/idle for this long. This caps
 	# kills/sec (swarm tax) while barely touching single-target DPS.
 	if _focus_cd > 0.0:
@@ -559,10 +607,20 @@ func _process_laser(delta: float) -> void:
 		_laser_target = null
 		_charge = 0.0          # reset ramp when the target is lost (per-target ramp)
 	if _laser_target == null:
+		# The idle gate only ever arms on a scan that found nothing, so a kill (which
+		# arms _focus_cd instead, with _idle_cd at 0) never re-locks any later than it
+		# does today: the frame focus_time expires is a scanning frame.
+		if _idle_cd > 0.0:
+			_charge = 0.0
+			_set_hum(false, 0.0)
+			_update_beam(0.0, false)
+			return
 		_laser_target = _acquire_target()
 		_charge = 0.0          # fresh target starts at the weak end of the curve
 		if _laser_target != null:
 			_fire_flash()      # lock-on blink — the laser's per-shot feedback
+		else:
+			_idle_cd = _idle_wait
 	if _laser_target != null:
 		_charge = minf(_charge + delta, data.ramp_time)
 		var cr := 1.0 if data.ramp_time <= 0.0 else clampf(_charge / data.ramp_time, 0.0, 1.0)
@@ -634,12 +692,13 @@ func _fill_hum() -> void:
 			_hum_phase -= float(n)
 	_hum_pb.push_buffer(_hum_buf)
 
+# Range AND line of sight in one cell-set probe, against the very set the
+# acquisition scan uses — so a lock can never be dropped by a test the immediate
+# re-lock would pass, or held by one it would fail.
 func _target_still_valid(t) -> bool:
 	if t == null or not is_instance_valid(t):
 		return false
-	if not _cell_in_range(t.cell):
-		return false
-	return data.ignore_walls or board.has_los(pp, t.pp)
+	return _scan_cells.has(t.cell)
 
 func _find_target():
 	return _acquire_target()
@@ -653,16 +712,15 @@ func _acquire_target():
 	var best_tie := 0
 	var first := true
 	# Broad phase: the bucketed query visits only enemies whose cached cell is
-	# inside the range's cell set; every exact per-enemy gate below is unchanged.
-	var cands: Array = board.enemies_in_cell_set(_range_cells)
+	# inside the scan set, and membership in that set IS the range + LOS test (see
+	# _refresh_range_cache). Encryption (_can_see) is unchanged.
+	var cands: Array = board.enemies_in_cell_set(_scan_cells)
 	for e in cands:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
 			continue
-		if not _range_cells.has(e.cell):
-			continue
-		if not data.ignore_walls and not board.has_los(pp, e.pp):
+		if not _scan_cells.has(e.cell):
 			continue
 		var prog: int = e.progress()
 		var key: int
@@ -693,15 +751,13 @@ func _acquire_targets(n: int) -> Array:
 	_sel_keys.clear()
 	_sel_ties.clear()
 	_sel_picks.clear()
-	var cands: Array = board.enemies_in_cell_set(_range_cells)
+	var cands: Array = board.enemies_in_cell_set(_scan_cells)
 	for e in cands:
 		if not is_instance_valid(e):
 			continue
 		if not _can_see(e):
 			continue
-		if not _range_cells.has(e.cell):
-			continue
-		if not data.ignore_walls and not board.has_los(pp, e.pp):
+		if not _scan_cells.has(e.cell):
 			continue
 		var prog: int = e.progress()
 		var key: int
@@ -759,7 +815,7 @@ func cycle_target_priority() -> String:
 
 func _shoot(t) -> void:
 	_note_aim(t.pp - pp)
-	var p := Projectile3D.new()
+	var p := Projectile3D.obtain(board)
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
 	p.dos_freeze = data.dos_freeze
 	p.dos_slow_time = data.dos_slow_time
