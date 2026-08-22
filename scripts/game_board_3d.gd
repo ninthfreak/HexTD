@@ -1062,9 +1062,15 @@ func rotated_range_set(center: Vector2i, n: int) -> Dictionary:
 		result[candidates[i][2]] = true
 	return result
 
+# Boundary loops of an arbitrary cell set (overlay ranges). DIRECTED half-edge
+# walk: each boundary edge is stored a->b in its hex's winding order, so every
+# vertex has matching in/out degree and every walk closes on itself — an
+# undirected walk could dead-end at pinch vertices (a region touching itself or
+# the board edge), leaving an open loop that stroke/fill then "closed" with a
+# straight chord across the region.
 func cell_set_outline(cells: Dictionary, smooth_iters: int) -> Array:
 	var pos := {}
-	var nbr := {}
+	var out_edges := {}                # vkey -> Array[vkey] (directed a->b)
 	for cell in cells:
 		var c := _cell_to_pixel(cell)
 		var hp := _hex_plane_polygon(c)
@@ -1077,46 +1083,35 @@ func cell_set_outline(cells: Dictionary, smooth_iters: int) -> Array:
 			var kb := _vkey(b)
 			pos[ka] = a
 			pos[kb] = b
-			if not nbr.has(ka): nbr[ka] = []
-			if not nbr.has(kb): nbr[kb] = []
-			if not (kb in nbr[ka]): nbr[ka].append(kb)
-			if not (ka in nbr[kb]): nbr[kb].append(ka)
+			if not out_edges.has(ka): out_edges[ka] = []
+			if not (kb in out_edges[ka]): out_edges[ka].append(kb)
 	var used := {}
 	var polys: Array = []
-	for s in nbr.keys():
-		for first in nbr[s]:
-			var e0 := _ekey(s, first)
-			if used.has(e0):
+	for s in out_edges.keys():
+		for first in out_edges[s]:
+			if used.has(_ekey(s, first)):
 				continue
-			used[e0] = true
+			used[_ekey(s, first)] = true
 			var loop: Array = [s]
-			var prev: Vector2i = s
 			var cur: Vector2i = first
 			var guard := 0
 			while cur != s and guard < 100000:
 				guard += 1
 				loop.append(cur)
 				var nxt: Variant = null
-				for cand in nbr[cur]:
-					if cand == prev:
-						continue
-					var e2 := _ekey(cur, cand)
-					if used.has(e2):
-						continue
-					nxt = cand
-					used[e2] = true
-					break
+				for cand in out_edges.get(cur, []):
+					if not used.has(_ekey(cur, cand)):
+						nxt = cand
+						used[_ekey(cur, cand)] = true
+						break
 				if nxt == null:
-					break
-				prev = cur
+					break              # cannot happen with directed edges; guard anyway
 				cur = nxt
 			if loop.size() < 3:
 				continue
 			var pts := PackedVector2Array()
 			for k in loop:
 				pts.append(pos[k])
-			if _signed_area(pts) < 0.0:
-				pts.reverse()
 			polys.append(_smooth_loop(pts, smooth_iters))
 	return polys
 

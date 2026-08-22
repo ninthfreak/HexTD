@@ -527,21 +527,26 @@ func _update_tower_buttons() -> void:
 			b.visible = false
 			continue
 		b.visible = true
+		# Every state leads with "Name lvl/max" so the purchased tiers stay
+		# readable even on locked/maxed paths (a locked path at tier 2 must not
+		# look like a locked path at tier 0).
+		var lvl: int = t.slot_level(s)
+		var cap: int = t.slot_max(s)
 		if t.can_upgrade(s):
 			var c: int = t.next_cost(s)
 			b.disabled = money < c
 			var afford := money >= c
-			(btn_cl(b)).set_cost("%s → Tier %d  (" % [t.slot_name(s), t.slot_level(s) + 1], c, ")", not afford, GOLD_COL if afford else COST_RED_COL)
+			(btn_cl(b)).set_cost("%s %d/%d → %d  (" % [t.slot_name(s), lvl, cap, lvl + 1], c, ")", not afford, GOLD_COL if afford else COST_RED_COL)
 			b.tooltip_text = t.tier_summary(s)
 		elif t.has_next_tier(s):
 			# Has a tier left, but the BTD6 crosspath rule forbids buying it now.
 			b.disabled = true
 			any_locked = true
-			(btn_cl(b)).set_plain("%s — locked" % t.slot_name(s), false, LOCKED_COL)
+			(btn_cl(b)).set_plain("%s %d/%d — locked" % [t.slot_name(s), lvl, cap], false, LOCKED_COL)
 			b.tooltip_text = "Crosspath limit: at most two paths upgraded, and only one above tier 2."
 		else:
 			b.disabled = true
-			(btn_cl(b)).set_plain("%s  (max %d)" % [t.slot_name(s), t.slot_level(s)], false, WAVE_DONE_COL)
+			(btn_cl(b)).set_plain("%s %d/%d — max" % [t.slot_name(s), lvl, cap], false, WAVE_DONE_COL)
 			b.tooltip_text = "Fully upgraded"
 	if crosspath_hint != null:
 		crosspath_hint.visible = any_locked

@@ -37,11 +37,7 @@ func drive(main) -> void:
 		if main._try_place(c):
 			placed_cells.append(c)
 	main.placing_id = ""
-	var n_ok := 0
-	for c2 in main.map.buildable:
-		if main.board.is_buildable(c2):
-			n_ok += 1
-	print("DRIVER: placed ", placed_cells.size(), "; is_buildable-ok=", n_ok, "/", main.map.buildable.size(), " bset=", main.board.buildable_set.size(), " occ=", main.board.occupied.size(), " money=", main.money)
+	print("DRIVER: placed ", placed_cells.size(), " towers")
 
 	var eids: Array = main.content.enemy_ids()
 	var dist := 30.0
@@ -61,9 +57,23 @@ func drive(main) -> void:
 			dist += 45.0
 
 	if not placed_cells.is_empty():
-		var t = main.board.tower_at(placed_cells[0])
+		# Select the LEFTMOST tower: near the board edge (range clips the
+		# boundary — the historical overlay-breaking case) AND on-camera (the
+		# board's right side hides behind the UI pane).
+		var pick: Vector2i = placed_cells[0]
+		var pick_x := 1e9
+		for pc2 in placed_cells:
+			var w2: Vector2 = main.board.cell_center_world(pc2)
+			if w2.x < pick_x:
+				pick_x = w2.x
+				pick = pc2
+		var t = main.board.tower_at(pick)
 		if t != null:
-			main._select_tower(placed_cells[0], t)
+			main._select_tower(pick, t)
+			# Mixed tier state (3/2/0) so the shot shows purchasable + both
+			# locked flavors of the upgrade buttons.
+			for s3 in [0, 0, 0, 1, 1]:
+				main._on_upgrade_pressed(s3)
 
 	# Let combat play out a moment so beams/projectiles are visible.
 	for i in 50:
