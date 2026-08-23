@@ -1,92 +1,109 @@
 extends Node
 ## Standalone audio self-test. Open `scenes/audio_check.tscn` and press F6.
 ##
-## The game's own logging can only prove that a voice STARTED. This goes further:
-## it taps the Master bus with an AudioEffectCapture and measures the mixed
-## output, which separates the two failure modes that look identical from inside
-## the game:
-##   * the engine is producing signal and you still hear nothing
-##       -> the fault is the output device or the OS mixer, not the game;
-##   * the engine is producing silence
-##       -> the fault is in the project (bus, files, volumes) and I can fix it.
-## It also lists the output devices Godot can see, since a default device with no
-## speakers attached (HDMI, a disconnected headset) presents exactly as silence.
+## Diagnoses "Godot makes no sound" without involving the game at all. It
+## synthesises a tone in memory, so it does not touch the audio files, the WAV
+## importer, the import cache, or the game's AudioManager — if this is silent,
+## nothing in the project can be the cause.
+##
+## It then plays that tone through EVERY output device Godot can see, one at a
+## time, announcing each. Godot picking a device that is not your speakers (an
+## HDMI output, a disconnected headset, a virtual/monitor device) is the usual
+## reason the editor and the game are silent while every other application on
+## the machine is fine.
 
-const TEST_SECONDS := 1.2
+const TONE_SECONDS := 1.5
+const TONE_HZ := 440.0
+
+var _player: AudioStreamPlayer
+var _pb: AudioStreamGeneratorPlayback
+var _phase := 0.0
+var _cap: AudioEffectCapture
 
 func _ready() -> void:
 	print("\n==================== HexTD audio self-test ====================")
+	print("OS               : ", OS.get_name())
 	print("Godot            : ", Engine.get_version_info().string)
+	print("Audio driver     : ", ProjectSettings.get_setting("audio/driver/driver", "(default)"))
 	print("Mix rate         : ", AudioServer.get_mix_rate(), " Hz")
 	print("Output latency   : ", "%.1f ms" % (AudioServer.get_output_latency() * 1000.0))
-	print("Current device   : ", AudioServer.output_device)
-	print("Devices available: ", AudioServer.get_output_device_list())
 	print("Master           : vol ", AudioServer.get_bus_volume_db(0), " dB, muted=", AudioServer.is_bus_mute(0))
-	var sfx := AudioServer.get_bus_index("SFX")
-	if sfx != -1:
-		print("SFX bus          : vol ", AudioServer.get_bus_volume_db(sfx), " dB, muted=",
-			AudioServer.is_bus_mute(sfx), ", sends to ", AudioServer.get_bus_send(sfx))
-	else:
-		print("SFX bus          : (absent — AudioManager creates it at runtime)")
 
-	# Tap the mixed output.
-	var cap := AudioEffectCapture.new()
-	cap.buffer_length = 2.0
-	AudioServer.add_bus_effect(0, cap)
-	await get_tree().process_frame
-	cap.clear_buffer()
+	_cap = AudioEffectCapture.new()
+	_cap.buffer_length = 2.0
+	AudioServer.add_bus_effect(0, _cap)
 
-	# A plain loud tone straight to Master: this bypasses the game entirely, so
-	# it is the cleanest test of "can this machine make a sound at all".
-	var player := AudioStreamPlayer.new()
-	player.bus = "Master"
+	_player = AudioStreamPlayer.new()
+	_player.bus = "Master"
 	var gen := AudioStreamGenerator.new()
-	gen.mix_rate = 44100.0
+	gen.mix_rate = AudioServer.get_mix_rate()
 	gen.buffer_length = 0.25
-	player.stream = gen
-	add_child(player)
-	player.play()
-	var pb := player.get_stream_playback() as AudioStreamGeneratorPlayback
-	var phase := 0.0
-	var elapsed := 0.0
+	_player.stream = gen
+	add_child(_player)
+
+	var devices: PackedStringArray = AudioServer.get_output_device_list()
+	print("\nGodot sees ", devices.size(), " output device(s). Playing a ",
+		int(TONE_HZ), " Hz tone through each — LISTEN for which one you hear.\n")
+	var original: String = AudioServer.output_device
+	for d in devices:
+		AudioServer.output_device = d
+		await get_tree().process_frame
+		var pk := await _tone()
+		var mark := "  <-- signal produced" if pk > 0.001 else "  <-- ENGINE PRODUCED SILENCE"
+		print("  device %-42s measured peak %.4f%s" % ['"' + d + '"', pk, mark])
+	AudioServer.output_device = original
+	print("\nCurrent device restored to: ", AudioServer.output_device)
+
+	# The game's own path, for completeness: files -> importer -> SFX bus.
+	var am := get_node_or_null("/root/AudioManager")
+	if am != null:
+		_cap.clear_buffer()
+		am.play_sfx("defeat")
+		var pk2 := 0.0
+		var t := 0.0
+		while t < 1.5:
+			var got: int = _cap.get_frames_available()
+			if got > 0:
+				for f in _cap.get_buffer(got):
+					pk2 = maxf(pk2, maxf(absf(f.x), absf(f.y)))
+			t += get_process_delta_time()
+			await get_tree().process_frame
+		print("Game sound via SFX bus    : measured peak %.4f" % pk2)
+
+	print("\nHow to read this:")
+	print("  * You HEARD a tone on some device -> that is your working device.")
+	print("    Set it in Project Settings > Audio > Driver > Output Device (enable")
+	print("    Advanced Settings to see it), or fix the OS default, and the game")
+	print("    will use it too.")
+	print("  * Peaks > 0 on every device but you heard NOTHING -> Godot is mixing")
+	print("    audio that never reaches the hardware: the OS per-application volume")
+	print("    for Godot is muted, or the audio driver Godot chose cannot open the")
+	print("    device. On Linux try running with --audio-driver PulseAudio (or ALSA);")
+	print("    on Windows check the volume mixer while the editor is running.")
+	print("  * A peak of 0.0000 everywhere -> the engine itself is producing no")
+	print("    signal; send me this output.")
+	print("===============================================================\n")
+	get_tree().quit()
+
+## Push one tone through the generator and return the peak seen on Master.
+func _tone() -> float:
+	if not _player.playing:
+		_player.play()
+	_pb = _player.get_stream_playback() as AudioStreamGeneratorPlayback
+	_cap.clear_buffer()
 	var peak := 0.0
-	while elapsed < TEST_SECONDS:
-		var avail: int = pb.get_frames_available()
-		for i in avail:
-			var s: float = sin(phase * TAU) * 0.5      # 440 Hz at half scale
-			pb.push_frame(Vector2(s, s))
-			phase = fmod(phase + 440.0 / 44100.0, 1.0)
-		var got: int = cap.get_frames_available()
+	var elapsed := 0.0
+	var rate: float = AudioServer.get_mix_rate()
+	while elapsed < TONE_SECONDS:
+		if _pb != null:
+			for i in _pb.get_frames_available():
+				var s: float = sin(_phase * TAU) * 0.5
+				_pb.push_frame(Vector2(s, s))
+				_phase = fmod(_phase + TONE_HZ / rate, 1.0)
+		var got: int = _cap.get_frames_available()
 		if got > 0:
-			for f in cap.get_buffer(got):
+			for f in _cap.get_buffer(got):
 				peak = maxf(peak, maxf(absf(f.x), absf(f.y)))
 		elapsed += get_process_delta_time()
 		await get_tree().process_frame
-	player.stop()
-	print("\nTone (direct to Master)  : measured peak %.4f  <- you should have HEARD a 440 Hz beep" % peak)
-
-	# Now the game's own path, through AudioManager and the SFX bus.
-	var am := get_node_or_null("/root/AudioManager")
-	if am == null:
-		print("AudioManager             : MISSING (autoload not loaded)")
-	else:
-		cap.clear_buffer()
-		am.play_sfx("defeat")
-		var peak2 := 0.0
-		var t := 0.0
-		while t < TEST_SECONDS:
-			var got2: int = cap.get_frames_available()
-			if got2 > 0:
-				for f2 in cap.get_buffer(got2):
-					peak2 = maxf(peak2, maxf(absf(f2.x), absf(f2.y)))
-			t += get_process_delta_time()
-			await get_tree().process_frame
-		print("Game sfx (via SFX bus)   : measured peak %.4f  <- you should have HEARD the defeat sting" % peak2)
-
-	print("\nHow to read this:")
-	print("  both peaks > 0 but you heard nothing -> the engine IS producing audio;")
-	print("     the fault is the output device or the OS mixer (check the device list")
-	print("     above, and your OS per-application volume for Godot).")
-	print("  a peak of 0 -> the engine is producing silence; send me this output.")
-	print("===============================================================\n")
-	get_tree().quit()
+	return peak
