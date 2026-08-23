@@ -83,7 +83,6 @@
           },
           {
             "cost": 12000,
-            "range": 1,
             "ignore_walls": "on"
           }
         ]
@@ -166,15 +165,14 @@
           },
           {
             "cost": 1200,
-            "range": 1
+            "cipher": "on"
           },
           {
             "cost": 3000,
-            "range": 1
+            "targets": 1
           },
           {
             "cost": 12000,
-            "range": 1,
             "ignore_walls": "on"
           }
         ]
@@ -314,23 +312,25 @@
         "tiers": [
           {
             "cost": 300,
+            "directions": 1,
             "range": 1
           },
           {
             "cost": 750,
-            "range": 1
+            "directions": 1
           },
           {
             "cost": 1800,
-            "directions": 3
-          },
-          {
-            "cost": 4500,
+            "directions": 1,
             "range": 1
           },
           {
+            "cost": 4500,
+            "directions": 1
+          },
+          {
             "cost": 16000,
-            "directions": 3,
+            "directions": 2,
             "ignore_walls": "on"
           }
         ]
@@ -478,16 +478,15 @@
           },
           {
             "cost": 9000,
-            "range": 1
+            "arc_angle": 40
           },
           {
             "cost": 22500,
-            "range": 1
+            "arc_angle": 60
           },
           {
             "cost": 50000,
-            "range": 1,
-            "arc_angle": 290
+            "arc_angle": 190
           }
         ]
       },
