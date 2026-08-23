@@ -18,6 +18,9 @@ extends Resource
 @export var ramp_time: float = 2.0            # laser only: seconds of sustained fire to reach full power (damage = max dmg/sec)
 @export var focus_time: float = 0.0           # seconds a tower is blind/idle after killing its target (Beam swarm tax)
 @export var bit_corruption := false           # ignores enemy ECC damage resistance
+@export var ecc_pierce: float = 0.0           # fraction of ECC resist ignored natively (0 = full resist, 1 = fully ignored); bit_corruption overrides to a full pierce
+@export var execute_threshold: float = 0.0    # a hit landing at/below this fraction of the target's max HP kills it outright (0 = off)
+@export var execute_no_decay := false         # an execute kill also suppresses the target's decay spawn
 @export var cipher := false                   # can see and target Encrypted enemies
 @export var buffer_overflow := false          # single-hit surplus damage spills into the target's decay children
 @export var dos := false                      # "Denial of Service": a hit briefly freezes the enemy, then slows it (single/radial only)
@@ -29,8 +32,9 @@ extends Resource
 ## Up to 3 upgrade slots (independent paths), authored in the editor. Each slot is a
 ## Dictionary {"name": String, "tiers": Array}. Each tier (up to 5 per slot) is a
 ## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate"/"directions"/"targets"/"arc_angle"/
-## "ramp_time"/"focus_time"/"dos_freeze"/"dos_slow_time"/"dos_slow_factor"/"height"/"width": additive
-## deltas (may be negative), optional "color": "#rrggbb" override,
-## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow"/"dos": "on"|"off"}.
+## "ramp_time"/"focus_time"/"dos_freeze"/"dos_slow_time"/"dos_slow_factor"/"ecc_pierce"/
+## "execute_threshold"/"height"/"width": additive deltas (may be negative),
+## optional "color": "#rrggbb" override,
+## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow"/"dos"/"execute_no_decay": "on"|"off"}.
 ## Slots are bought independently, level by level; tiers within a slot are sequential.
 @export var upgrades: Array = []

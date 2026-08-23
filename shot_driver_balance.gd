@@ -11,10 +11,18 @@ extends Node
 ## One process, many trials: project load is paid once. Every trial starts from
 ## _reset_board() and is checked by _verify_clean() — a leftover tower, enemy or
 ## in-flight shot silently corrupts every later number, so contamination is
-## reported as a "!!" line rather than being absorbed into a reading.
+## reported as a "!!" line rather than being absorbed into a reading. Section S
+## proves that guard is not blind before anything else runs.
 ##
 ## Sections (select with BAL_SECTIONS, default all): S self-check, A dps matrix,
 ## B upgrade tiers, C control tower, D walking stream, E wave viability.
+## BAL_E_LIMIT caps section E's wave count and BAL_DEBUG adds trial timings;
+## both are iteration aids and change no measurement.
+##
+## Deterministic: seed(RNG_SEED) once, a fixed 1/60 s step, and no reliance on
+## wall clock inside a trial. The one exception is section E's wall-clock budget,
+## which SKIPS trailing waves on a machine too slow to finish them in time — that
+## keeps the whole run near ten minutes at the cost of the tail's reproducibility.
 
 # ---------------------------------------------------------------- tuning
 const RNG_SEED := 20260823
@@ -26,8 +34,16 @@ const B_SECONDS := 8.0           # upgrade-tier trial length (same window as A, 
 const C_COHORT := 10             # control-tower trial: probes released per cohort
 const C_GAP := 1.0               # control-tower cohort release gap
 const C_CHECKPOINT := 18.0       # control-tower distance-covered mark
-const C_MAX_S := 90.0            # control-tower trial cap (a jammed cohort travels slowly)
+const C_MAX_S := 150.0           # control-tower trial cap (a fully jammed cohort crawls)
 const EARLY_FRAC := 0.35         # "early" stands: nearest route point inside this fraction of the route
+
+# Section B arena: immortal dummies parked on concentric rings around the stand,
+# evenly spaced in ANGLE (not on the six hex axes, which would flatter a radial
+# tower's default six spokes). This is the only probe that can see `range`,
+# `targets`, `arc_angle` and `directions` — a single parked dummy cannot.
+const ARENA_RINGS := [2.0, 4.0, 6.0, 8.0]   # tile distances from the stand
+const ARENA_SPOKES := 12                     # dummies per ring
+const ANCHOR_NEAR := 2.0                     # section A/B stand must be this close to the route, in tiles
 const D_WARMUP := 10.0           # walking-stream lead-in (reaches steady state)
 const D_WINDOW := 20.0           # walking-stream measured window
 const D_GAP := 0.5               # walking-stream spawn gap
@@ -48,7 +64,7 @@ var _path: PackedVector2Array
 var _prefix := PackedFloat64Array()
 var _path_cell_weight := {}      # Vector2i -> path sample points inside that cell
 var _cov_cache := {}             # range_tiles -> Array of [cell, coverage] sorted desc
-var _anchor := Vector2i.ZERO     # buildable cell closest to the path (section A/B stand)
+var _anchor := Vector2i.ZERO     # section A/B stand (see _setup_path for how it is chosen)
 var _t0 := 0
 
 # Walking-stream accounting (section D); see _d_reset.
@@ -104,19 +120,30 @@ func _setup_path() -> void:
 	for pt in _path:
 		var c: Vector2i = main.board.world_cell(pt)
 		_path_cell_weight[c] = int(_path_cell_weight.get(c, 0)) + 1
-	# Section A/B stand: the buildable cell nearest the route, so a parked dummy
-	# is always well inside every tower's range and placement is not a variable.
+	# Section A/B stand. Two requirements: a dummy parked on the nearest route
+	# point must sit well inside every tower's range (so placement is not a
+	# variable), and the stand must be central enough that the section B arena
+	# rings are not half off-map. So: among buildable cells within ANCHOR_NEAR of
+	# the route, take the one with the most on-map arena stands, nearest route
+	# point breaking ties.
+	var near: float = ANCHOR_NEAR * GameBoard3D.TOWER_RADIUS
+	var best_score := -1
 	var best_d := 1.0e18
 	for c in main.map.buildable:
 		var cell: Vector2i = c
 		if not main.board.is_buildable(cell):
 			continue
 		var w: Vector2 = main.board.cell_center_world(cell)
+		var d := 1.0e18
 		for pt in _path:
-			var d: float = w.distance_squared_to(pt)
-			if d < best_d:
-				best_d = d
-				_anchor = cell
+			d = minf(d, w.distance_squared_to(pt))
+		if d > near * near:
+			continue
+		var score := _arena_stands(w).size()
+		if score > best_score or (score == best_score and d < best_d):
+			best_score = score
+			best_d = d
+			_anchor = cell
 
 ## Buildable cells ranked by how much of the route their range covers (path
 ## sample points inside the range disk). Memoized per range_tiles.
@@ -178,17 +205,20 @@ func _reset_board() -> void:
 	main.money = BIG_MONEY
 	main.lives = 99999
 
-## Report (never absorb) leftovers from the previous trial.
-func _verify_clean(tag: String) -> void:
+## [live enemies, occupied cells, in-flight ordnance] currently on the board.
+func _clean_counts() -> Array:
 	var ordnance := 0
 	for ch in main.board._entities.get_children():
 		if ch is Projectile3D or ch is RadialProjectile3D or ch is ArcWave3D:
 			ordnance += 1
-	var enemies: int = main.board.enemies.size()
-	var towers: int = main.board.occupied.size()
-	if enemies != 0 or towers != 0 or ordnance != 0:
+	return [main.board.enemies.size(), main.board.occupied.size(), ordnance]
+
+## Report (never absorb) leftovers from the previous trial.
+func _verify_clean(tag: String) -> void:
+	var c := _clean_counts()
+	if c[0] != 0 or c[1] != 0 or c[2] != 0:
 		p("!! CONTAMINATION before %s: enemies=%d occupied-cells=%d ordnance=%d" % [
-			tag, enemies, towers, ordnance])
+			tag, c[0], c[1], c[2]])
 
 func _place(id: String, cell: Vector2i):
 	main.placing_id = id
@@ -205,14 +235,14 @@ func _steps(seconds: float) -> void:
 ## An indestructible, stationary copy of a real enemy: huge HP, no decay chain,
 ## no reward, speed 0 — but `ecc`, `encrypted`, shape and radius (which is the
 ## hit radius for every solid) are preserved, because those change combat.
-func _probe(src: EnemyData, still := true) -> EnemyData:
+func _probe(src: EnemyData) -> EnemyData:
 	var d := EnemyData.new()
 	d.id = src.id + "__probe"
 	d.display_name = src.display_name
 	d.shape = src.shape
 	d.color = src.color
 	d.health = PROBE_HP
-	d.speed = 0.0 if still else src.speed
+	d.speed = 0.0
 	d.reward = 0
 	d.glow = 0.0
 	d.side = src.side
@@ -275,8 +305,9 @@ func _arclen(e) -> float:
 	return base + _path[i].distance_to(e.pp)
 
 # ================================================================ core measurement
-## One tower vs one parked immortal dummy. Returns damage per second.
-## `levels` is an optional [slot, count] upgrade order bought through the real API.
+## One tower vs one parked immortal dummy. Returns damage per second, -1 when the
+## tower could not be placed, -2 when it cannot see the probe at all. `slot`/`tiers`
+## optionally buy that many levels of one upgrade path through the real API first.
 func _dps_trial(tower_id: String, pd: EnemyData, seconds: float, slot := -1, tiers := 0) -> float:
 	await _reset_board()
 	_verify_clean("dps %s" % tower_id)
@@ -297,23 +328,79 @@ func _dps_trial(tower_id: String, pd: EnemyData, seconds: float, slot := -1, tie
 	var dealt: float = PROBE_HP - e.health
 	return dealt / seconds
 
+func _arena_positions() -> Array:
+	return _arena_stands(main.board.cell_center_world(_anchor))
+
+## Arena dummy stands around a plane point. Off-map cells are dropped: they sit
+## outside every range set, so a dummy there is one no tower could ever engage.
+func _arena_stands(c0: Vector2) -> Array:
+	var out: Array = []
+	for r in ARENA_RINGS:
+		for k in range(ARENA_SPOKES):
+			var ang: float = TAU * float(k) / float(ARENA_SPOKES)
+			var w: Vector2 = c0 + Vector2(cos(ang), sin(ang)) * (float(r) * GameBoard3D.TOWER_RADIUS)
+			if main.board.has_cell(main.board.world_cell(w)):
+				out.append(w)
+	return out
+
+## One tower against the whole arena. Returns {dps, n}: total damage per second
+## summed over every parked dummy, and how many were actually on the map.
+func _arena_trial(tower_id: String, pd: EnemyData, seconds: float, slot := -1, tiers := 0) -> Dictionary:
+	await _reset_board()
+	_verify_clean("arena %s" % tower_id)
+	var t = _place(tower_id, _anchor)
+	if t == null:
+		return {"dps": -1.0, "n": 0}
+	for _i in range(tiers):
+		if not t.can_upgrade(slot):
+			break
+		t.upgrade(slot)
+	var dummies: Array = []
+	for w in _arena_positions():
+		var e := Enemy3D.new()
+		e.setup(pd, _path)
+		e.place_on_path(0, w)
+		main.board.add_enemy(e)
+		dummies.append(e)
+	await get_tree().process_frame
+	await _steps(seconds)
+	var dealt := 0.0
+	for e in dummies:
+		if is_instance_valid(e):
+			dealt += PROBE_HP - e.health
+	return {"dps": dealt / seconds, "n": dummies.size()}
+
 # ================================================================ S — self-check
 func _section_self_check() -> void:
 	p("")
 	p("--- S. SELF-CHECK -------------------------------------------------------")
-	p("Two simple towers (single shot, no ramp, no splash) measured against a")
-	p("parked immortal dummy for %.0f s, printed beside the naive damage x fire_rate" % A_SECONDS)
-	p("figure. A large gap here means the harness itself is broken, not the game.")
-	p("The Beam is listed too: it MUST read far below its paper number, because its")
-	p("damage ramps quadratically over ramp_time and the window includes the ramp.")
+	p("The simple towers (single shot, no ramp, no splash) measured against a parked")
+	p("immortal dummy for %.0f s, printed beside their paper figure damage x fire_rate." % A_SECONDS)
+	p("A large gap on those means the harness is broken, not the game. Small ones are")
+	p("expected: a tower fires on its first frame (a free shot inside the window) and")
+	p("its cooldown is stepped in whole frames, so the real rate is")
+	p("60/ceil(60/fire_rate) shots per second, not fire_rate.")
+	p("The Beam is listed as a control and MUST read far below paper. Its paper")
+	p("figure is `damage` alone — in laser mode that IS damage per second at full")
+	p("charge and fire_rate is unused — and its damage ramps quadratically over")
+	p("ramp_time, so an %.0f s window that starts cold cannot reach it." % A_SECONDS)
+	p("Before that, the contamination guard is itself tested: a tower, a dummy and")
+	p("live ordnance are deliberately left on the board and the guard is asked to")
+	p("look, then the reset runs and it looks again. If the DIRTY line reads all")
+	p("zeroes the guard is blind and every 'no contamination' below means nothing.")
+	p("")
+	var std := _synth("std", STD_RADIUS, false, false, PROBE_HP, 0.0)
+	await _selftest_reset(std)
 	p("")
 	p("%-14s %8s %8s %8s  %s" % ["tower", "paper", "measured", "ratio", "verdict"])
-	var std := _synth("std", STD_RADIUS, false, false, PROBE_HP, 0.0)
 	for id in ["basic", "slow", "machinegun", "laser"]:
 		var td: TowerData = main.content.tower(id)
 		if td == null:
 			continue
-		var paper: float = td.damage * td.fire_rate
+		# Laser mode ignores fire_rate: `damage` is already damage per second at
+		# full charge, so multiplying the two would invent a number the game has no
+		# concept of.
+		var paper: float = td.damage if td.fire_mode == "laser" else td.damage * td.fire_rate
 		var got: float = await _dps_trial(id, std, A_SECONDS)
 		var ratio: float = got / maxf(0.0001, paper)
 		var verdict := "ok"
@@ -322,6 +409,34 @@ func _section_self_check() -> void:
 		elif ratio < 0.85 or ratio > 1.15:
 			verdict = "CHECK HARNESS"
 		p("%-14s %8.1f %8.1f %8.2f  %s" % [td.display_name, paper, got, ratio, verdict])
+
+## Prove the contamination guard can actually see a dirty board, and that
+## _reset_board clears every kind of leftover a trial produces.
+func _selftest_reset(probe: EnemyData) -> void:
+	await _reset_board()
+	# A radial tower: its volley puts several spokes in the air at once, and they
+	# fly for a fifth of a second, so the ordnance count is easy to catch.
+	var tid := "radial"
+	if main.content.tower(tid) == null:
+		tid = str(main.content.tower_ids()[0])
+	_place(tid, _anchor)
+	_park_dummy(probe, _anchor)
+	# PEAK over the window, not a single sample: a shot is only in flight for a
+	# couple of frames, so an instantaneous read would miss it and the guard would
+	# look blind when it is not.
+	var dirty := [0, 0, 0]
+	for _i in range(120):
+		await get_tree().process_frame
+		var c := _clean_counts()
+		for k in range(3):
+			dirty[k] = maxi(dirty[k], int(c[k]))
+	await _reset_board()
+	var clean := _clean_counts()
+	var ok: bool = (dirty[0] > 0 and dirty[1] > 0 and dirty[2] > 0) \
+		and clean[0] == 0 and clean[1] == 0 and clean[2] == 0
+	p("reset self-test  DIRTY(peak) enemies=%d cells=%d ordnance=%d  ->  AFTER RESET enemies=%d cells=%d ordnance=%d  [%s]" % [
+		dirty[0], dirty[1], dirty[2], clean[0], clean[1], clean[2],
+		"guard works, reset clean" if ok else "FAILED — trials may contaminate each other"])
 
 # ================================================================ A — dps matrix
 func _section_a() -> void:
@@ -410,15 +525,19 @@ func _section_b() -> void:
 	p("  dps      plain probe (no ecc, not encrypted) — the headline number")
 	p("  dps(ECC) ecc probe: 90%% resist unless the tier bought Bit Corruption")
 	p("  dps(ENC) encrypted probe: unhittable unless the tier bought Cipher")
+	p("A single parked dummy is blind to `range`, `targets`, `arc_angle` and")
+	p("`directions`, so a fourth column adds an ARENA: plain immortal dummies on")
+	p("rings at %s tiles from the stand, %d per ring evenly spaced in ANGLE (not on" % [
+		str(ARENA_RINGS), ARENA_SPOKES])
+	p("the six hex axes, which would flatter a radial tower's default six spokes);")
+	p("%d of those stands are on the map and get a dummy. Reported as the" % _arena_positions().size())
+	p("total damage per second summed over all of them. `arena` is the column to")
+	p("read for breadth tiers; `dps` is the column to read for single-target power.")
 	p("cum cost = tower cost + every tier bought so far.")
-	p("marg/100c = (dps at this level - dps at the previous level) / this tier's")
-	p("cost x 100, on the PLAIN probe. Near-zero marginal on both probes with a")
+	p("marg/100c and arena-marg/100c = (this level - previous level) / this tier's")
+	p("cost x 100, on the plain probe and on the arena. Near-zero on BOTH with a")
 	p("real price attached is a dead tier; a large jump is a spike.")
-	p("CAVEAT: a single parked dummy cannot show `targets` (multi-target volleys)")
-	p("or `range`/`ignore_walls`; those tiers read flat here by construction. The")
-	p("tier-grants column names what each tier actually bought, so a flat row with")
-	p("`targets` or `range` in it is under-measured, not dead. `---` = the tower")
-	p("cannot see the probe at all (encrypted, no Cipher yet).")
+	p("`---` = the tower cannot see the probe at all (encrypted, no Cipher yet).")
 	p("")
 	var plain := _synth("plain", STD_RADIUS, false, false, PROBE_HP, 0.0)
 	var ecc := _synth("ecc", STD_RADIUS, true, false, PROBE_HP, 0.0)
@@ -449,15 +568,20 @@ func _section_b() -> void:
 		p("")
 		p("%s  (base cost %d, %s mode, dmg %.0f, rate %.2f/s, range %d)" % [
 			td.display_name, td.cost, td.fire_mode, td.damage, td.fire_rate, td.range_tiles])
-		p("  %-12s %5s %9s %9s %9s %9s %11s  %s" % [
-			"slot", "level", "cum cost", "dps", "dps(ECC)", "dps(ENC)", "marg/100c", "tier grants"])
+		p("  %-12s %5s %9s %9s %9s %9s %9s %10s %10s  %s" % [
+			"slot", "level", "cum cost", "dps", "dps(ECC)", "dps(ENC)", "arena",
+			"marg/100c", "arena/100c", "tier grants"])
 		for s in range(nslots):
 			var prev := -1.0
+			var prev_arena := -1.0
 			var cum: int = td.cost
+			var slot_t0: int = Time.get_ticks_msec()
 			for lv in range(maxes[s] + 1):
 				var d_plain: float = await _dps_trial(tid, plain, B_SECONDS, s, lv)
 				var d_ecc: float = await _dps_trial(tid, ecc, B_SECONDS, s, lv)
 				var d_enc: float = await _dps_trial(tid, enc, B_SECONDS, s, lv)
+				var ar: Dictionary = await _arena_trial(tid, plain, B_SECONDS, s, lv)
+				var d_arena: float = ar["dps"]
 				var tier_cost := 0
 				var grants := "(base)"
 				if lv > 0:
@@ -465,14 +589,19 @@ func _section_b() -> void:
 					tier_cost = int(tier.get("cost", 0))
 					cum += tier_cost
 					grants = _tier_grants(tier)
-				var marg_txt := "        -"
+				var marg_txt := "         -"
+				var amarg_txt := "         -"
 				if lv > 0:
-					var marg: float = (d_plain - prev) / maxf(1.0, float(tier_cost)) * 100.0
-					marg_txt = "%9.3f" % marg
-				p("  %-12s %5d %9d %9s %9s %9s %11s  %s" % [
+					marg_txt = "%10.3f" % [(d_plain - prev) / maxf(1.0, float(tier_cost)) * 100.0]
+					amarg_txt = "%10.3f" % [(d_arena - prev_arena) / maxf(1.0, float(tier_cost)) * 100.0]
+				p("  %-12s %5d %9d %9s %9s %9s %9s %10s %10s  %s" % [
 					names[s] if lv == 0 else "", lv, cum, _fmt_dps(d_plain), _fmt_dps(d_ecc),
-					_fmt_dps(d_enc), marg_txt, grants])
+					_fmt_dps(d_enc), _fmt_dps(d_arena), marg_txt, amarg_txt, grants])
 				prev = d_plain
+				prev_arena = d_arena
+			if OS.get_environment("BAL_DEBUG") != "":
+				p("   dbg %s slot %d took %.1f s" % [
+					tid, s, (Time.get_ticks_msec() - slot_t0) / 1000.0])
 
 func _tier_grants(tier: Dictionary) -> String:
 	var parts: Array = []
@@ -593,6 +722,35 @@ func _section_c() -> void:
 			td.display_name, td.cost, str(pcell), solo["damage"], duo["damage"],
 			_pct(solo["damage"], duo["damage"])])
 	p("")
+	p("C3 UPGRADE PATHS ON THE CONTROL TOWER")
+	p("Section B prices upgrades in dps, which is blind on a damage-0 tower: every")
+	p("Bandwidth and Signal tier reads 0.0 there whatever it bought. Same cohort as")
+	p("C1, same FIXED reference zone (sized from the Jammer's BASE range, so a")
+	p("range tier shows up as more dwell in that zone rather than by moving the")
+	p("goalposts). `>=` on clear s means the cohort never finished inside the %.0f s cap." % C_MAX_S)
+	p("  %-12s %5s %9s %10s %10s %12s  %s" % [
+		"slot", "level", "cum cost", "clear s", "zone sec", "dist@%.0fs" % C_CHECKPOINT,
+		"tier grants"])
+	p("  %-12s %5s %9s %10.1f %10.2f %12.0f  %s" % [
+		"(no Jammer)", "-", "0", base["clear"], base["zone"], base["dist_cp"], ""])
+	var jam_slots: int = mini(3, jam_td.upgrades.size())
+	for s in range(jam_slots):
+		var tiers: Array = jam_td.upgrades[s].get("tiers", [])
+		var sname := str(jam_td.upgrades[s].get("name", "Slot %d" % (s + 1)))
+		var cum: int = jam_td.cost
+		for lv in range(tiers.size() + 1):
+			var grants := "(base)"
+			if lv > 0:
+				var tier: Dictionary = tiers[lv - 1]
+				cum += int(tier.get("cost", 0))
+				grants = _tier_grants(tier)
+			var r: Dictionary = await _control_trial(
+				"jammer", jam_cell, "", Vector2i.ZERO, zone_c, zone_r, s, lv)
+			var clear_txt: String = ("%10.1f" % r["clear"]) if bool(r["cleared"]) \
+				else (">=%7.0f" % r["clear"])
+			p("  %-12s %5d %9d %s %10.2f %12.0f  %s" % [
+				sname if lv == 0 else "", lv, cum, clear_txt, r["zone"], r["dist_cp"], grants])
+	p("")
 	p("A positive change is the Jammer buying its partner more time on target; a")
 	p("negative one means the partner was already saturated (it never idles, so")
 	p("holding enemies longer cannot add shots) or the Jammer's wedge never")
@@ -635,18 +793,26 @@ func _nearest_buildable(to: Vector2i) -> Vector2i:
 ## the damage tower, which is how the pair is meant to be played.
 ## Returns {clear, zone, dist_cp, damage, ctrl_placed}.
 func _control_trial(ctrl_id: String, ctrl_cell: Vector2i, dmg_id: String, dmg_cell: Vector2i,
-		zone_c: Vector2, zone_r: float) -> Dictionary:
+		zone_c: Vector2, zone_r: float, ctrl_slot := -1, ctrl_tiers := 0) -> Dictionary:
 	await _reset_board()
 	_verify_clean("cohort %s+%s" % [ctrl_id, dmg_id])
 	_c_reset()
 	var ctrl_placed := false
+	var ctrl_spent := 0
 	# Partner first: it keeps its own stand in both halves of the comparison, so
 	# the only difference between the two runs is the control tower.
 	if dmg_id != "" and _place(dmg_id, dmg_cell) == null:
 		p("!! could not place %s at %s" % [dmg_id, str(dmg_cell)])
 	if ctrl_id != "":
 		var seat: Vector2i = ctrl_cell if ctrl_cell != Vector2i.ZERO else _nearest_buildable(dmg_cell)
-		ctrl_placed = _place(ctrl_id, seat) != null
+		var ct = _place(ctrl_id, seat)
+		ctrl_placed = ct != null
+		if ct != null:
+			for _i in range(ctrl_tiers):
+				if not ct.can_upgrade(ctrl_slot):
+					break
+				ct.upgrade(ctrl_slot)
+			ctrl_spent = ct.invested
 	var pd := _synth("cohort", STD_RADIUS, false, false, PROBE_HP, D_STREAM_SPEED)
 	var clock := 0.0
 	var next_spawn := 0.0
@@ -655,6 +821,7 @@ func _control_trial(ctrl_id: String, ctrl_cell: Vector2i, dmg_id: String, dmg_ce
 	var dist_cp := -1.0
 	var dt := 1.0 / 60.0
 	var clear := C_MAX_S
+	var cleared := false
 	var frames: int = int(round(C_MAX_S * 60.0))
 	for _i in range(frames):
 		if spawned < C_COHORT and clock >= next_spawn:
@@ -677,6 +844,7 @@ func _control_trial(ctrl_id: String, ctrl_cell: Vector2i, dmg_id: String, dmg_ce
 					dist_cp += _arclen(e)
 		if spawned >= C_COHORT and _c_gone >= C_COHORT:
 			clear = clock
+			cleared = true
 			break
 	if dist_cp < 0.0:
 		dist_cp = _c_dist
@@ -685,8 +853,8 @@ func _control_trial(ctrl_id: String, ctrl_cell: Vector2i, dmg_id: String, dmg_ce
 		if is_instance_valid(e):
 			damage += PROBE_HP - e.health
 	return {
-		"clear": clear, "zone": zone_seconds, "dist_cp": dist_cp,
-		"damage": damage, "ctrl_placed": ctrl_placed,
+		"clear": clear, "cleared": cleared, "zone": zone_seconds, "dist_cp": dist_cp,
+		"damage": damage, "ctrl_placed": ctrl_placed, "ctrl_spent": ctrl_spent,
 	}
 
 # ================================================================ D — walking stream
@@ -729,39 +897,88 @@ func _section_d() -> void:
 	p("window. dmg/s is HP removed per second inside that window (partial damage on")
 	p("survivors counted); kills and leaks are window-only too. coverage = route")
 	p("sample points inside the stand's range disk (%d samples on the whole route)." % _path.size())
-	p("dmg/100c divides dmg/s by the tower's base cost. A leak is a stream target")
+	p("dmg/100c divides dmg/s by `spent` (base cost plus any upgrades bought for")
+	p("that row). A leak is a stream target")
 	p("that walked past unfinished — with %.0f HP arriving every %.1f s no single" % [D_STREAM_HP, D_GAP])
 	p("tower is expected to hold, so leaks are context for the kill count, not a")
 	p("failure. The second table repeats every trial with the target priority")
 	p("switched from `first` to `last`, which is the difference between shooting")
 	p("the enemy about to leave the range and the one that just entered it.")
 	p("")
-	p("target priority: first (the shipping default)")
-	await _d_table("first")
+	p("The third table buys each tower's RANGE PATH out to tier 5 and re-stands it")
+	p("on the best cell for the enlarged range. Base range is what tables 1-2")
+	p("measure, so only this one can price a range upgrade in effective output.")
+	p("Whole-slot, not range-only: the tier grants that ride along (directions,")
+	p("targets, cipher, ignore_walls) come with it — which is how it is bought.")
 	p("")
-	p("target priority: last")
-	await _d_table("last")
+	p("target priority: first (the shipping default), no upgrades")
+	await _d_table("first", false)
+	p("")
+	p("target priority: last, no upgrades")
+	await _d_table("last", false)
+	p("")
+	p("target priority: first, range path bought to tier 5")
+	await _d_table("first", true)
 
-func _d_table(priority: String) -> void:
-	p("%-14s %6s %10s %9s %8s %7s %7s %11s" % [
-		"tower", "cost", "stand", "coverage", "dmg/s", "kills", "leaks", "dmg/100c"])
+func _d_table(priority: String, max_range_path: bool) -> void:
+	p("%-14s %6s %6s %10s %9s %8s %7s %7s %11s" % [
+		"tower", "spent", "range", "stand", "coverage", "dmg/s", "kills", "leaks", "dmg/100c"])
 	for raw in main.content.tower_ids():
 		var tid := str(raw)
 		var td: TowerData = main.content.tower(tid)
-		var res: Dictionary = await _d_trial(tid, td, priority)
-		p("%-14s %6d %10s %9d %8.1f %7d %7d %11.2f" % [
-			td.display_name, td.cost, str(res["cell"]), int(res["cov"]),
-			res["dps"], int(res["kills"]), int(res["leaks"]),
-			res["dps"] / maxf(1.0, float(td.cost)) * 100.0])
+		var slot := -1
+		var tiers := 0
+		if max_range_path:
+			slot = _range_slot(td)
+			tiers = 5 if slot >= 0 else 0
+		var res: Dictionary = await _d_trial(tid, td, priority, slot, tiers)
+		var spent: float = maxf(1.0, float(res["spent"]))
+		p("%-14s %6d %6d %10s %9d %8.1f %7d %7d %11.2f" % [
+			td.display_name, int(res["spent"]), int(res["range"]), str(res["cell"]),
+			int(res["cov"]), res["dps"], int(res["kills"]), int(res["leaks"]),
+			res["dps"] / spent * 100.0])
 
-func _d_trial(tid: String, td: TowerData, priority := "first") -> Dictionary:
+## The upgrade slot carrying the most `range` deltas (-1 when the tower has none).
+func _range_slot(td: TowerData) -> int:
+	var best := -1
+	var best_n := 0
+	for s in range(mini(3, td.upgrades.size())):
+		var n := 0
+		for tier in td.upgrades[s].get("tiers", []):
+			if tier.has("range"):
+				n += 1
+		if n > best_n:
+			best_n = n
+			best = s
+	return best
+
+## Range this tower ends at with `tiers` levels of slot `s` bought. Derived from
+## the data rather than from a placed tower, because the stand has to be chosen
+## for the FINAL range before the tower can be put down.
+func _slot_range_total(td: TowerData, s: int, tiers: int) -> int:
+	var r := td.range_tiles
+	if s < 0:
+		return r
+	var list: Array = td.upgrades[s].get("tiers", [])
+	for i in range(mini(tiers, list.size())):
+		var tier: Dictionary = list[i]
+		r += int(round(float(tier.get("range", 0.0))))
+	return r
+
+func _d_trial(tid: String, td: TowerData, priority := "first", slot := -1, tiers := 0) -> Dictionary:
 	await _reset_board()
 	_verify_clean("stream-d %s" % tid)
-	var cell := _best_cell(td.range_tiles)
-	var cov := _coverage_of(td.range_tiles, cell)
+	var eff_range := _slot_range_total(td, slot, tiers)
+	var cell := _best_cell(eff_range)
+	var cov := _coverage_of(eff_range, cell)
 	var t = _place(tid, cell)
 	if t == null:
-		return {"cell": cell, "cov": cov, "dps": -1.0, "kills": 0, "leaks": 0}
+		return {"cell": cell, "cov": cov, "dps": -1.0, "kills": 0, "leaks": 0,
+			"spent": td.cost, "range": eff_range}
+	for _i in range(tiers):
+		if not t.can_upgrade(slot):
+			break
+		t.upgrade(slot)
 	# Through the tower's own control, not by writing _priority_id behind its back.
 	for _i in range(4):
 		if t.target_priority == priority:
@@ -804,6 +1021,7 @@ func _d_trial(tid: String, td: TowerData, priority := "first") -> Dictionary:
 		"dps": window_damage / D_WINDOW,
 		"kills": _d_kills - mark_kills,
 		"leaks": _d_leaks - mark_leaks,
+		"spent": t.invested, "range": t.data.range_tiles,
 	}
 
 # ================================================================ E — wave viability

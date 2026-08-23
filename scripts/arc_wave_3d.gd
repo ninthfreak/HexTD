@@ -26,6 +26,9 @@ var range_tiles := 3            # axial reach (already tower_reach-expanded by t
 var col := Color(1, 1, 1)
 # Effects carried through, identical to what the radial spoke passes.
 var pierces_ecc := false        # Bit Corruption
+var ecc_pierce := 0.0           # partial native ECC pierce (bit_corruption is the full one)
+var execute_threshold := 0.0    # kill outright at/below this fraction of the target's max HP
+var execute_no_decay := false   # an execute kill also suppresses the decay spawn
 var applies_dos := false        # Denial of Service
 var dos_freeze := 0.5           # per-tower DoS timing (used when applies_dos)
 var dos_slow_time := 2.0
@@ -154,7 +157,7 @@ func _check_hits() -> void:
 		if HexUtils.axial_distance(origin_cell, board.world_cell(e.pp)) > range_tiles:
 			continue
 		_hit[e] = true
-		e.take_damage(damage, pierces_ecc)
+		e.take_damage(damage, pierces_ecc, false, ecc_pierce, execute_threshold, execute_no_decay)
 		if applies_dos:
 			e.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 
