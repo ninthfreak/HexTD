@@ -53,6 +53,7 @@ const D_GAP := 0.5               # walking-stream spawn gap
 const E_TIMEOUT := 120.0
 const E_ENEMY_CAP := 4000        # abort a wave whose decay chain explodes past this
 const E_BUDGET_MS := 480000      # wall-clock budget for section E; later waves are SKIPPED
+                                 # (override with BAL_E_BUDGET_MS; 0 = no budget)
 
 # Reference enemy sizes used as stand-ins (all real values from data/enemies.json).
 const STD_RADIUS := 16.0         # Quadlet-class body — the section B/C/D probe size
@@ -1077,14 +1078,21 @@ func _section_e() -> void:
 	p("%-4s %-28s %7s %6s %6s %5s %9s %8s %11s" % [
 		"#", "wave", "spawned", "peak", "leaked", "left", "clear s", "earned", "cum earned"])
 	var cum := 0
-	var deadline: int = Time.get_ticks_msec() + E_BUDGET_MS
+	# The budget bounds a full-harness run to a sane wall clock. How far it gets
+	# depends on how long the waves themselves take, so it is NOT a fixed wave
+	# count: slower data means more SKIPPED rows. Raise it (or set 0) to force
+	# full coverage when the wave list is what you actually care about.
+	var budget_ms: int = E_BUDGET_MS
+	if OS.get_environment("BAL_E_BUDGET_MS") != "":
+		budget_ms = int(OS.get_environment("BAL_E_BUDGET_MS"))
+	var deadline: int = Time.get_ticks_msec() + budget_ms
 	var limit: int = main.waves.size()
 	if OS.get_environment("BAL_E_LIMIT") != "":
 		limit = mini(limit, int(OS.get_environment("BAL_E_LIMIT")))
 	for wi in range(limit):
 		var wave: Dictionary = main.waves[wi]
 		var wname: String = WaveLoader.wave_name(wave, wi)
-		if Time.get_ticks_msec() > deadline:
+		if budget_ms > 0 and Time.get_ticks_msec() > deadline:
 			p("%-4d %-28s %7s %6s %6s %5s %9s %8s %11s" % [
 				wi + 1, wname.substr(0, 28), "-", "-", "-", "-", "SKIPPED", "-", "-"])
 			continue
