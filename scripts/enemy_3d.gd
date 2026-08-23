@@ -16,6 +16,12 @@ extends Node3D
 ## material is a TEMPLATE that is duplicated per enemy instead (see
 ## _instance_uniforms_ok). Both paths draw the same image, and every per-enemy
 ## write goes through the one _set_inst_param helper.
+##
+## In the reduced LOD tier the body is not drawn by this node at all: _body is
+## hidden and the shape becomes ONE instance in its enemy type's EnemyCrowdField
+## (a single MultiMesh draw call for every reduced body of that type). Purely a
+## change of renderer — pp, cell, health, hit_radius, the spatial buckets and
+## every other targeting input are untouched by it.
 
 signal bounty(amount: int)
 signal reached_goal()
@@ -166,6 +172,17 @@ var _bar_slot := -1            # instance index in that field; -1 = no bar
 var _bar_field: HealthBarField
 var _bar_width := 0.0          # bar's world width (scales with the body)
 var _bar_y := 0.0              # bar height above this root, in local units
+# Crowd rendering: while reduced, the body is one instance in this enemy type's
+# EnemyCrowdField and _body is hidden. -1 = not registered (full tier, or between
+# a morph's release and re-acquire).
+var _crowd_slot := -1
+var _crowd_field: EnemyCrowdField
+# Mirrors of the three per-enemy shader values, recorded on the one write path
+# (_set_inst_param) because the crowd instance carries them as custom data
+# instead of reading them off _body's instance uniforms.
+var _flash_inst := 0.0
+var _frost_inst := 0.0
+var _scan_inst := 0.0
 
 # Shard-FX mode. A released FX carrier is a MeshInstance3D wearing THIS script
 # (see _spawn_shard_fx); _is_fx keeps it out of every enemy code path for good.
@@ -218,6 +235,9 @@ func _build_visuals() -> void:
 # (_per_enemy_material) — a morph then re-duplicates from the new type's pair,
 # which is still a re-point of everything that is actually built once.
 func _build_body() -> void:
+	# A morph changes the type key, and a crowd field is per type: drop the old
+	# field's instance before the new form is taken, and re-register at the end.
+	_release_crowd()
 	var entry: Dictionary = _shared_meshes()
 	# ECC scan band sweeps the body's full height, so the height must be known
 	# before the (height-tuned) shared material is asked for.
@@ -254,6 +274,10 @@ func _build_body() -> void:
 	# Re-seat the yaw now that the spin was zeroed, so a morph snaps in the same
 	# frame the rebuilt spin wrapper used to.
 	_sync_transform()
+	# A morph that happened while reduced stays reduced — in the NEW type's field.
+	if _lod_reduced:
+		_acquire_crowd()
+		_body.visible = _crowd_slot < 0
 
 # Merged body mesh + an edges-only copy (the shard FX draws it alone) + body-top
 # height for the current shape and size, built once per distinct key and shared
@@ -589,7 +613,22 @@ func _min_edges(verts: PackedVector3Array) -> Array:
 # first and in that order, or a write to one would land in the other's slot.
 # (The fallback path addresses plain uniforms by name, so order is free there —
 # but the declarations are shared source, so the rule still governs them.)
-const _INST := "@INST@"   # expands to "instance uniform" or "uniform"
+#
+# CROWD VARIANT. The body shader is compiled a SECOND time for EnemyCrowdField,
+# where the same three values arrive as MultiMesh per-instance custom data rather
+# than per-node instance uniforms (INSTANCE_CUSTOM works on both renderer
+# families, so that path needs no capability branch). It is the SAME source
+# string with the same two tokens expanded differently: the declarations become
+# flat varyings and _INST_V fills in the vertex() assignments that feed them.
+# Every line of fragment() is therefore character-identical across all three
+# expansions and the variants cannot drift visually.
+const _INST := "@INST@"     # expands to "instance uniform", "uniform", or "varying flat"
+const _INST_V := "@INSTV@"  # empty, or the crowd variant's INSTANCE_CUSTOM unpack
+# Order matches the declaration order above it, which is also the instance-uniform
+# slot order — one mapping to keep in step, not two.
+const _INST_V_BODY := """flash = INSTANCE_CUSTOM.x;
+	frost = INSTANCE_CUSTOM.y;
+	scan_phase = INSTANCE_CUSTOM.z;"""
 
 static var _inst_uniform_support := -1   # -1 = not probed, 0 = fallback, 1 = capable
 
@@ -648,6 +687,7 @@ varying float v_y;
 %s
 void vertex() {
 	v_y = VERTEX.y;
+	@INSTV@
 }
 
 void fragment() {
@@ -752,9 +792,11 @@ void fragment() {
 """
 
 static var _body_shader: Shader
+static var _body_crowd_shader: Shader
 static var _edge_shader: Shader
 static var _fx_shader: Shader
 static var _body_mats: Dictionary = {}
+static var _crowd_mats: Dictionary = {}
 static var _edge_mats: Dictionary = {}
 static var _fx_mats: Dictionary = {}
 
@@ -766,7 +808,17 @@ static func _shader_of(cached: Shader, src: String) -> Shader:
 		return cached
 	var s := Shader.new()
 	var qualifier := "instance uniform" if _instance_uniforms_ok() else "uniform"
-	s.code = (src % _SRGB_FN).replace(_INST, qualifier)
+	s.code = (src % _SRGB_FN).replace(_INST, qualifier).replace(_INST_V, "")
+	return s
+
+# The crowd expansion of that same source: per-enemy values become flat varyings
+# fed from the MultiMesh instance's custom data. Only the two tokens differ, so
+# this variant draws exactly what a per-node body draws.
+static func _crowd_shader_of(cached: Shader, src: String, unpack: String) -> Shader:
+	if cached != null:
+		return cached
+	var s := Shader.new()
+	s.code = (src % _SRGB_FN).replace(_INST, "varying flat").replace(_INST_V, unpack)
 	return s
 
 # The material this node actually wears for one shared per-type material.
@@ -801,6 +853,16 @@ static func _v4(c: Color) -> Vector4:
 	return Vector4(c.r, c.g, c.b, c.a)
 
 func _set_inst_param(pname: StringName, value: Variant) -> void:
+	# Mirror the three body values here, on the one write path, so the crowd tier
+	# can hand the SAME numbers to its instance data — it cannot read them back off
+	# _body. An FX carrier only ever writes fx_u, which falls through.
+	match pname:
+		&"flash":
+			_flash_inst = float(value)
+		&"frost":
+			_frost_inst = float(value)
+		&"scan_phase":
+			_scan_inst = float(value)
 	if _instance_uniforms_ok():
 		var gi: GeometryInstance3D = _fx_mi if _is_fx else _body
 		if gi != null:
@@ -825,6 +887,28 @@ func _body_material() -> ShaderMaterial:
 	_body_shader = _shader_of(_body_shader, _BODY_SHADER)
 	var m := ShaderMaterial.new()
 	m.shader = _body_shader
+	_body_uniforms(m)
+	_body_mats[key] = m
+	return m
+
+# The crowd field's material for this enemy type: the SAME type-constant uniforms
+# on the crowd expansion of the same shader, so a body that drops into the tier
+# only changes which draw call carries it. One per type key, like the body one.
+func _crowd_material() -> ShaderMaterial:
+	var key := _type_key()
+	var cached: ShaderMaterial = _crowd_mats.get(key)
+	if cached != null:
+		return cached
+	_body_crowd_shader = _crowd_shader_of(_body_crowd_shader, _BODY_SHADER, _INST_V_BODY)
+	var m := ShaderMaterial.new()
+	m.shader = _body_crowd_shader
+	_body_uniforms(m)
+	_crowd_mats[key] = m
+	return m
+
+# Everything constant for an enemy type, written to either expansion of the body
+# shader from ONE place — the two materials cannot fall out of step.
+func _body_uniforms(m: ShaderMaterial) -> void:
 	var glowing := data.glow > 0.0
 	var energy := 0.0
 	if glowing:
@@ -846,8 +930,6 @@ func _body_material() -> ShaderMaterial:
 	var top: float = maxf(_body_top, 0.001)
 	m.set_shader_parameter("scan_top", top)
 	m.set_shader_parameter("scan_half_width", top * 0.15)
-	_body_mats[key] = m
-	return m
 
 func _edge_material() -> ShaderMaterial:
 	var bright: Color = data.color.lightened(0.3)
@@ -1005,6 +1087,11 @@ func _radius_estimate() -> float:
 func _sync_transform() -> void:
 	# Enemies hover above the board (over the sunken path), not resting on it.
 	position = Vector3(pp.x, GameBoard3D.ENEMY_Y, pp.y)
+	# While the crowd field is drawing this enemy, _body is hidden and its
+	# transform reaches nothing — the yaw goes into the instance buffer instead.
+	# Writing it anyway would do the same work twice per enemy per frame.
+	if _crowd_slot >= 0:
+		return
 	# Both terms are rotations about Y, so summing them is exactly what the old
 	# heading node + spin child composed to.
 	_body.rotation = Vector3(0.0, -heading + _spin_angle, 0.0)
@@ -1049,6 +1136,8 @@ func _process(delta: float) -> void:
 	if not _lod_reduced:
 		_bob_time += delta
 		_body.position.y = sin(_bob_time * BOB_RATE + _bob_phase) * BOB_AMPLITUDE
+	elif _crowd_slot >= 0:
+		_push_crowd()
 
 # Pick the detail tier from this enemy's APPARENT SIZE. lod_k folds the camera's
 # FOV and the viewport height together (set once per frame by Main3D), so the test
@@ -1093,6 +1182,72 @@ func _apply_lod(reduced: bool) -> void:
 		if _mat_edge == null:
 			_mat_edge = _per_enemy_material(_edge_material())
 		_body.set_surface_override_material(1, _mat_edge)
+	# The reduced body is drawn as one instance in its type's EnemyCrowdField, so
+	# this node must stop drawing or the shape renders twice. _body keeps its mesh
+	# and materials either way, so coming back is still a re-point of nothing.
+	# Hidden only once a slot is actually held: a field that could not be reached
+	# leaves the node drawing itself rather than leaving an invisible enemy.
+	if reduced:
+		_acquire_crowd()
+	else:
+		_release_crowd()
+	_body.visible = _crowd_slot < 0
+
+# --------------------------------------------------------------- crowd rendering
+# The reduced tier as MultiMesh instances: every reduced body of one enemy type
+# shares that type's faces-only mesh and one crowd material, so the whole crowd
+# collapses to about one draw call per type. VISUAL ONLY — this holds a slot and
+# pushes a transform, and touches nothing the towers read.
+func _acquire_crowd() -> void:
+	if _crowd_slot >= 0 or _body == null:
+		return
+	# _apply_lod only runs from _process and a morph only from a live hit, so the
+	# enemy is in-tree here; a spawn (which builds at full tier) never reaches this.
+	var parent := get_parent()
+	if parent == null:
+		return
+	var entry: Dictionary = _shared_meshes()
+	var faces: ArrayMesh = entry["faces"]
+	_crowd_field = EnemyCrowdField.for_type(parent, _type_key(), faces, _crowd_material())
+	if _crowd_field == null:
+		return
+	_crowd_slot = _crowd_field.acquire(self, _crowd_xform(), _flash_inst, _frost_inst, _scan_inst)
+
+func _release_crowd() -> void:
+	if _crowd_slot < 0:
+		return
+	if _crowd_field != null and is_instance_valid(_crowd_field):
+		_crowd_field.release(_crowd_slot)
+	_crowd_slot = -1
+	_crowd_field = null
+
+func _push_crowd() -> void:
+	if _crowd_field == null or not is_instance_valid(_crowd_field):
+		return
+	_crowd_field.set_instance(_crowd_slot, _crowd_xform(), _flash_inst, _frost_inst, _scan_inst)
+
+# What _body would have rendered, composed rather than read back: reading
+# global_transform forces a transform sync per enemy, and every part is already
+# here. The root carries nothing but the pp position (no rotation, no scale) and
+# the field is a sibling of the enemies, so this is exactly _body's own local
+# offset, yaw and pop scale over that position. In this tier the bob is frozen at
+# 0 and the spin is not advanced, so the only mover left is pp. The pop scale is
+# uniform (Vector3.ONE * k), which is why scaled() stands in for the local-space
+# scale Node3D would apply.
+func _crowd_xform() -> Transform3D:
+	# Built term by term rather than via Basis(axis, angle) + scaled(): the
+	# rotation is about Y only, so it is two trig calls and a uniform scale, and
+	# this runs per crowd enemy per frame.
+	var a: float = -heading + _spin_angle
+	var k: float = _body.scale.x
+	var c: float = cos(a) * k
+	var sn: float = sin(a) * k
+	var b := Basis(Vector3(c, 0.0, -sn), Vector3(0.0, k, 0.0), Vector3(sn, 0.0, c))
+	return Transform3D(b, Vector3(pp.x, GameBoard3D.ENEMY_Y + _body.position.y, pp.y))
+
+# Called by EnemyCrowdField when a swap-remove moves this enemy's instance.
+func set_crowd_slot(i: int) -> void:
+	_crowd_slot = i
 
 # --------------------------------------------------------------- Denial of Service
 # Apply (or refresh) the freeze-then-slow debuff. Re-hits take the longer remaining
@@ -1183,6 +1338,7 @@ func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
 	if lesser == null:
 		_alive = false
 		_release_bar()
+		_release_crowd()
 		# Shatter: the edge wireframe blows outward and blooms, then fades.
 		_spawn_shard_fx(Vector3.ONE * 1.6, 0.3, data.color.lightened(0.3), 6.0)
 		queue_free()
@@ -1244,6 +1400,7 @@ func place_on_path(seg: int, pos: Vector2) -> void:
 func _reach_goal() -> void:
 	_alive = false
 	_release_bar()
+	_release_crowd()
 	# Life loss is immediate — only the visual lingers behind the free below.
 	reached_goal.emit()
 	# Sucked-into-the-port: vertical stretch, tinted toward the goal marker's red.
