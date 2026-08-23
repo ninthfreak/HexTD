@@ -98,6 +98,12 @@ static var lod_cam_pos := Vector3.ZERO
 # more than the tier saves at close zoom, where nothing is reduced.
 static var lod_frame := 0
 const LOD_TEST_MASK := 7
+# Crowd rule: in a cell holding this many enemies, everything except the largest
+# one is buried in the pile and drops to the reduced tier whatever its apparent
+# size. Restoring needs the cell to thin out to LOD_CROWD_CLEAR, which is the
+# hysteresis for the same reason the pixel thresholds have a gap.
+const LOD_CROWD_MIN := 3
+const LOD_CROWD_CLEAR := 2
 
 const DEATH_FX_PER_FRAME := 12
 # Whether enemy bodies cast into the shadow map. Measured at 400 enemies: casting
@@ -144,6 +150,10 @@ var _edges_mesh: ArrayMesh     # edges-only copy of surface 1; the shard FX draw
 var _own_mats: Array[ShaderMaterial] = []
 var _lod_reduced := false      # true = wearing the faces-only mesh
 var _lod_phase := 0            # de-syncs the staggered LOD test across the wave
+# Written by GameBoard3D._refresh_buckets: how many enemies share this cell, and
+# whether this is the largest of them (the one actually visible in the pile).
+var crowd := 1
+var crowd_lead := true
 var _mat_body: ShaderMaterial  # surface 0 material, kept for tier swaps
 var _mat_edge: ShaderMaterial  # surface 1 material (null while reduced)
 var _spins := false            # platonic solids only — prisms never gain idle spin
@@ -1054,10 +1064,12 @@ func _update_lod() -> void:
 	var dz: float = lod_cam_pos.z - pp.y
 	var d: float = maxf(1.0, sqrt(dx * dx + dy * dy + dz * dz))
 	var px: float = hit_radius * lod_k / d
+	# Buried in a pile counts the same as being tiny: the detail cannot be seen.
+	var buried := not crowd_lead and crowd >= LOD_CROWD_MIN
 	if _lod_reduced:
-		if px > LOD_RESTORE_PX:
+		if px > LOD_RESTORE_PX and (crowd_lead or crowd <= LOD_CROWD_CLEAR):
 			_apply_lod(false)
-	elif px < LOD_DROP_PX:
+	elif px < LOD_DROP_PX or buried:
 		_apply_lod(true)
 
 # Swap between the shared full and faces-only meshes. Both come from the same
