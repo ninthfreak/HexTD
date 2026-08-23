@@ -1,6 +1,11 @@
 # Throwaway offline-validation scripts / renders (not part of the game)
 scratchpad/
 
-# Godot-generated caches (rebuilt by the editor / --import on any machine)
+# Godot's import CACHE is machine-local and rebuilt on open.
 .godot/
-*.import
+
+# NOTE: *.import files are deliberately NOT ignored. They are Godot 4 import
+# metadata (importer settings + the uid and cache path each asset resolves to),
+# they contain no machine-specific paths, and they are meant to be committed.
+# Ignoring them lets every machine invent its own mapping, which is how every
+# .wav ended up resolving to a single 0.18s sample on one checkout.
