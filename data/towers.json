@@ -89,27 +89,27 @@
         "tiers": [
           {
             "cost": 150,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "range": 1
           },
           {
             "cost": 400,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "cipher": "on"
           },
           {
             "cost": 800,
-            "cipher": "on",
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "range": 1
           },
           {
             "cost": 1800,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "range": 1
           },
           {
             "cost": 10500,
@@ -550,35 +550,38 @@
         "tiers": [
           {
             "cost": 600,
-            "ramp_time": -1.0,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "charge_retain": 0.5
           },
           {
             "cost": 1600,
-            "ramp_time": -1.0,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "ramp_time": -1.0,
+            "range": 1
           },
           {
             "cost": 3200,
-            "range": 1,
-            "focus_time": -0.2,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "ramp_time": -0.75,
+            "focus_time": -0.1
           },
           {
             "cost": 7200,
-            "ramp_time": -0.5,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "charge_retain": 0.5,
+            "range": 1
           },
           {
             "cost": 27500,
-            "ramp_time": -0.25,
             "width": 0.1,
             "height": 0.1,
-            "color": "#f37041"
+            "color": "#f37041",
+            "ramp_time": -1.0,
+            "focus_time": -0.1
           }
         ]
       },
@@ -587,34 +590,38 @@
         "tiers": [
           {
             "cost": 600,
-            "cipher": "on",
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "cipher": "on"
           },
           {
             "cost": 1600,
-            "bit_corruption": "on",
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "ecc_pierce": 0.15,
+            "damage": 300
           },
           {
             "cost": 3200,
-            "damage": 300,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "ecc_pierce": 0.2,
+            "damage": 300
           },
           {
             "cost": 7200,
-            "damage": 700,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "damage": 700
           },
           {
             "cost": 18000,
-            "damage": 500,
             "width": 0.1,
             "height": 0.1,
-            "color": "#bb6e4b"
+            "color": "#bb6e4b",
+            "bit_corruption": "on",
+            "ignore_walls": "on",
+            "damage": 500
           }
         ]
       }
@@ -754,7 +761,7 @@
     "range": 5,
     "fire_rate": 1.2,
     "damage": 60,
-    "cost": 1000,
+    "cost": 2500,
     "projectile_speed": 400,
     "fire_mode": "arc",
     "cipher": true,
@@ -804,21 +811,21 @@
         "tiers": [
           {
             "cost": 1500,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "range": 1
           },
           {
             "cost": 4000,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "arc_angle": 40
           },
           {
             "cost": 8000,
-            "arc_angle": 30,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "range": 1
           },
           {
             "cost": 18000,
@@ -828,11 +835,11 @@
           },
           {
             "cost": 52500,
-            "range": 1,
-            "arc_angle": 260,
             "width": 0.1,
             "height": 0.1,
-            "color": "#3adce0"
+            "color": "#3adce0",
+            "range": 1,
+            "arc_angle": 40
           }
         ]
       },

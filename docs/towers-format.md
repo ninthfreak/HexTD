@@ -34,6 +34,7 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `directions` | int | 6 | `radial` only: number of equally spaced spokes (min 1; 6 = hex flat sides). |
 | `ramp_time` | number | 2.0 | `laser` only: seconds of sustained fire to reach full power (min 0.05). |
 | `focus_time` | number | 0.0 | Seconds the tower is idle after **killing** a target (min 0). Taxes swarm clearing. |
+| `charge_retain` | number | 0 | **NEW.** "Prefocus": the fraction of a `laser`'s ramp kept when it loses or switches target (0 = the ramp restarts from zero every time, 1 = it is never lost). Clamped 0–1. Ignored by every other fire mode. |
 | `arc_angle` | number | 70 | **NEW.** `arc` only: full angular width of the wedge, in degrees (min 1, max 360; 360 = omnidirectional). |
 | `dos_freeze` | number | 0.5 | **NEW.** Seconds an enemy is fully stopped by a DoS hit (per-tower override of the former global `DOS_STOP`). |
 | `dos_slow_time` | number | 2.0 | **NEW.** Seconds an enemy stays slowed after the freeze ends (override of `DOS_SLOW_TIME`). |
@@ -63,7 +64,9 @@ is a per-tower in-game toggle, not a JSON field.
   range. Spokes are stopped by blocking walls unless `ignore_walls`.
 - **`laser`** — locks one target and ramps damage with a convex (quadratic ease-in)
   curve: `damage_per_sec = damage * (elapsed / ramp_time)²`, reaching full at
-  `ramp_time`. The ramp resets to 0 whenever the target changes or is lost.
+  `ramp_time`. When the target changes or is lost the ramp is multiplied by
+  `charge_retain` — so by default it resets to 0, and at `charge_retain = 1`
+  ("Prefocus") it carries over intact.
 - **`arc`** — an aimed expanding wave spanning `arc_angle` degrees, centered on the
   prioritised target. Every enemy the front crosses within range and within the wedge is
   affected once (no pierce cap). Applies `damage` (default 0) and the tower's ability
@@ -107,8 +110,9 @@ A tier mutates the tower's effective stats when purchased. Numeric entries are
 | `fire_rate` | number | Add to `fire_rate`. |
 | `targets` | number | Add to `targets` (rounded, floored at 1). **NEW.** |
 | `directions` | number | Add to `directions` (rounded). |
-| `ramp_time` | number | Add to `ramp_time` (floored at 0.05). |
-| `focus_time` | number | Add to `focus_time` (floored at 0). |
+| `ramp_time` | number | Add to `ramp_time` (floored at 0; the *base* field floors at 0.05). |
+| `focus_time` | number | Add to `focus_time` (floored at **0.1** — an upgraded tower always keeps some recovery). |
+| `charge_retain` | number | Add to `charge_retain` (clamped 0–1). **NEW.** |
 | `arc_angle` | number | Add to `arc_angle` (clamped 1–360). **NEW.** |
 | `dos_freeze` | number | Add to `dos_freeze` (floored at 0). **NEW.** |
 | `dos_slow_time` | number | Add to `dos_slow_time` (floored at 0). **NEW.** |

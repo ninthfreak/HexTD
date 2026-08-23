@@ -359,8 +359,8 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
@@ -389,7 +389,7 @@ func _delta_str(key: String, v: float) -> String:
 			return "%s%s°" % [sgn, _trim(v)]
 		"dos_slow_factor":
 			return "%s%s×" % [sgn, _trim(v)]
-		"ecc_pierce", "execute_threshold":
+		"ecc_pierce", "execute_threshold", "charge_retain":
 			return "%s%s%%" % [sgn, _trim(v * 100.0)]
 		_:
 			return "%s%s" % [sgn, _trim(v)]
@@ -426,6 +426,7 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
 	if tier.has("focus_time"):
 		data.focus_time = maxf(0.1, data.focus_time + float(tier["focus_time"]))
+	data.charge_retain = clampf(data.charge_retain + float(tier.get("charge_retain", 0.0)), 0.0, 1.0)
 	data.height_scale = maxf(0.05, data.height_scale + float(tier.get("height", 0.0)))
 	data.width_scale = maxf(0.05, data.width_scale + float(tier.get("width", 0.0)))
 	var col := str(tier.get("color", ""))
@@ -622,27 +623,30 @@ func _process_laser(delta: float) -> void:
 		_idle_cd -= delta
 	# focus_time: after a kill the beam is blind/idle for this long. This caps
 	# kills/sec (swarm tax) while barely touching single-target DPS.
+	# Prefocus (charge_retain) is applied ONCE per target-loss, at the two places a
+	# target is actually lost: it goes invalid, or it dies. The "no target right
+	# now" states below then leave _charge alone, so the retained ramp survives the
+	# focus delay and the idle gate. At the default charge_retain = 0 those two
+	# sites zero the charge outright and the hold-states are no-ops, so the beam
+	# behaves exactly as it did before Prefocus existed.
 	if _focus_cd > 0.0:
 		_focus_cd -= delta
 		_laser_target = null
-		_charge = 0.0
 		_set_hum(false, 0.0)
 		_update_beam(0.0, false)
 		return
 	if not _target_still_valid(_laser_target):
 		_laser_target = null
-		_charge = 0.0          # reset ramp when the target is lost (per-target ramp)
+		_charge *= data.charge_retain   # ramp decays on target loss (fully, unless Prefocus)
 	if _laser_target == null:
 		# The idle gate only ever arms on a scan that found nothing, so a kill (which
 		# arms _focus_cd instead, with _idle_cd at 0) never re-locks any later than it
 		# does today: the frame focus_time expires is a scanning frame.
 		if _idle_cd > 0.0:
-			_charge = 0.0
 			_set_hum(false, 0.0)
 			_update_beam(0.0, false)
 			return
 		_laser_target = _acquire_target()
-		_charge = 0.0          # fresh target starts at the weak end of the curve
 		if _laser_target != null:
 			_fire_flash()      # lock-on blink — the laser's per-shot feedback
 		else:
@@ -656,7 +660,7 @@ func _process_laser(delta: float) -> void:
 				false, data.ecc_pierce, data.execute_threshold, data.execute_no_decay)
 		if killed:
 			_laser_target = null
-			_charge = 0.0
+			_charge *= data.charge_retain   # a kill is the other target-loss point
 			_focus_cd = data.focus_time
 			_set_hum(false, 0.0)
 			_update_beam(0.0, false)
