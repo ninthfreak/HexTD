@@ -39,7 +39,7 @@
             "height": 0.03
           },
           {
-            "cost": 10500,
+            "cost": 4500,
             "damage": 250,
             "width": 0.1,
             "height": 0.1,
@@ -113,7 +113,6 @@
           },
           {
             "cost": 10500,
-            "range": 1,
             "ignore_walls": "on",
             "width": 0.1,
             "height": 0.1,
@@ -163,7 +162,7 @@
             "height": 0.03
           },
           {
-            "cost": 10500,
+            "cost": 4500,
             "damage": 60,
             "width": 0.1,
             "height": 0.1,
@@ -225,19 +224,18 @@
           },
           {
             "cost": 800,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "cipher": "on"
           },
           {
             "cost": 1800,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "targets": 1
           },
           {
             "cost": 10500,
-            "range": 1,
             "ignore_walls": "on",
             "width": 0.1,
             "height": 0.1,
@@ -287,7 +285,7 @@
             "height": 0.03
           },
           {
-            "cost": 19500,
+            "cost": 11250,
             "damage": 1500,
             "width": 0.1,
             "height": 0.1,
@@ -360,7 +358,7 @@
             "height": 0.03
           },
           {
-            "cost": 19500,
+            "cost": 11250,
             "damage": 1500,
             "buffer_overflow": "on",
             "width": 0.1,
@@ -411,7 +409,7 @@
             "height": 0.03
           },
           {
-            "cost": 13500,
+            "cost": 6750,
             "damage": 180,
             "width": 0.1,
             "height": 0.1,
@@ -424,35 +422,37 @@
         "tiers": [
           {
             "cost": 225,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "range": 1,
+            "directions": 1
           },
           {
             "cost": 600,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "directions": 1
           },
           {
             "cost": 1200,
-            "directions": 3,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "range": 1,
+            "directions": 1
           },
           {
             "cost": 2700,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "directions": 1
           },
           {
             "cost": 13500,
-            "directions": 3,
             "ignore_walls": "on",
             "width": 0.1,
             "height": 0.1,
-            "color": "#2c87ce"
+            "color": "#2c87ce",
+            "directions": 2
           }
         ]
       },
@@ -505,7 +505,7 @@
     "cost": 400,
     "projectile_speed": 320,
     "fire_mode": "laser",
-    "ramp_time": 6,
+    "ramp_time": 3.0,
     "focus_time": 0.3,
     "ecc_pierce": 0.5,
     "upgrades": [
@@ -537,7 +537,7 @@
             "height": 0.03
           },
           {
-            "cost": 27500,
+            "cost": 18000,
             "damage": 1150,
             "width": 0.1,
             "height": 0.1,
@@ -550,13 +550,13 @@
         "tiers": [
           {
             "cost": 600,
-            "ramp_time": -2.0,
+            "ramp_time": -1.0,
             "width": 0.03,
             "height": 0.03
           },
           {
             "cost": 1600,
-            "ramp_time": -2.0,
+            "ramp_time": -1.0,
             "width": 0.03,
             "height": 0.03
           },
@@ -569,13 +569,13 @@
           },
           {
             "cost": 7200,
-            "ramp_time": -1.0,
+            "ramp_time": -0.5,
             "width": 0.03,
             "height": 0.03
           },
           {
             "cost": 27500,
-            "ramp_time": -0.5,
+            "ramp_time": -0.25,
             "width": 0.1,
             "height": 0.1,
             "color": "#f37041"
@@ -610,7 +610,7 @@
             "height": 0.03
           },
           {
-            "cost": 27500,
+            "cost": 18000,
             "damage": 500,
             "width": 0.1,
             "height": 0.1,
@@ -649,20 +649,19 @@
           },
           {
             "cost": 4800,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "arc_angle": 40
           },
           {
             "cost": 10800,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "arc_angle": 60
           },
           {
             "cost": 36500,
-            "range": 1,
-            "arc_angle": 290,
+            "arc_angle": 190,
             "width": 0.1,
             "height": 0.1,
             "color": "#b87cd5"
@@ -702,7 +701,7 @@
             "cost": 36500,
             "dos_slow_factor": -0.1,
             "dos_slow_time": 2.0,
-            "dos_freeze": -0.5,
+            "dos_freeze": 0.5,
             "width": 0.1,
             "height": 0.1,
             "color": "#f753c4"
@@ -790,7 +789,7 @@
             "height": 0.03
           },
           {
-            "cost": 52500,
+            "cost": 45000,
             "damage": 750,
             "execute_threshold": 0.15,
             "execute_no_decay": "on",
@@ -823,9 +822,9 @@
           },
           {
             "cost": 18000,
-            "range": 1,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "arc_angle": 40
           },
           {
             "cost": 52500,

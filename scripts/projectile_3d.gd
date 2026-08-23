@@ -10,6 +10,9 @@ var speed: float
 var damage: float
 var col: Color
 var pierces_ecc := false
+var ecc_pierce := 0.0          # partial native ECC pierce (bit_corruption is the full one)
+var execute_threshold := 0.0   # kill outright at/below this fraction of the target's max HP
+var execute_no_decay := false  # an execute kill also suppresses the decay spawn
 var buffer_overflow := false   # tower had Buffer Overflow: surplus spills into decay children
 var applies_dos := false       # tower had Denial of Service: freeze-then-slow the enemy on hit
 var dos_freeze := 0.5          # per-tower DoS timing (used when applies_dos)
@@ -55,7 +58,8 @@ static func obtain(b) -> Projectile3D:
 # Full per-life reset. EVERY field a shot writes belongs here — a pooled instance
 # carries its predecessor's state otherwise, and a stale target or damage is a
 # gameplay bug, not a cosmetic one. Add new fields to this list when adding them
-# above. Covered: target, speed, damage, col, pierces_ecc, buffer_overflow,
+# above. Covered: target, speed, damage, col, pierces_ecc, ecc_pierce,
+# execute_threshold, execute_no_decay, buffer_overflow,
 # applies_dos, dos_freeze, dos_slow_time, dos_slow_factor, pp, _roll, _dead,
 # node transform / visibility / processing, mesh rotation / scale / transparency /
 # visibility. `_mesh.material_override` is (re)assigned from `col` by setup().
@@ -65,6 +69,9 @@ func _reset() -> void:
 	damage = 0.0
 	col = Color(1, 1, 1)
 	pierces_ecc = false
+	ecc_pierce = 0.0
+	execute_threshold = 0.0
+	execute_no_decay = false
 	buffer_overflow = false
 	applies_dos = false
 	dos_freeze = 0.5
@@ -151,7 +158,7 @@ func _process(delta: float) -> void:
 	var step := speed * delta
 	if step >= dist:
 		var contact: Vector2 = target.pp
-		target.take_damage(damage, pierces_ecc, buffer_overflow)
+		target.take_damage(damage, pierces_ecc, buffer_overflow, ecc_pierce, execute_threshold, execute_no_decay)
 		if applies_dos and is_instance_valid(target):
 			target.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 		var parent := get_parent()

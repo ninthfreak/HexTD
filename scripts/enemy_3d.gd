@@ -1146,20 +1146,30 @@ func _apply_status_visual() -> void:
 	_set_inst_param(&"flash", _flash)
 
 # --------------------------------------------------------------- damage / reduction
-func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) -> bool:
+func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, ecc_pierce := 0.0, execute_threshold := 0.0, execute_no_decay := false) -> bool:
 	# Returns true if this hit depleted the current form (a "kill"), so the laser
 	# can trigger its focus_time delay.
 	if not _alive:
 		return false
-	if data.ecc and not pierces_ecc:
-		amount *= (1.0 - ECC_RESIST)
+	if data.ecc:
+		# Bit Corruption is a full pierce; ecc_pierce is a partial one. Whatever
+		# fraction is NOT pierced still applies at the full ECC_RESIST rate.
+		var pierce: float = 1.0 if pierces_ecc else clampf(ecc_pierce, 0.0, 1.0)
+		amount *= (1.0 - ECC_RESIST * (1.0 - pierce))
+	# Execute: a hit that would leave the target at or below this fraction of the
+	# CURRENT form's max HP deletes it instead. Measured post-resist, and against
+	# the current form so it stays meaningful partway down a decay chain.
+	var executed := false
+	if execute_threshold > 0.0 and amount < health and (health - amount) <= data.health * execute_threshold:
+		executed = true
+		amount = health
 	# Buffer Overflow: remember surplus past the target's remaining HP (post-resist).
 	var carry := 0.0
 	if buffer_overflow and amount > health:
 		carry = amount - health
 	health -= amount
 	if health <= 0.0:
-		_on_depleted(carry, pierces_ecc)
+		_on_depleted(carry, pierces_ecc, executed and execute_no_decay)
 		return true
 	_flash = 1.0
 	_refresh_bar(health / data.health)
@@ -1169,17 +1179,22 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false) 
 # lookup showed up in profiles); re-resolved only if the cached node was freed.
 static var _am_cached: Node = null
 
-func _on_depleted(carry := 0.0, pierces_ecc := false) -> void:
+func _on_depleted(carry := 0.0, pierces_ecc := false, no_decay := false) -> void:
+	# no_decay: an execute kill with execute_no_decay suppresses the split, so the
+	# body's whole remaining sub-tree goes with it.
+	var lesser: EnemyData = data.reduces_to
+	if no_decay:
+		lesser = null
 	if _am_cached == null or not is_instance_valid(_am_cached):
 		_am_cached = get_node_or_null("/root/AudioManager")
 	var am := _am_cached
 	if am:
 		# A decay stage degrades rather than dies: it gets the split blip, so a
 		# 3-stage chain doesn't replay the same death sound three times. The
-		# (data-driven) death sound is saved for the final kill.
-		am.play_sfx("enemy_split" if data.reduces_to != null else data.death_sound)
+		# (data-driven) death sound is saved for the final kill — including a
+		# suppressed decay, which really is the end of that body.
+		am.play_sfx("enemy_split" if lesser != null else data.death_sound)
 	bounty.emit(data.reward)
-	var lesser: EnemyData = data.reduces_to
 	if lesser == null:
 		_alive = false
 		_release_bar()

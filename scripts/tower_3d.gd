@@ -358,14 +358,14 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "dos_freeze", "dos_slow_time", "dos_slow_factor", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
 		lines.append("Color change")
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow", "dos": "Denial of service"}
-	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos"]:
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow", "dos": "Denial of service", "execute_no_decay": "Execute suppresses decay"}
+	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos", "execute_no_decay"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":
 			lines.append("%s: enabled" % flag_labels[key])
@@ -388,6 +388,8 @@ func _delta_str(key: String, v: float) -> String:
 			return "%s%s°" % [sgn, _trim(v)]
 		"dos_slow_factor":
 			return "%s%s×" % [sgn, _trim(v)]
+		"ecc_pierce", "execute_threshold":
+			return "%s%s%%" % [sgn, _trim(v * 100.0)]
 		_:
 			return "%s%s" % [sgn, _trim(v)]
 
@@ -418,6 +420,8 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.dos_freeze = maxf(0.0, data.dos_freeze + float(tier.get("dos_freeze", 0.0)))
 	data.dos_slow_time = maxf(0.0, data.dos_slow_time + float(tier.get("dos_slow_time", 0.0)))
 	data.dos_slow_factor = clampf(data.dos_slow_factor + float(tier.get("dos_slow_factor", 0.0)), 0.05, 1.0)
+	data.ecc_pierce = clampf(data.ecc_pierce + float(tier.get("ecc_pierce", 0.0)), 0.0, 1.0)
+	data.execute_threshold = clampf(data.execute_threshold + float(tier.get("execute_threshold", 0.0)), 0.0, 1.0)
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
 	if tier.has("focus_time"):
 		data.focus_time = maxf(0.1, data.focus_time + float(tier["focus_time"]))
@@ -431,6 +435,7 @@ func _apply_tier(tier: Dictionary) -> void:
 	_apply_flag("ignore_walls", tier)
 	_apply_flag("buffer_overflow", tier)
 	_apply_flag("dos", tier)
+	_apply_flag("execute_no_decay", tier)
 
 func _apply_flag(key: String, tier: Dictionary) -> void:
 	var v := str(tier.get(key, ""))
@@ -478,6 +483,20 @@ func _note_aim(dir: Vector2) -> void:
 	_aim_yaw = atan2(-dir.y, dir.x)
 	_aim_timer = AIM_RELAX_TIME
 
+# Re-arm after a shot. ADDING the period to the (negative) overshoot rather than
+# assigning it is what keeps the long-run cadence at exactly `fire_rate`. A plain
+# assignment rounded every cooldown up to a whole frame, so the real rate was
+# 60/ceil(60/fire_rate): anything above 30/s was quantised to 30/s at 60fps and
+# bought nothing, and the effective rate changed with the player's framerate.
+func _rearm() -> void:
+	var period: float = 1.0 / data.fire_rate
+	_cooldown += period
+	if _cooldown < 0.0:
+		# Debt bigger than one whole period — either fire_rate is above the frame
+		# rate (a tower still fires at most once per frame) or the cooldown ran
+		# negative through a long idle gate. Start a clean period either way.
+		_cooldown = period
+
 func _process_targeted(delta: float) -> void:
 	# The cooldown keeps ticking through an idle gate, so a gated tower is never
 	# behind on its cadence once something walks into range.
@@ -495,7 +514,7 @@ func _process_targeted(delta: float) -> void:
 				_shoot(t)
 				_fire_flash()
 				_play_sfx("tower_fire")
-				_cooldown = 1.0 / data.fire_rate
+				_rearm()
 			else:
 				_idle_cd = _idle_wait
 		else:
@@ -505,7 +524,7 @@ func _process_targeted(delta: float) -> void:
 					_shoot(tt)
 				_fire_flash()
 				_play_sfx("tower_fire")   # once per volley, not per target
-				_cooldown = 1.0 / data.fire_rate
+				_rearm()
 			else:
 				_idle_cd = _idle_wait
 
@@ -517,7 +536,7 @@ func _process_radial(delta: float) -> void:
 	if _cooldown <= 0.0:
 		if _any_enemy_in_range():
 			_fire_volley()
-			_cooldown = 1.0 / data.fire_rate
+			_rearm()
 		else:
 			# Cooldown still parks at 0 so the volley leaves on the very frame the
 			# gate reopens with an enemy present.
@@ -534,7 +553,7 @@ func _process_arc(delta: float) -> void:
 		var t = _find_target()
 		if t != null:
 			_fire_arc(t)
-			_cooldown = 1.0 / data.fire_rate
+			_rearm()
 		else:
 			_idle_cd = _idle_wait
 
@@ -544,6 +563,9 @@ func _fire_arc(t) -> void:
 			cell, board.tower_reach(data.range_tiles), data.color, board)
 	w.arc_angle = data.arc_angle
 	w.pierces_ecc = data.bit_corruption
+	w.ecc_pierce = data.ecc_pierce
+	w.execute_threshold = data.execute_threshold
+	w.execute_no_decay = data.execute_no_decay
 	w.applies_dos = data.dos
 	w.can_see_encrypted = data.cipher
 	w.dos_freeze = data.dos_freeze
@@ -582,6 +604,9 @@ func _fire_volley() -> void:
 				cell, board.tower_reach(data.range_tiles), data.color, board)
 		p.ignore_walls = data.ignore_walls
 		p.pierces_ecc = data.bit_corruption
+		p.ecc_pierce = data.ecc_pierce
+		p.execute_threshold = data.execute_threshold
+		p.execute_no_decay = data.execute_no_decay
 		p.can_see_encrypted = data.cipher
 		p.applies_dos = data.dos
 		p.dos_freeze = data.dos_freeze
@@ -626,7 +651,8 @@ func _process_laser(delta: float) -> void:
 		var cr := 1.0 if data.ramp_time <= 0.0 else clampf(_charge / data.ramp_time, 0.0, 1.0)
 		# Convex (quadratic ease-in) ramp: ~0 early, full at ramp_time.
 		var factor := cr * cr
-		var killed: bool = _laser_target.take_damage(data.damage * factor * delta, data.bit_corruption)
+		var killed: bool = _laser_target.take_damage(data.damage * factor * delta, data.bit_corruption,
+				false, data.ecc_pierce, data.execute_threshold, data.execute_no_decay)
 		if killed:
 			_laser_target = null
 			_charge = 0.0
@@ -817,6 +843,9 @@ func _shoot(t) -> void:
 	_note_aim(t.pp - pp)
 	var p := Projectile3D.obtain(board)
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
+	p.ecc_pierce = data.ecc_pierce
+	p.execute_threshold = data.execute_threshold
+	p.execute_no_decay = data.execute_no_decay
 	p.dos_freeze = data.dos_freeze
 	p.dos_slow_time = data.dos_slow_time
 	p.dos_slow_factor = data.dos_slow_factor
