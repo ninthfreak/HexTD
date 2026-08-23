@@ -387,6 +387,7 @@ func _process(delta: float) -> void:
 	_update_banner(delta)
 	_ease_zoom(delta)
 	_camera_keys(delta)
+	_update_lod_globals()
 	_update_preview()
 	_update_cam_readout()
 	_cheat_tick(delta)
@@ -416,6 +417,19 @@ func _update_cam_readout() -> void:
 		return
 	_cam_readout_key = key
 	cam_label.text = "cam d:%d  (%d, %d, %d)" % key
+
+# Feed the enemy distance-LOD. An enemy's apparent DIAMETER in pixels is
+# hit_radius * lod_k / distance_to_camera, so the camera-dependent half is worth
+# computing once per frame here rather than per enemy. Camera3D.fov is the
+# VERTICAL angle under the default keep-height aspect, which is what pairs with
+# the viewport height.
+func _update_lod_globals() -> void:
+	if camera == null:
+		return
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	Enemy3D.lod_k = vp.y / maxf(0.0001, tan(deg_to_rad(camera.fov) * 0.5))
+	Enemy3D.lod_cam_pos = camera.global_position
+	Enemy3D.lod_frame += 1
 
 func _camera_keys(delta: float) -> void:
 	var dir := Vector2.ZERO

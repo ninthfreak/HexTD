@@ -1251,6 +1251,31 @@ func _refresh_buckets() -> void:
 		if bucket.is_empty():
 			_buckets[c] = bucket   # first enemy here — buckets never hold empty arrays
 		bucket.append(e)
+	# Crowding, for the enemy detail tier. On a path only ~100 cells long a big
+	# wave puts every enemy on top of another (measured: 100% sharing a cell at
+	# 400 enemies, averaging 4 per cell), so all but the largest in a cell are
+	# buried behind it and their detail never reaches the screen. Marking it here
+	# costs one pass that the bucket rebuild already pays for.
+	for c in _buckets:
+		var bucket: Array = _buckets[c]
+		var n: int = bucket.size()
+		var lead = null
+		if n > 1:
+			var best := -1.0
+			var best_id: int = 0
+			for e in bucket:
+				var r: float = e.hit_radius
+				var eid: int = e.get_instance_id()
+				# Ties break on instance id, never on iteration order: two equal
+				# enemies sharing a cell must not swap leadership frame to frame,
+				# or the outline would flicker between them.
+				if r > best or (r == best and eid < best_id):
+					best = r
+					best_id = eid
+					lead = e
+		for e in bucket:
+			e.crowd = n
+			e.crowd_lead = n <= 1 or e == lead
 
 # All enemies whose cached cell is in `cells` (a set, e.g. range_cell_set).
 func enemies_in_cell_set(cells: Dictionary) -> Array:

@@ -54,8 +54,21 @@ func _ready() -> void:
 	AudioServer.output_device = original
 	print("\nCurrent device restored to: ", AudioServer.output_device)
 
+	# A real backend reports a non-zero output latency and names the machine's
+	# actual sinks. Zero latency plus a lone "Default" is what the DUMMY driver
+	# looks like: the mixer keeps running (so every measurement above still shows
+	# signal) while nothing is ever handed to the hardware.
+	var looks_dummy: bool = AudioServer.get_output_latency() <= 0.0 and devices.size() <= 1
+	if looks_dummy:
+		print("\n*** No real audio backend is open (latency 0.0 ms, only \"Default\"). ***")
+		print("    Godot fell back to its dummy driver — it is mixing into nothing.")
+		print("    This is why nothing plays even though every level above measures fine,")
+		print("    and it is outside the project: no game-side change can restore sound.")
+
 	# The game's own path, for completeness: files -> importer -> SFX bus.
-	var am := get_node_or_null("/root/AudioManager")
+	# Untyped on purpose: play_sfx is AudioManager's, not Node's, so a typed
+	# reference makes this a hard error on newer engine versions.
+	var am = get_node_or_null("/root/AudioManager")
 	if am != null:
 		_cap.clear_buffer()
 		am.play_sfx("defeat")
@@ -75,11 +88,17 @@ func _ready() -> void:
 	print("    Set it in Project Settings > Audio > Driver > Output Device (enable")
 	print("    Advanced Settings to see it), or fix the OS default, and the game")
 	print("    will use it too.")
-	print("  * Peaks > 0 on every device but you heard NOTHING -> Godot is mixing")
-	print("    audio that never reaches the hardware: the OS per-application volume")
-	print("    for Godot is muted, or the audio driver Godot chose cannot open the")
-	print("    device. On Linux try running with --audio-driver PulseAudio (or ALSA);")
-	print("    on Windows check the volume mixer while the editor is running.")
+	print("  * Peaks > 0 but you heard NOTHING, and the dummy-driver notice above")
+	print("    appeared -> Godot cannot open your sound server. Check, in order:")
+	print("      1. the editor's startup log for \"All audio drivers failed,")
+	print("         falling back to the dummy driver\";")
+	print("      2. how Godot is installed. A sandboxed build is the usual cause:")
+	print("           flatpak override --user --socket=pulseaudio org.godotengine.Godot")
+	print("           snap connect godot:audio-playback")
+	print("      3. launching the editor with an explicit backend:")
+	print("           godot --audio-driver PulseAudio     (or ALSA)")
+	print("      4. that pipewire-pulse / pulseaudio is actually running for your")
+	print("         user session (pactl info should answer).")
 	print("  * A peak of 0.0000 everywhere -> the engine itself is producing no")
 	print("    signal; send me this output.")
 	print("===============================================================\n")
