@@ -54,6 +54,10 @@ func drive(main) -> void:
 		e.place_on_path(int(pl["index"]), pl["pos"])
 		main.board.add_enemy(e)
 
+	if OS.get_environment("ZOOM_DIST") != "":
+		main.cam_distance = float(OS.get_environment("ZOOM_DIST"))
+		main._target_distance = main.cam_distance
+		main._update_camera_transform()
 	print("STRESS: towers=", placed, " enemies=", main.board.enemies.size(), " frames=", n_frames)
 	# Warm up (spawn pops, first shots) before measuring.
 	for i in 30:

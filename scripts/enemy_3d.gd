@@ -78,12 +78,26 @@ const BAR_HEIGHT_PAD := 3.0     # bar sits above the body's top by this many uni
 # Mass-kill cap: at most this many shard FX may START in one frame (death shatter
 # and goal-leak share the budget). Past it the enemy still dies normally and
 # silently — an accepted visual trade-off, since nobody counts shards in a wipe.
-# Distance LOD (EXPERIMENTAL — driven manually for A/B renders, not yet automatic).
-# 0 = full detail; 1 = faces only, edge outline dropped; 2 = faces only with the
-# body lit to stand in for the lost edge bloom. The outline is 89% of enemy
-# geometry and its prisms are capped at 0.24 world units wide, i.e. under a pixel
-# past ~500 units of camera distance.
-static var lod_variant := 0
+# Distance LOD. The neon edge outline is 89% of enemy geometry, and its prisms
+# are capped at 0.24 world units wide — under a pixel past ~500 units of camera
+# distance, where they alias instead of reading as lines. Below LOD_DROP_PX of
+# apparent DIAMETER an enemy therefore switches to a faces-only mesh; it comes
+# back above LOD_RESTORE_PX. Keying on apparent size rather than camera distance
+# keeps big shapes detailed at every zoom while tiny ones shed geometry early.
+# A/B renders showed no compensation is wanted: lighting the body to replace the
+# lost edge bloom flattens the facet shading and blows out pale enemies.
+const LOD_DROP_PX := 40.0
+const LOD_RESTORE_PX := 48.0        # gap = hysteresis, so scrolling cannot flicker
+# Camera-derived half of the size test, refreshed once per frame by Main3D:
+# apparent diameter in px == hit_radius * lod_k / distance_to_camera.
+static var lod_k := 0.0
+static var lod_cam_pos := Vector3.ZERO
+# Frame counter fed by the same Main3D tick. Zoom changes are gradual and the
+# hysteresis band above absorbs the lag, so each enemy only re-tests every 8th
+# frame on its own stagger — at 400 enemies the test itself would otherwise cost
+# more than the tier saves at close zoom, where nothing is reduced.
+static var lod_frame := 0
+const LOD_TEST_MASK := 7
 
 const DEATH_FX_PER_FRAME := 12
 # Whether enemy bodies cast into the shadow map. Measured at 400 enemies: casting
@@ -128,6 +142,10 @@ var _edges_mesh: ArrayMesh     # edges-only copy of surface 1; the shard FX draw
 # Body enemies hold two (faces + edges); an FX carrier holds one. Always EMPTY on
 # the capable path, where those same values are written to the instance instead.
 var _own_mats: Array[ShaderMaterial] = []
+var _lod_reduced := false      # true = wearing the faces-only mesh
+var _lod_phase := 0            # de-syncs the staggered LOD test across the wave
+var _mat_body: ShaderMaterial  # surface 0 material, kept for tier swaps
+var _mat_edge: ShaderMaterial  # surface 1 material (null while reduced)
 var _spins := false            # platonic solids only — prisms never gain idle spin
 var _spin_angle := 0.0         # idle spin, folded into the body yaw
 var _pop_tween: Tween
@@ -158,6 +176,7 @@ func setup(d: EnemyData, points: PackedVector2Array) -> void:
 	if points.size() > 1:
 		heading = (points[1] - points[0]).angle()
 	_bob_phase = randf() * TAU
+	_lod_phase = randi() & LOD_TEST_MASK
 	_build_visuals()
 	_sync_transform()
 	_refresh_bar(1.0)
@@ -194,15 +213,19 @@ func _build_body() -> void:
 	# before the (height-tuned) shared material is asked for.
 	_body_top = float(entry["top"])
 	_edges_mesh = entry["edges"]
-	var m: ArrayMesh = entry["mesh"] if lod_variant == 0 else entry["faces"]
+	var m: ArrayMesh = entry["faces"] if _lod_reduced else entry["mesh"]
 	_body.mesh = m
 	# Drop any materials a previous form owned (fallback path only — no-op on the
 	# capable path, where this list is always empty) before the new pair is taken.
 	_own_mats.clear()
+	_mat_body = null
+	_mat_edge = null
 	if m.get_surface_count() > 0:
-		_body.set_surface_override_material(0, _per_enemy_material(_body_material()))
+		_mat_body = _per_enemy_material(_body_material())
+		_body.set_surface_override_material(0, _mat_body)
 	if m.get_surface_count() > 1:
-		_body.set_surface_override_material(1, _per_enemy_material(_edge_material()))
+		_mat_edge = _per_enemy_material(_edge_material())
+		_body.set_surface_override_material(1, _mat_edge)
 	_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if ENEMY_CASTS_SHADOW \
 		else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Solids spin; prisms must not. A morph restarts the spin from zero, as the
@@ -785,7 +808,7 @@ func _type_key() -> String:
 		data.glow, int(data.ecc), int(data.encrypted)]
 
 func _body_material() -> ShaderMaterial:
-	var key := _type_key() + "|lod%d" % lod_variant
+	var key := _type_key()
 	var cached: ShaderMaterial = _body_mats.get(key)
 	if cached != null:
 		return cached
@@ -796,13 +819,6 @@ func _body_material() -> ShaderMaterial:
 	var energy := 0.0
 	if glowing:
 		energy = 0.3 + data.glow * 0.25
-	# Tier 2: the edge outline carried nearly all of an enemy's bloom (it is
-	# unshaded at energy 1.2+, the body sits at 0.3-0.55). Dropping it without
-	# compensation leaves a matte shape, so the body is lit past the bloom
-	# threshold instead to keep the glow budget roughly where it was.
-	if lod_variant == 2:
-		glowing = true
-		energy = maxf(energy, 1.35)
 	m.set_shader_parameter("body_color", _v4(data.color))
 	m.set_shader_parameter("standard_mode", 0.0 if (data.ecc or data.encrypted) else 1.0)
 	# emission_enabled / emission_energy_multiplier of the StandardMaterial3D this
@@ -1010,14 +1026,61 @@ func _process(delta: float) -> void:
 	else:
 		pp += to_target / dist * step
 	cell = HexUtils.pixel_to_cell(pp - _grid_origin, GameBoard3D.HEX_SIZE)
+	if ((lod_frame + _lod_phase) & LOD_TEST_MASK) == 0:
+		_update_lod()
 	# Display-only motion: hover bob and a slow idle spin for the platonic solids,
 	# both on _body (pp and the bar are untouched). The spin is advanced before the
-	# yaw is written, since the two now share one rotation.
-	if _spins:
+	# yaw is written, since the two now share one rotation. Both are skipped in the
+	# reduced tier, where the bob travels well under a pixel and the spin cannot be
+	# read off a shape that small.
+	if _spins and not _lod_reduced:
 		_spin_angle += delta * SPIN_RATE
 	_sync_transform()
-	_bob_time += delta
-	_body.position.y = sin(_bob_time * BOB_RATE + _bob_phase) * BOB_AMPLITUDE
+	if not _lod_reduced:
+		_bob_time += delta
+		_body.position.y = sin(_bob_time * BOB_RATE + _bob_phase) * BOB_AMPLITUDE
+
+# Pick the detail tier from this enemy's APPARENT SIZE. lod_k folds the camera's
+# FOV and the viewport height together (set once per frame by Main3D), so the test
+# is one distance and one multiply per enemy; the swap itself only happens on a
+# threshold crossing.
+func _update_lod() -> void:
+	if lod_k <= 0.0 or _body == null:
+		return
+	# Distance from `pp` rather than global_position: the world position is
+	# derived from pp anyway, and reading global_position forces a transform sync.
+	var dx: float = lod_cam_pos.x - pp.x
+	var dy: float = lod_cam_pos.y - GameBoard3D.ENEMY_Y
+	var dz: float = lod_cam_pos.z - pp.y
+	var d: float = maxf(1.0, sqrt(dx * dx + dy * dy + dz * dz))
+	var px: float = hit_radius * lod_k / d
+	if _lod_reduced:
+		if px > LOD_RESTORE_PX:
+			_apply_lod(false)
+	elif px < LOD_DROP_PX:
+		_apply_lod(true)
+
+# Swap between the shared full and faces-only meshes. Both come from the same
+# cache entry and the materials are re-pointed rather than rebuilt, so a crossing
+# costs a mesh assignment and at most one material lookup — never a body rebuild.
+func _apply_lod(reduced: bool) -> void:
+	if reduced == _lod_reduced or _body == null:
+		return
+	_lod_reduced = reduced
+	var entry: Dictionary = _shared_meshes()
+	var m: ArrayMesh = entry["faces"] if reduced else entry["mesh"]
+	_body.mesh = m
+	if reduced:
+		# Freeze the hover at rest so the shape cannot sit at an odd height while
+		# the bob is not being advanced.
+		_body.position.y = 0.0
+	if m.get_surface_count() > 0 and _mat_body != null:
+		_body.set_surface_override_material(0, _mat_body)
+	if m.get_surface_count() > 1:
+		# A morph that happened while reduced never took an edge material.
+		if _mat_edge == null:
+			_mat_edge = _per_enemy_material(_edge_material())
+		_body.set_surface_override_material(1, _mat_edge)
 
 # --------------------------------------------------------------- Denial of Service
 # Apply (or refresh) the freeze-then-slow debuff. Re-hits take the longer remaining

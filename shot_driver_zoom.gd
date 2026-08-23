@@ -1,11 +1,11 @@
 extends Node
 ## Dev-only: spawn a spread of enemy sizes, aim the camera at them, and park it
 ## at ZOOM_DIST so on-screen detail at a given zoom can be judged from a frame.
+## Enemy3D picks its own detail tier from apparent size, so this also exercises
+## the distance LOD: at 1600 the small shapes drop their edge outline.
 
 func drive(main) -> void:
 	var dist := float(OS.get_environment("ZOOM_DIST")) if OS.get_environment("ZOOM_DIST") != "" else 400.0
-	# LOD_VARIANT: 0 full, 1 faces only, 2 faces only + lit body (see Enemy3D).
-	Enemy3D.lod_variant = int(OS.get_environment("LOD_VARIANT")) if OS.get_environment("LOD_VARIANT") != "" else 0
 	var path_pts: PackedVector2Array = main.board.get_path_points()
 	var picks := ["bit", "quadlet", "kibibyte", "tebibyte", "ecc_quadlet", "enc_octaword"]
 	var d := 120.0
