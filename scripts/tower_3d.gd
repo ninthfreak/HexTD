@@ -161,6 +161,7 @@ const ABILITY_BADGES := [
 	{"prop": "bit_corruption", "file": "bit_corruption", "focal_out_x": 0.50, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.55, "reveal_in": 1.25, "reveal_rate": 1.0, "tip": "Bit Corruption\nBypasses ECC damage resistance."},
 	{"prop": "cipher", "file": "cipher", "focal_out_x": 0.48, "focal_out_y": 0.50, "focal_in_x": 0.48, "focal_in_y": 0.50, "reveal_out": 0.52, "reveal_in": 1.05, "reveal_rate": 1.0, "tip": "Cipher\nSees and targets Encrypted enemies."},
 	{"prop": "buffer_overflow", "file": "buffer_overflow", "focal_out_x": 0.66, "focal_out_y": 0.34, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.40, "reveal_rate": 1.0, "tip": "Buffer Overflow\nSurplus damage spills into the target's decay children."},
+	{"prop": "execute_no_decay", "file": "garbage_collection", "focal_out_x": 0.50, "focal_out_y": 0.34, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.55, "reveal_in": 1.25, "reveal_rate": 1.0, "tip": "Garbage Collection\nAn Execute kill takes the target's whole decay chain with it."},
 	{"prop": "ignore_walls", "file": "tunneling", "focal_out_x": 0.84, "focal_out_y": 0.50, "focal_in_x": 0.60, "focal_in_y": 0.50, "reveal_out": 0.50, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Tunneling\nAttacks through blocking tiles."},
 	{"prop": "dos", "file": "dos", "focal_out_x": 0.72, "focal_out_y": 0.50, "focal_in_x": 0.50, "focal_in_y": 0.50, "reveal_out": 0.70, "reveal_in": 1.15, "reveal_rate": 1.0, "tip": "Denial of Service\nFreezes an enemy, then slows it."},
 ]
@@ -364,7 +365,7 @@ func tier_summary(s: int) -> String:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
 		lines.append("Color change")
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow", "dos": "Denial of service", "execute_no_decay": "Execute suppresses decay"}
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow", "dos": "Denial of service", "execute_no_decay": "Garbage Collection"}
 	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos", "execute_no_decay"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":

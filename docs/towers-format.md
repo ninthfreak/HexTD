@@ -45,7 +45,7 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `ignore_walls` | bool | false | "Tunneling": attack through blocking tiles (LOS ignored; `radial` spokes pass through walls). |
 | `dos` | bool | false | "Denial of Service": a hit freezes the enemy briefly, then slows it. Applies on `single`, `radial`, and `arc` (laser ignores it). |
 | `execute_threshold` | number | 0 | **NEW.** A hit that would leave the target at/below this fraction of its max HP kills it outright instead (0 = off). Measured after ECC resist, and against the *current* form's max HP, so it stays meaningful partway down a decay chain. |
-| `execute_no_decay` | bool | false | **NEW.** If set, an execute kill also suppresses the enemy's decay spawn — a clean delete of that body's whole sub-tree. Only execute kills suppress decay; an ordinary kill still decays normally. |
+| `execute_no_decay` | bool | false | **NEW.** "Garbage Collection": an execute kill also suppresses the enemy's decay spawn — a clean delete of that body's whole sub-tree. Only execute kills suppress decay; an ordinary kill still decays normally. |
 | `height_scale` | number | 1.0 | Body height multiplier, 3D view (min 0.05). |
 | `width_scale` | number | 1.0 | Body width / footprint multiplier (min 0.05; also scales the 2D body). |
 | `upgrades` | array | `[]` | Exactly 3 upgrade paths of 5 tiers each — see Upgrades + Crosspathing. |

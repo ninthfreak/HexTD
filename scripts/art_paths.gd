@@ -5,7 +5,7 @@ extends RefCounted
 # in main_3d.gd / tower_3d.gd / board_overlay.gd keep their call sites unchanged —
 # only the path each builds is run through dir().
 
-const _BADGES := ["bit_corruption", "buffer_overflow", "cipher", "dos", "tunneling"]
+const _BADGES := ["bit_corruption", "buffer_overflow", "cipher", "dos", "garbage_collection", "tunneling"]
 const _LAYER_SUFFIXES := ["_glyph", "_backplate", "_rim"]
 const _HUD := ["lives", "money"]
 const _TOWER_PREFIXES := ["tower_", "focus_", "rotate_"]
