@@ -4,6 +4,8 @@ extends Node
 
 func drive(main) -> void:
 	var dist := float(OS.get_environment("ZOOM_DIST")) if OS.get_environment("ZOOM_DIST") != "" else 400.0
+	# LOD_VARIANT: 0 full, 1 faces only, 2 faces only + lit body (see Enemy3D).
+	Enemy3D.lod_variant = int(OS.get_environment("LOD_VARIANT")) if OS.get_environment("LOD_VARIANT") != "" else 0
 	var path_pts: PackedVector2Array = main.board.get_path_points()
 	var picks := ["bit", "quadlet", "kibibyte", "tebibyte", "ecc_quadlet", "enc_octaword"]
 	var d := 120.0

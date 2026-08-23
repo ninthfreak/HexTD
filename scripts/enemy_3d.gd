@@ -78,6 +78,13 @@ const BAR_HEIGHT_PAD := 3.0     # bar sits above the body's top by this many uni
 # Mass-kill cap: at most this many shard FX may START in one frame (death shatter
 # and goal-leak share the budget). Past it the enemy still dies normally and
 # silently — an accepted visual trade-off, since nobody counts shards in a wipe.
+# Distance LOD (EXPERIMENTAL — driven manually for A/B renders, not yet automatic).
+# 0 = full detail; 1 = faces only, edge outline dropped; 2 = faces only with the
+# body lit to stand in for the lost edge bloom. The outline is 89% of enemy
+# geometry and its prisms are capped at 0.24 world units wide, i.e. under a pixel
+# past ~500 units of camera distance.
+static var lod_variant := 0
+
 const DEATH_FX_PER_FRAME := 12
 # Whether enemy bodies cast into the shadow map. Measured at 400 enemies: casting
 # costs ~585 objects, ~585 draw calls and ~178k primitives — 43% of ALL draw calls
@@ -187,7 +194,7 @@ func _build_body() -> void:
 	# before the (height-tuned) shared material is asked for.
 	_body_top = float(entry["top"])
 	_edges_mesh = entry["edges"]
-	var m: ArrayMesh = entry["mesh"]
+	var m: ArrayMesh = entry["mesh"] if lod_variant == 0 else entry["faces"]
 	_body.mesh = m
 	# Drop any materials a previous form owned (fallback path only — no-op on the
 	# capable path, where this list is always empty) before the new pair is taken.
@@ -232,10 +239,12 @@ func _shared_meshes() -> Dictionary:
 			# Prisms get the same neon edge outline as the solids: silhouette
 			# loops at top and bottom plus the vertical corner edges.
 			var mesh := ArrayMesh.new()
-			_build_prism_surface().commit(mesh)
+			var face_only := _build_prism_surface()
+			face_only.commit(mesh)
 			var edge_st := _edge_outline_surface(_prism_edge_segments())
 			edge_st.commit(mesh)
-			entry = {"mesh": mesh, "edges": edge_st.commit(), "top": BODY_HEIGHT}
+			entry = {"mesh": mesh, "faces": face_only.commit(), "edges": edge_st.commit(),
+				"top": BODY_HEIGHT}
 		_mesh_cache[key] = entry
 	return entry
 
@@ -327,6 +336,7 @@ func _build_solid_meshes() -> Dictionary:
 	edge_st.commit(mesh)
 	return {
 		"mesh": mesh,
+		"faces": face_st.commit(),      # LOD tier B: the same faces, no outline
 		"edges": edge_st.commit(),
 		"top": max_y + lift,
 	}
@@ -775,7 +785,7 @@ func _type_key() -> String:
 		data.glow, int(data.ecc), int(data.encrypted)]
 
 func _body_material() -> ShaderMaterial:
-	var key := _type_key()
+	var key := _type_key() + "|lod%d" % lod_variant
 	var cached: ShaderMaterial = _body_mats.get(key)
 	if cached != null:
 		return cached
@@ -786,6 +796,13 @@ func _body_material() -> ShaderMaterial:
 	var energy := 0.0
 	if glowing:
 		energy = 0.3 + data.glow * 0.25
+	# Tier 2: the edge outline carried nearly all of an enemy's bloom (it is
+	# unshaded at energy 1.2+, the body sits at 0.3-0.55). Dropping it without
+	# compensation leaves a matte shape, so the body is lit past the bloom
+	# threshold instead to keep the glow budget roughly where it was.
+	if lod_variant == 2:
+		glowing = true
+		energy = maxf(energy, 1.35)
 	m.set_shader_parameter("body_color", _v4(data.color))
 	m.set_shader_parameter("standard_mode", 0.0 if (data.ecc or data.encrypted) else 1.0)
 	# emission_enabled / emission_energy_multiplier of the StandardMaterial3D this
