@@ -9,6 +9,37 @@ decision record, status, and open assumptions — start there.**
 
 ---
 
+## New abilities are mine to approve — STOP and ask
+
+**Never add a new ability without raising it with me first, as its own question,
+before writing any code.** An ability is any new rule that changes what a tower
+or an enemy *does* in combat — a new stat field, flag, resistance, immunity, or
+special interaction. Not a numeric tweak to an existing one.
+
+This has gone wrong four times. `ecc_pierce`, `execute_threshold`,
+`charge_retain`, and enemy `dos_resist` all reached the game without me being
+asked. Every one of them silently changed outcomes a player could not see, and
+balance work was done on top of them.
+
+When you think the game wants a new ability:
+
+1. **Stop before implementing.** Proposing is not permission. Wait for my answer.
+2. **Ask about the ability by itself.** Not as a bullet inside a long report, not
+   as a line in a diff summary, not bundled with unrelated work. If it is buried
+   in something else, it does not count as having been raised — and I will treat
+   it as if you never asked.
+3. **Bring it as a proposal to workshop, not a finished thing.** What it does in
+   plain functional language, why the game wants it, **candidate names**, and a
+   **candidate glyph**. Naming and glyph are decided together — I pick both.
+4. **No ability ships invisible.** Every one needs a glyph and player-visible
+   text (tooltip / upgrade description) explaining it. If a rule changes what a
+   player sees happen, the player must be able to find out why. An ability with
+   no visual tell is an unfinished ability, not a shipped one.
+
+The same applies to anything found *declared but not implemented* — a dead field
+in a data file or resource is not authorization to build it. Tell me it is dead
+and ask whether I want it live or gone.
+
 ## Environment & testing
 
 - Do not assume Godot is runnable in every environment. If a `godot` binary is
