@@ -164,6 +164,8 @@
           {
             "cost": 4500,
             "damage": 60,
+            "execute_threshold": 0.1,
+            "execute_no_decay": "on",
             "width": 0.1,
             "height": 0.1,
             "color": "#b84a85"
