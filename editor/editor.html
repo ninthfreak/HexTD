@@ -77,6 +77,29 @@
   .formgrid .full{grid-column:1 / -1}
   .card{border:1px solid var(--border); border-radius:8px; background:var(--panel); padding:14px; margin-bottom:14px; max-width:680px}
   .card h3{margin:0 0 10px; font-size:13px; letter-spacing:.08em}
+
+  /* --- collapsible upgrade tiers --- */
+  .tier{border-top:1px solid var(--border); margin-top:8px; padding-top:8px}
+  .tier.open{border-top-color:var(--accent)}
+  .tierhead{display:flex; align-items:center; gap:9px; cursor:pointer;
+    padding:5px 6px; border-radius:6px; user-select:none}
+  .tierhead:hover{background:var(--panel2)}
+  .tier.open .tierhead{background:var(--panel2)}
+  .tierhead .caret{color:var(--muted); font-size:10px; width:10px; flex:none}
+  .tierhead .tiercost{font:11px var(--mono); color:var(--accent); flex:none}
+  .tierhead .tiersum{font:11px var(--mono); color:var(--muted);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0}
+  /* --- resolved-stat ladder --- */
+  .ladder{border-collapse:collapse; margin:10px 0 4px; font:11px var(--mono); width:100%}
+  .ladder th,.ladder td{padding:3px 8px; text-align:right; border-bottom:1px solid var(--border);
+    white-space:nowrap}
+  .ladder th:first-child,.ladder td:first-child{text-align:left; color:var(--muted);
+    font-family:system-ui,sans-serif; font-size:12px; width:1%}
+  .ladder thead th{color:var(--muted); font-weight:500}
+  .ladder td.chg{color:var(--ok)}
+  .ladder .selcol{background:rgba(255,210,63,.10)}
+  .ladder thead th.selcol{color:var(--accent)}
+  .ladder tr.costrow td{color:var(--accent)}
   .grp{display:grid; grid-template-columns:1fr 90px 90px auto; gap:8px; align-items:center; margin-bottom:8px}
   .grp .lbl{font:11px var(--mono); color:var(--muted)}
   canvas{display:block; cursor:crosshair; border-radius:8px}
@@ -750,10 +773,13 @@ document.getElementById('wv_revert').onclick=()=>{
 
 // ===================== TOWERS tab =====================
 let selTower=DEF_TOWER_ORDER[0];
+// Which upgrade tier is expanded, as 'slotIndex:tierIndex'. Exactly one at a
+// time; null = every tier collapsed (the default on selecting a tower).
+let selTier=null;
 function renderTowers(){
   const list=document.getElementById('tw_list'); list.innerHTML='';
   MODEL.towerOrder.forEach(id=>{ const t=MODEL.towers[id];
-    const item=el('div',{class:'listitem'+(id===selTower?' sel':''), onclick:()=>{selTower=id; renderTowers();}},
+    const item=el('div',{class:'listitem'+(id===selTower?' sel':''), onclick:()=>{selTower=id; selTier=null; renderTowers();}},
       el('span',{class:'sw',style:'background:'+t.color}), el('span',{class:'nm'}, t.name||id), el('span',{class:'meta'}, '$'+t.cost),
       reorderCtl(MODEL.towerOrder, id, moveTower));
     item._towerId=id; list.append(item); });
@@ -843,60 +869,216 @@ function renderTowerEditor(){
   box.append(el('button',{class:'danger',onclick:()=>deleteTower(id)},'Delete '+(t.name||id)));
   drawTowerPreview(prev,t);
 }
+// ---------------------------------------------------------------- tier ladder
+// Stat keys tracked by the resolved-stat ladder, with the label the game uses
+// (Tower3D.tier_summary) and a format kind. Size and colour are deliberately
+// absent: they are presentation, not stats.
+//   i = integer   r = per second   s = seconds   d = degrees
+//   x = multiplier   p = percent (stored 0-1)   n = plain number
+const LADDER_STATS=[
+  ['damage','Damage','n'], ['range','Range','i'], ['fire_rate','Fire rate','r'],
+  ['directions','Projectiles','i'], ['targets','Targets','i'],
+  ['hops','Hops','i'], ['hop_range','Hop range','i'], ['hop_falloff','Hop retention','p'],
+  ['arc_angle','Arc','d'], ['rule_charges','Rule charges','i'], ['max_rules','Live rules','i'],
+  ['ramp_time','Ramp time','s'], ['focus_time','Focus delay','s'], ['charge_retain','Prefocus','p'],
+  ['execute_threshold','Execute','p'],
+  ['dos_freeze','DoS freeze','s'], ['dos_slow_time','DoS slow','s'], ['dos_slow_factor','DoS factor','x'],
+];
+// Ability flags, named exactly as their in-game badges name them.
+const LADDER_FLAGS=[
+  ['cipher','Cipher'], ['bit_corruption','Bit Corruption'], ['ignore_walls','Tunneling'],
+  ['buffer_overflow','Buffer Overflow'], ['dos','Denial of Service'],
+  ['execute_no_decay','Garbage Collection'],
+];
+function trimNum(v){ let s=(+v).toFixed(2); s=s.replace(/0+$/,''); return s.replace(/\.$/,''); }
+function fmtStat(kind,v){
+  switch(kind){
+    case 'i': return String(Math.round(v));
+    case 'r': return trimNum(v)+'/s';
+    case 's': return trimNum(v)+'s';
+    case 'd': return trimNum(v)+'°';
+    case 'x': return trimNum(v)+'×';
+    case 'p': return trimNum(v*100)+'%';
+    default:  return trimNum(v);
+  }
+}
+const clamp01=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+function baseStats(t){
+  const st={};
+  for(const [k] of LADDER_STATS) st[k]=+(t[k]??0);
+  for(const [k] of LADDER_FLAGS) st[k]=!!t[k];
+  return st;
+}
+// Mirrors Tower3D._apply_tier exactly, clamps included. If that ever changes,
+// change this with it or the editor will promise stats the game will not honour.
+function applyTierTo(st,u){
+  st.damage        += +(u.damage||0);
+  st.range         += Math.round(+(u.range||0));
+  st.fire_rate     += +(u.fire_rate||0);
+  st.directions    += Math.round(+(u.directions||0));
+  st.targets       = Math.max(1, st.targets + Math.round(+(u.targets||0)));
+  st.hops          = Math.max(0, st.hops + Math.round(+(u.hops||0)));
+  st.hop_range     = Math.max(1, st.hop_range + Math.round(+(u.hop_range||0)));
+  st.hop_falloff   = clamp01(st.hop_falloff + +(u.hop_falloff||0), 0, 1);
+  st.arc_angle     = clamp01(st.arc_angle + +(u.arc_angle||0), 1, 360);
+  st.rule_charges  = Math.max(1, st.rule_charges + Math.round(+(u.rule_charges||0)));
+  st.max_rules     = Math.max(1, st.max_rules + Math.round(+(u.max_rules||0)));
+  st.dos_freeze    = Math.max(0, st.dos_freeze + +(u.dos_freeze||0));
+  st.dos_slow_time = Math.max(0, st.dos_slow_time + +(u.dos_slow_time||0));
+  st.dos_slow_factor = clamp01(st.dos_slow_factor + +(u.dos_slow_factor||0), 0.05, 1);
+  st.execute_threshold = clamp01(st.execute_threshold + +(u.execute_threshold||0), 0, 1);
+  st.ramp_time     = Math.max(0, st.ramp_time + +(u.ramp_time||0));
+  // focus_time only moves when the tier actually carries it — matching the game,
+  // which floors it at 0.1 but only for tiers that name the key. towersToJSON
+  // omits zero deltas, so "carries it" means non-zero here.
+  if(+(u.focus_time||0)!==0) st.focus_time = Math.max(0.1, st.focus_time + +u.focus_time);
+  st.charge_retain = clamp01(st.charge_retain + +(u.charge_retain||0), 0, 1);
+  for(const [k] of LADDER_FLAGS){ if(u[k]==='on') st[k]=true; else if(u[k]==='off') st[k]=false; }
+  return st;
+}
+// One-line "what this tier buys", for the collapsed header.
+function tierDeltaSummary(u){
+  const bits=[];
+  for(const [k,label,kind] of LADDER_STATS){
+    const v=+(u[k]||0);
+    if(!v) continue;
+    bits.push(label+' '+(v>0?'+':'-')+fmtStat(kind,Math.abs(v)));
+  }
+  for(const [k,label] of LADDER_FLAGS){
+    if(u[k]==='on') bits.push(label+' on');
+    else if(u[k]==='off') bits.push(label+' off');
+  }
+  if(u.color) bits.push('colour');
+  return bits.join(' · ');
+}
+// The whole slot resolved step by step: base, then the tower as it stands after
+// each tier is bought. Rows are the always-relevant spine plus anything this
+// slot actually moves, so an unrelated stat never pads the table.
+function ladderTable(t,si,selIdx){
+  const tiers=(t.upgrades[si].tiers)||[];
+  const cols=[baseStats(t)], costs=[0];
+  let cum=0;
+  for(const u of tiers){
+    cols.push(applyTierTo(Object.assign({},cols[cols.length-1]),u));
+    cum+=Math.round(+u.cost||0); costs.push(cum);
+  }
+  const laser=(t.fire_mode==='laser');
+  const spine=laser?['damage','range','ramp_time']:['damage','range','fire_rate'];
+  const rows=[];
+  for(const [k,label,kind] of LADDER_STATS){
+    const vals=cols.map(c=>c[k]);
+    const moves=vals.some(v=>v!==vals[0]);
+    if(!moves && spine.indexOf(k)<0) continue;
+    rows.push({label, cells:vals.map(v=>fmtStat(kind,v)),
+      chg:vals.map((v,i)=>i>0&&v!==vals[i-1])});
+  }
+  for(const [k,label] of LADDER_FLAGS){
+    const vals=cols.map(c=>!!c[k]);
+    if(!vals.some(v=>v!==vals[0])) continue;
+    rows.push({label, cells:vals.map(v=>v?'on':'—'),
+      chg:vals.map((v,i)=>i>0&&v!==vals[i-1])});
+  }
+  const mark=i=>(i===selIdx+1)?'selcol':'';
+  const head=el('tr',{}, el('th',{},'after buying'),
+    ...cols.map((_,i)=>el('th',{class:mark(i)}, i===0?'base':('T'+i))));
+  const body=[el('tr',{class:'costrow'}, el('td',{},'Total spent'),
+    ...costs.map((c,i)=>el('td',{class:mark(i)}, i===0?'—':('$'+c))))];
+  for(const r of rows)
+    body.push(el('tr',{}, el('td',{},r.label),
+      ...r.cells.map((c,i)=>el('td',{class:(r.chg[i]?'chg ':'')+mark(i)},c))));
+  return el('div',{style:'overflow-x:auto'},
+    el('table',{class:'ladder'}, el('thead',{},head), el('tbody',{},...body)));
+}
+
 function upgradeEditor(t){
   if(!Array.isArray(t.upgrades)) t.upgrades=[];
   const wrap=el('div',{class:'card',style:'max-width:760px'},
     el('h3',{},'Upgrades (up to 3 slots, up to 5 tiers each)'),
-    el('div',{class:'hint',style:'margin-bottom:8px'},'Each slot is an independent path bought level-by-level in-game; tiers within a slot are sequential. Numbers add to the current stat (negatives subtract). Flags: leave / turn on / turn off.'));
-  const tri=(u,key)=>el('select',{onchange:ev=>{u[key]=ev.target.value;setDirty('towers');}},
+    el('div',{class:'hint',style:'margin-bottom:8px'},'Each slot is an independent path bought level-by-level in-game; tiers within a slot are sequential. Numbers add to the current stat (negatives subtract). Flags: leave / turn on / turn off. Click a tier to open it.'));
+  const tri=(u,key,refresh)=>el('select',{onchange:ev=>{u[key]=ev.target.value;setDirty('towers');refresh();}},
     el('option',{value:'inherit',selected:(u[key]||'inherit')==='inherit'},'no change'),
     el('option',{value:'on',selected:u[key]==='on'},'turn on'),
     el('option',{value:'off',selected:u[key]==='off'},'turn off'));
-  const dnum=(u,key,step='1')=>el('input',{type:'number',step,value:(u[key]??0),oninput:ev=>{u[key]=+ev.target.value;setDirty('towers');}});
+  // NB: the oninput handlers below must never call renderTowerEditor() — that
+  // rebuilds the DOM and the input the user is typing into loses focus after a
+  // single keystroke. They refresh only the header summary and the ladder,
+  // through the per-tier `refresh` closure passed in.
+  const dnum=(u,key,step,refresh)=>el('input',{type:'number',step:(step||'1'),value:(u[key]??0),
+    oninput:ev=>{u[key]=+ev.target.value;setDirty('towers');refresh();}});
   t.upgrades.forEach((slot,si)=>{
     if(!Array.isArray(slot.tiers)) slot.tiers=[];
     const nameInput=el('input',{type:'text',value:(slot.name||('Slot '+(si+1))),style:'max-width:170px',oninput:ev=>{slot.name=ev.target.value;setDirty('towers');}});
-    const rmSlot=el('button',{class:'danger',style:'margin-left:auto',onclick:()=>{t.upgrades.splice(si,1);setDirty('towers');renderTowerEditor();}},'Remove slot');
+    const rmSlot=el('button',{class:'danger',style:'margin-left:auto',onclick:()=>{t.upgrades.splice(si,1);selTier=null;setDirty('towers');renderTowerEditor();}},'Remove slot');
     const slotBox=el('div',{class:'card',style:'margin-top:10px;background:#171b22'},
       el('div',{class:'row',style:'align-items:center;gap:8px'}, el('strong',{},'Slot '+(si+1)+':'), nameInput, rmSlot));
     slot.tiers.forEach((u,ti)=>{
-      const rm=el('button',{class:'danger',style:'margin-left:auto',onclick:()=>{slot.tiers.splice(ti,1);setDirty('towers');renderTowerEditor();}},'Remove');
-      const head=el('div',{class:'row',style:'align-items:center'}, el('strong',{},'Tier '+(ti+1)), rm);
-      const g=[
-        ...field('cost ($)',dnum(u,'cost')),
-        ...field('damage (+/-)',dnum(u,'damage')),
-        ...field('range (+/-)',dnum(u,'range')),
-        ...field('fire rate (+/-)',dnum(u,'fire_rate','0.1')),
-        ...field('projectiles (+/-)',dnum(u,'directions')),
-        ...field('targets (+/-)',dnum(u,'targets')),
-        ...field('hops (+/-)',dnum(u,'hops')),
-        ...field('hop range (+/-)',dnum(u,'hop_range')),
-        ...field('hop falloff (+/-)',dnum(u,'hop_falloff','0.05')),
-        ...field('arc angle (+/-)',dnum(u,'arc_angle')),
-        ...field('rule charges (+/-)',dnum(u,'rule_charges')),
-        ...field('max live rules (+/-)',dnum(u,'max_rules')),
-        ...field('ramp time (+/-)',dnum(u,'ramp_time','0.1')),
-        ...field('focus delay (+/-)',dnum(u,'focus_time','0.05')),
-        ...field('prefocus (+/-)',dnum(u,'charge_retain','0.05')),
-        ...field('execute (+/-)',dnum(u,'execute_threshold','0.05')),
-        ...field('DoS freeze (+/-)',dnum(u,'dos_freeze','0.1')),
-        ...field('DoS slow time (+/-)',dnum(u,'dos_slow_time','0.1')),
-        ...field('DoS slow factor (+/-)',dnum(u,'dos_slow_factor','0.05')),
-        ...field('height (+/-)',dnum(u,'height','0.1')),
-        ...field('width (+/-)',dnum(u,'width','0.1')),
-        ...field('color (override)',el('input',{type:'text',value:(u.color||''),placeholder:'no change',oninput:ev=>{u.color=ev.target.value.trim();setDirty('towers');}})),
-        ...field('cipher',tri(u,'cipher')),
-        ...field('bit corruption',tri(u,'bit_corruption')),
-        ...field('tunneling',tri(u,'ignore_walls')),
-        ...field('buffer overflow',tri(u,'buffer_overflow')),
-        ...field('denial of service',tri(u,'dos')),
-        ...field('garbage collection',tri(u,'execute_no_decay')),
-      ];
-      slotBox.append(el('div',{style:'border-top:1px solid #2a2f3a;padding-top:10px;margin-top:8px'}, head, el('div',{class:'formgrid'}, ...g)));
+      const key=si+':'+ti, isOpen=(selTier===key);
+      const rm=el('button',{class:'danger',style:'margin-left:auto',onclick:ev=>{
+        ev.stopPropagation();
+        slot.tiers.splice(ti,1); selTier=null; setDirty('towers'); renderTowerEditor();}},'Remove');
+      const costSpan=el('span',{class:'tiercost'},'$'+Math.round(+u.cost||0));
+      const sumSpan=el('span',{class:'tiersum'}, tierDeltaSummary(u)||'no change');
+      const head=el('div',{class:'tierhead',onclick:()=>{ selTier=isOpen?null:key; renderTowerEditor(); }},
+        el('span',{class:'caret'}, isOpen?'▾':'▸'),
+        el('strong',{},'Tier '+(ti+1)),
+        costSpan, sumSpan, rm);
+      const tierBox=el('div',{class:'tier'+(isOpen?' open':'')}, head);
+      if(isOpen){
+        // Refreshed in place on every edit: the collapsed-header summary, the
+        // cost chip and the ladder all read `u`, but the form must survive.
+        const ladderHost=el('div',{});
+        const refresh=()=>{
+          sumSpan.textContent=tierDeltaSummary(u)||'no change';
+          costSpan.textContent='$'+Math.round(+u.cost||0);
+          ladderHost.replaceChildren(ladderTable(t,si,ti));
+        };
+        ladderHost.append(ladderTable(t,si,ti));
+        tierBox.append(ladderHost);
+        // A delta field is shown when this fire mode reads it, OR when it is
+        // already non-zero — so a stat set on the wrong mode stays visible and
+        // fixable instead of quietly persisting behind a hidden field.
+        const mode=t.fire_mode||'single';
+        const single=(mode==='single'), radial=(mode==='radial'), laser=(mode==='laser'),
+              arc=(mode==='arc'), deploy=(mode==='deploy');
+        const g=[...field('cost ($)',dnum(u,'cost','1',refresh))];
+        const put=(rel,label,key,step)=>{ if(rel||+(u[key]||0)!==0) g.push(...field(label,dnum(u,key,step,refresh))); };
+        put(true,'damage (+/-)','damage');
+        put(true,'range (+/-)','range');
+        put(!laser,'fire rate (+/-)','fire_rate','0.1');
+        put(radial,'projectiles (+/-)','directions');
+        put(single,'targets (+/-)','targets');
+        put(single,'hops (+/-)','hops');
+        put(single,'hop range (+/-)','hop_range');
+        put(single,'hop falloff (+/-)','hop_falloff','0.05');
+        put(arc,'arc angle (+/-)','arc_angle');
+        put(deploy,'rule charges (+/-)','rule_charges');
+        put(deploy,'max live rules (+/-)','max_rules');
+        put(laser,'ramp time (+/-)','ramp_time','0.1');
+        put(laser,'focus delay (+/-)','focus_time','0.05');
+        put(laser,'prefocus (+/-)','charge_retain','0.05');
+        put(true,'execute (+/-)','execute_threshold','0.05');
+        const usesDos = t.dos || t.upgrades.some(sl=>(sl.tiers||[]).some(x=>x.dos==='on'));
+        put(usesDos,'DoS freeze (+/-)','dos_freeze','0.1');
+        put(usesDos,'DoS slow time (+/-)','dos_slow_time','0.1');
+        put(usesDos,'DoS slow factor (+/-)','dos_slow_factor','0.05');
+        put(true,'height (+/-)','height','0.1');
+        put(true,'width (+/-)','width','0.1');
+        g.push(...field('color (override)',el('input',{type:'text',value:(u.color||''),placeholder:'no change',
+          oninput:ev=>{u.color=ev.target.value.trim();setDirty('towers');refresh();}})));
+        g.push(...field('cipher',tri(u,'cipher',refresh)));
+        g.push(...field('bit corruption',tri(u,'bit_corruption',refresh)));
+        g.push(...field('tunneling',tri(u,'ignore_walls',refresh)));
+        g.push(...field('buffer overflow',tri(u,'buffer_overflow',refresh)));
+        g.push(...field('denial of service',tri(u,'dos',refresh)));
+        g.push(...field('garbage collection',tri(u,'execute_no_decay',refresh)));
+        tierBox.append(el('div',{class:'formgrid'}, ...g));
+      }
+      slotBox.append(tierBox);
     });
     if(slot.tiers.length<5)
       slotBox.append(el('button',{style:'margin-top:10px',onclick:()=>{
         slot.tiers.push({cost:50,damage:0,range:0,fire_rate:0,directions:0,targets:0,hops:0,hop_range:0,hop_falloff:0,rule_charges:0,max_rules:0,arc_angle:0,ramp_time:0,focus_time:0,charge_retain:0,execute_threshold:0,dos_freeze:0,dos_slow_time:0,dos_slow_factor:0,height:0,width:0,color:'',cipher:'inherit',bit_corruption:'inherit',ignore_walls:'inherit',buffer_overflow:'inherit',dos:'inherit',execute_no_decay:'inherit'});
+        selTier=si+':'+(slot.tiers.length-1);
         setDirty('towers');renderTowerEditor();}},'+ Add tier'));
     else slotBox.append(el('div',{class:'hint',style:'margin-top:8px'},'Maximum of 5 tiers.'));
     wrap.append(slotBox);

@@ -408,6 +408,68 @@ func _trim(v: float) -> String:
 		s = s.substr(0, s.length() - 1)
 	return s
 
+# Every attribute of the tower AS IT CURRENTLY STANDS (base plus bought tiers),
+# as [label, value] String pairs for the selection panel. Size and colour are
+# deliberately absent — they are presentation, not stats. A stat is listed only
+# for the fire modes that actually read it, so a single-target tower never shows
+# an arc angle it ignores. Labels match tier_summary()'s, so a path that says
+# "Fire rate +6/s" moves the row called "Fire rate".
+func stat_rows() -> Array:
+	var rows := []
+	if data == null:
+		return rows
+	var mode: String = data.fire_mode
+	var mode_names := {"single": "Single target", "radial": "Radial burst", "laser": "Beam", "arc": "Arc wave", "deploy": "Rule deployer"}
+	rows.append(["Mode", str(mode_names.get(mode, mode))])
+	rows.append(["Range", "%d tiles" % data.range_tiles])
+	if mode == "laser":
+		rows.append(["Damage", "%s/s" % _trim(data.damage)])
+		rows.append(["Ramp time", "%ss" % _trim(data.ramp_time)])
+		rows.append(["Focus delay", "%ss" % _trim(data.focus_time)])
+		rows.append(["Prefocus", "%s%%" % _trim(data.charge_retain * 100.0)])
+	else:
+		rows.append(["Damage", _trim(data.damage)])
+		var rate_unit: String = "volleys/s" if mode == "radial" else ("waves/s" if mode == "arc" else ("rules/s" if mode == "deploy" else "shots/s"))
+		rows.append(["Fire rate", "%s %s" % [_trim(data.fire_rate), rate_unit]])
+	if mode == "single" or mode == "radial" or mode == "arc":
+		rows.append(["Projectile speed", _trim(data.projectile_speed)])
+	if mode == "radial":
+		rows.append(["Projectiles", str(data.directions)])
+	if mode == "arc":
+		rows.append(["Arc", "%s°" % _trim(data.arc_angle)])
+	if mode == "deploy":
+		rows.append(["Rule charges", str(data.rule_charges)])
+		rows.append(["Live rules", str(data.max_rules)])
+	if mode == "single":
+		rows.append(["Targets", str(data.targets)])
+		if data.hops > 0:
+			rows.append(["Hops", str(data.hops)])
+			rows.append(["Hop range", "%d tiles" % data.hop_range])
+			rows.append(["Hop retention", "%s%%" % _trim(data.hop_falloff * 100.0)])
+	if data.execute_threshold > 0.0:
+		rows.append(["Execute", "at/below %s%% HP" % _trim(data.execute_threshold * 100.0)])
+	if data.dos:
+		rows.append(["DoS freeze", "%ss" % _trim(data.dos_freeze)])
+		rows.append(["DoS slow", "%ss" % _trim(data.dos_slow_time)])
+		rows.append(["DoS factor", "%s×" % _trim(data.dos_slow_factor)])
+	rows.append(["Target", target_priority.capitalize()])
+	# Named exactly as the ability badges name them (see ABILITY_BADGES).
+	var abilities: PackedStringArray = []
+	if data.bit_corruption:
+		abilities.append("Bit Corruption")
+	if data.cipher:
+		abilities.append("Cipher")
+	if data.buffer_overflow:
+		abilities.append("Buffer Overflow")
+	if data.ignore_walls:
+		abilities.append("Tunneling")
+	if data.dos:
+		abilities.append("Denial of Service")
+	if data.execute_no_decay:
+		abilities.append("Garbage Collection")
+	rows.append(["Abilities", ", ".join(abilities) if not abilities.is_empty() else "none"])
+	return rows
+
 func _apply_levels() -> void:
 	data = base_data.duplicate() as TowerData
 	for s in range(slot_count()):

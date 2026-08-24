@@ -122,6 +122,9 @@ var upgrade_buttons: Array = []
 var _tower_buttons: Array = []       # HexTowerButton list (cost-affordability refresh)
 var sell_button: Button
 var crosspath_hint: Label            # one-line reason shown while a path is crosspath-locked
+var attr_header: Label               # "ATTRIBUTES" section label, hidden with no selection
+var attr_grid: GridContainer         # name/value rows for the selected tower's stats
+var _attr_key: Array = []            # (tower id, upgrade rev) of the rows currently built
 var info_label: Label
 
 # --- ability badges ---
@@ -633,6 +636,42 @@ func _update_tower_buttons(sel_t = null) -> void:
 		sell_button.disabled = false
 		(btn_cl(sell_button)).set_cost("Sell  (+", t.sell_value(), ")", false, WAVE_DONE_COL)
 		sell_button.tooltip_text = "Refund %d%% of everything spent on this tower." % t.refund_percent()
+	_update_attr_panel(t)
+
+# The selected tower's full stat block. Reached only through _update_tower_buttons,
+# whose key already covers (tower, money, upgrade rev) — so an early return there
+# means nothing here could have moved either. The extra key below then skips the
+# rebuild on the money-only changes that do get through.
+func _update_attr_panel(t) -> void:
+	if attr_grid == null:
+		return
+	var key: Array = [t.get_instance_id() if t != null else 0, _upgrade_rev]
+	if key == _attr_key:
+		return
+	_attr_key = key
+	for c in attr_grid.get_children():
+		attr_grid.remove_child(c)
+		c.queue_free()
+	var showing: bool = t != null
+	attr_grid.visible = showing
+	attr_header.visible = showing
+	if not showing:
+		return
+	for row in t.stat_rows():
+		var name_lbl := Label.new()
+		name_lbl.text = str(row[0])
+		name_lbl.add_theme_font_size_override("font_size", 12)
+		name_lbl.add_theme_color_override("font_color", Color(0.62, 0.67, 0.80))
+		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		attr_grid.add_child(name_lbl)
+		var val_lbl := Label.new()
+		val_lbl.text = str(row[1])
+		val_lbl.add_theme_font_size_override("font_size", 12)
+		val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		val_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# the Abilities row can list six names — wrap rather than widen the pane
+		val_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		attr_grid.add_child(val_lbl)
 
 func _on_upgrade_pressed(s: int) -> void:
 	if not has_selected:
@@ -1838,6 +1877,23 @@ func _build_ui() -> void:
 	_tower_control_row.visible = false
 	_tower_control_row.add_theme_constant_override("separation", 4)
 	vbox.add_child(_tower_control_row)
+
+	# Full attribute read-out for the selected tower, between its control row and
+	# the upgrade buttons: what it IS now, above what it could become.
+	attr_header = Label.new()
+	attr_header.text = "ATTRIBUTES"
+	attr_header.add_theme_font_size_override("font_size", 13)
+	attr_header.add_theme_font_override("font", _bold_font(0.4))
+	attr_header.add_theme_color_override("font_color", Color(0.62, 0.67, 0.80))
+	attr_header.visible = false
+	vbox.add_child(attr_header)
+
+	attr_grid = GridContainer.new()
+	attr_grid.columns = 2
+	attr_grid.add_theme_constant_override("h_separation", 12)
+	attr_grid.add_theme_constant_override("v_separation", 2)
+	attr_grid.visible = false
+	vbox.add_child(attr_grid)
 
 	target_button = TextureButton.new()
 	_style_icon_button(target_button, "focus_first")
