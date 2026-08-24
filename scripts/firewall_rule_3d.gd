@@ -48,19 +48,33 @@ func setup(b, c: Vector2i, dmg: float, ch: int, colour: Color) -> void:
 	_build_body()
 	_refresh_fade()
 
+## Hex prism built on the SAME corner phase the board and the tower plinth use —
+## GameBoard3D.hex_polygon walks 60*i - 30 degrees, so -PI/6 puts a vertex where
+## the tile has one. Built explicitly rather than rotating a CylinderMesh, whose
+## vertex phase is its own business and does not have to agree with the grid.
+static func _hex_prism(rad: float, height: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var topc := Vector3(0.0, height, 0.0)
+	for i in range(6):
+		var a0 := TAU * float(i) / 6.0 - PI / 6.0
+		var a1 := TAU * float(i + 1) / 6.0 - PI / 6.0
+		var b0 := Vector3(cos(a0) * rad, 0.0, sin(a0) * rad)
+		var b1 := Vector3(cos(a1) * rad, 0.0, sin(a1) * rad)
+		var t0 := b0 + Vector3(0.0, height, 0.0)
+		var t1 := b1 + Vector3(0.0, height, 0.0)
+		st.add_vertex(b0); st.add_vertex(b1); st.add_vertex(t1)
+		st.add_vertex(b0); st.add_vertex(t1); st.add_vertex(t0)
+		st.add_vertex(topc); st.add_vertex(t0); st.add_vertex(t1)
+		st.add_vertex(Vector3.ZERO); st.add_vertex(b1); st.add_vertex(b0)
+	st.generate_normals()
+	return st.commit()
+
 func _build_body() -> void:
 	if _mesh_cache == null:
-		# A flat hexagonal plate, matching the tile it filters.
-		var cyl := CylinderMesh.new()
-		cyl.radial_segments = 6
-		cyl.rings = 1
-		cyl.top_radius = GameBoard3D.HEX_SIZE * 0.82
-		cyl.bottom_radius = GameBoard3D.HEX_SIZE * 0.82
-		cyl.height = PLATE_H
-		_mesh_cache = cyl
+		_mesh_cache = _hex_prism(GameBoard3D.HEX_SIZE * 0.86, PLATE_H)
 	_mi = MeshInstance3D.new()
 	_mi.mesh = _mesh_cache
-	_mi.rotation = Vector3(0.0, deg_to_rad(30.0), 0.0)   # align flats to the pointy-top grid
 	add_child(_mi)
 
 func _shared_mat(c: Color) -> StandardMaterial3D:

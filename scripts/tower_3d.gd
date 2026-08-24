@@ -967,7 +967,7 @@ func _rebuild_body() -> void:
 	_body.add_child(_turret)
 	_shell_mat = _make_shell_mat()
 	_accent_mat = _make_accent_mat(data.fire_mode == "arc")
-	_aims = data.fire_mode != "radial" and data.fire_mode != "laser"
+	_aims = data.fire_mode != "radial" and data.fire_mode != "laser" and data.fire_mode != "deploy"
 	var r: float = GameBoard3D.TOWER_RADIUS
 	# Plinth flats follow the hex cell's; inside _body (not _turret) so upgrade
 	# scaling composes but aim yaw never twists it off the cell.
@@ -1012,6 +1012,21 @@ func _rebuild_body() -> void:
 					Vector3(rim * 0.70, h * 0.96, -0.9), Vector3(rim, h * 0.96, -0.9), Vector3(rim * 0.90, h * 1.12, -0.9)),
 					_accent_mat, PLINTH_H, _turret)
 			ring_r = r * 0.45
+		"deploy":
+			# Inline infrastructure, not a weapon: a low hex slab carrying a stack
+			# of rule plates with an emissive slot under each, tapering upward.
+			# Everything is on the cell's own corner phase (-PI/6) like the plinth,
+			# and there is no aim prong — this tower never points at anything.
+			var slab_h := 11.0
+			_part(_low_poly_cylinder(r * 0.92, slab_h, 6, -PI / 6.0), _shell_mat, PLINTH_H, _turret)
+			var stack_y := PLINTH_H + slab_h
+			for i in 3:
+				var pr: float = r * (0.84 - 0.10 * float(i))
+				_part(_low_poly_cylinder(pr, 1.8, 6, -PI / 6.0), _accent_mat, stack_y, _turret)
+				stack_y += 1.8
+				_part(_low_poly_cylinder(pr * 0.97, 5.0, 6, -PI / 6.0), _shell_mat, stack_y, _turret)
+				stack_y += 5.0
+			ring_r = r * 0.60
 		_:
 			# Cylinder + hot cap plate; a flat prong wedge past the cap rim at +X
 			# is the aim cue. Overlapping parts embed slightly to avoid coplanar caps.
