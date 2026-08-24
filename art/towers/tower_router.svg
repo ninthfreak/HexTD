@@ -1,0 +1,21 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+  <path d="M232.0,120.0 L176.0,217.0 L64.0,217.0 L8.0,120.0 L64.0,23.0 L176.0,23.0 Z" fill="none" stroke="#4fd08a" stroke-width="16" stroke-linejoin="round" opacity="0.28"/>
+  <path d="M232.0,120.0 L176.0,217.0 L64.0,217.0 L8.0,120.0 L64.0,23.0 L176.0,23.0 Z" fill="#161B22" stroke="#4fd08a" stroke-width="5" stroke-linejoin="round"/>
+
+  <!-- A packet forwarded hop to hop: each leg shorter and dimmer than the last,
+       the way the shot's damage decays as it forwards. -->
+  <g fill="none" stroke="#4fd08a" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M58,150 L102,96"  stroke-width="9" opacity="0.95"/>
+    <path d="M102,96 L146,138" stroke-width="7" opacity="0.70"/>
+    <path d="M146,138 L182,86" stroke-width="5" opacity="0.45"/>
+  </g>
+
+  <!-- the nodes it visits, shrinking along the route -->
+  <circle cx="58"  cy="150" r="15" fill="#161B22" stroke="#4fd08a" stroke-width="8"/>
+  <circle cx="102" cy="96"  r="12" fill="#161B22" stroke="#4fd08a" stroke-width="7" opacity="0.85"/>
+  <circle cx="146" cy="138" r="10" fill="#161B22" stroke="#4fd08a" stroke-width="6" opacity="0.62"/>
+  <circle cx="182" cy="86"  r="8"  fill="#161B22" stroke="#4fd08a" stroke-width="5" opacity="0.42"/>
+
+  <!-- the live packet, on the first and strongest leg -->
+  <circle cx="80" cy="123" r="7" fill="#b6ffd8"/>
+</svg>

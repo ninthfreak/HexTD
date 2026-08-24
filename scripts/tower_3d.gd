@@ -359,8 +359,8 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "hops": "Hops", "hop_range": "Hop range", "hop_falloff": "Hop retention", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
@@ -382,7 +382,7 @@ func tier_summary(s: int) -> String:
 func _delta_str(key: String, v: float) -> String:
 	var sgn := "+" if v > 0.0 else ""
 	match key:
-		"range", "directions", "targets":
+		"range", "directions", "targets", "hops", "hop_range":
 			return "%s%d" % [sgn, int(round(v))]
 		"fire_rate":
 			return "%s%s/s" % [sgn, _trim(v)]
@@ -392,7 +392,7 @@ func _delta_str(key: String, v: float) -> String:
 			return "%s%s°" % [sgn, _trim(v)]
 		"dos_slow_factor":
 			return "%s%s×" % [sgn, _trim(v)]
-		"ecc_pierce", "execute_threshold", "charge_retain":
+		"ecc_pierce", "execute_threshold", "charge_retain", "hop_falloff":
 			return "%s%s%%" % [sgn, _trim(v * 100.0)]
 		_:
 			return "%s%s" % [sgn, _trim(v)]
@@ -420,6 +420,9 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.fire_rate += float(tier.get("fire_rate", 0.0))
 	data.directions += int(round(float(tier.get("directions", 0.0))))
 	data.targets = maxi(1, data.targets + int(round(float(tier.get("targets", 0.0)))))
+	data.hops = maxi(0, data.hops + int(round(float(tier.get("hops", 0.0)))))
+	data.hop_range = maxi(1, data.hop_range + int(round(float(tier.get("hop_range", 0.0)))))
+	data.hop_falloff = clampf(data.hop_falloff + float(tier.get("hop_falloff", 0.0)), 0.0, 1.0)
 	data.arc_angle = clampf(data.arc_angle + float(tier.get("arc_angle", 0.0)), 1.0, 360.0)
 	data.dos_freeze = maxf(0.0, data.dos_freeze + float(tier.get("dos_freeze", 0.0)))
 	data.dos_slow_time = maxf(0.0, data.dos_slow_time + float(tier.get("dos_slow_time", 0.0)))
@@ -854,6 +857,11 @@ func _shoot(t) -> void:
 	p.ecc_pierce = data.ecc_pierce
 	p.execute_threshold = data.execute_threshold
 	p.execute_no_decay = data.execute_no_decay
+	p.board = board
+	p.hops = data.hops
+	p.hop_range = data.hop_range
+	p.hop_falloff = data.hop_falloff
+	p.can_see_encrypted = data.cipher
 	p.dos_freeze = data.dos_freeze
 	p.dos_slow_time = data.dos_slow_time
 	p.dos_slow_factor = data.dos_slow_factor

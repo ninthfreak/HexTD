@@ -495,6 +495,134 @@
       }
     ]
   },
+  "router": {
+    "name": "Router",
+    "description": "Forwards each shot from target to target, weakening at every hop.\nGood at: strung-out lines on the route, and finishing a cluster one shot started.\nWeak: a lone enemy with nothing near it — every hop past the first is wasted.",
+    "color": "#4fd08a",
+    "range": 4,
+    "fire_rate": 1.2,
+    "damage": 25,
+    "cost": 300,
+    "projectile_speed": 600,
+    "fire_mode": "single",
+    "hops": 2,
+    "hop_range": 2,
+    "hop_falloff": 0.6,
+    "upgrades": [
+      {
+        "name": "TTL",
+        "tiers": [
+          {
+            "cost": 450,
+            "hops": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1200,
+            "hops": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2400,
+            "hops": 1,
+            "hop_range": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 5400,
+            "hops": 2,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 13500,
+            "hops": 3,
+            "hop_falloff": 0.15,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#3ee0a0"
+          }
+        ]
+      },
+      {
+        "name": "Magnitude",
+        "tiers": [
+          {
+            "cost": 450,
+            "damage": 20,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1200,
+            "damage": 55,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2400,
+            "damage": 130,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 5400,
+            "damage": 320,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 13500,
+            "damage": 400,
+            "bit_corruption": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#8ce07a"
+          }
+        ]
+      },
+      {
+        "name": "Latency",
+        "tiers": [
+          {
+            "cost": 450,
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1200,
+            "cipher": "on",
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2400,
+            "fire_rate": 0.6,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 5400,
+            "fire_rate": 0.8,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 13500,
+            "fire_rate": 1.2,
+            "ignore_walls": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#4fd0d0"
+          }
+        ]
+      }
+    ]
+  },
   "beam": {
     "name": "Beam",
     "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused, the longest reach on the board, and countering TLS.\nWeak: swarms and fast movers reset its ramp until Prefocus is unlocked.",

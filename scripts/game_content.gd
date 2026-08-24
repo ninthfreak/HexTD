@@ -51,6 +51,9 @@ func _tower_from_dict(d: Dictionary) -> TowerData:
 	t.fire_mode = str(d.get("fire_mode", "single"))
 	t.directions = maxi(1, int(d.get("directions", 6)))
 	t.targets = maxi(1, int(d.get("targets", 1)))
+	t.hops = maxi(0, int(d.get("hops", 0)))
+	t.hop_range = maxi(1, int(d.get("hop_range", 2)))
+	t.hop_falloff = clampf(float(d.get("hop_falloff", 0.6)), 0.0, 1.0)
 	t.arc_angle = clampf(float(d.get("arc_angle", 70.0)), 1.0, 360.0)
 	t.ignore_walls = bool(d.get("ignore_walls", false))
 	t.ramp_time = maxf(0.05, float(d.get("ramp_time", 2.0)))
@@ -90,7 +93,7 @@ func _parse_upgrades(arr) -> Array:
 				if typeof(u) != TYPE_DICTIONARY:
 					continue
 				var tier := {"cost": int(u.get("cost", 0))}
-				for stat in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
+				for stat in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
 					if u.has(stat):
 						tier[stat] = float(u[stat])
 				for flag in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos", "execute_no_decay"]:

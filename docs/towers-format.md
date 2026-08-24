@@ -32,6 +32,9 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` \| `"arc"` (see below). |
 | `targets` | int | 1 | **NEW.** `single` only: number of distinct enemies engaged per fire cycle (furthest-along first). >1 = multi-target / no-overkill spray. |
 | `directions` | int | 6 | `radial` only: number of equally spaced spokes (min 1; 6 = hex flat sides). |
+| `hops` | int | 0 | **NEW.** `single` only: extra targets a shot forwards *itself* to after its first hit (0 = no forwarding). A shot strikes at most `hops + 1` bodies and never the same one twice. |
+| `hop_range` | int | 2 | **NEW.** `single` only: how far, in hex tiles from the body it just hit, a shot may look for its next hop. |
+| `hop_falloff` | number | 0.6 | **NEW.** `single` only: damage multiplier applied at each hop (0.6 = each hop deals 60% of the previous). Clamped 0–1. |
 | `ramp_time` | number | 2.0 | `laser` only: seconds of sustained fire to reach full power (min 0.05). |
 | `focus_time` | number | 0.0 | Seconds the tower is idle after **killing** a target (min 0). Taxes swarm clearing. |
 | `charge_retain` | number | 0 | **NEW.** "Prefocus": the fraction of a `laser`'s ramp kept when it loses or switches target (0 = the ramp restarts from zero every time, 1 = it is never lost). Clamped 0–1. Ignored by every other fire mode. |
@@ -60,6 +63,12 @@ is a per-tower in-game toggle, not a JSON field.
   and line of sight. With `targets > 1`, engages that many distinct enemies per cycle,
   one shot each (no overkill onto a single body). The only mode that uses
   `buffer_overflow`.
+  With `hops > 0` a shot forwards itself on impact to the nearest enemy within
+  `hop_range` tiles that it has not already struck, multiplying its damage by
+  `hop_falloff` each time, until it runs out of hops or finds nothing eligible.
+  A hop chooses its own target, so it applies the tower's Cipher itself: without
+  Cipher a shot routes *around* Encrypted bodies. Hops do not re-check line of
+  sight — `ignore_walls` still governs the tower's own target acquisition.
 - **`radial`** — fires a volley of `directions` straight spokes whenever any enemy is in
   range. Spokes are stopped by blocking walls unless `ignore_walls`.
 - **`laser`** — locks one target and ramps damage with a convex (quadratic ease-in)
@@ -109,6 +118,9 @@ A tier mutates the tower's effective stats when purchased. Numeric entries are
 | `range` | number | Add to `range` (rounded). |
 | `fire_rate` | number | Add to `fire_rate`. |
 | `targets` | number | Add to `targets` (rounded, floored at 1). **NEW.** |
+| `hops` | number | Add to `hops` (rounded, floored at 0). **NEW.** |
+| `hop_range` | number | Add to `hop_range` (rounded, floored at 1). **NEW.** |
+| `hop_falloff` | number | Add to `hop_falloff` (clamped 0–1). **NEW.** |
 | `directions` | number | Add to `directions` (rounded). |
 | `ramp_time` | number | Add to `ramp_time` (floored at 0; the *base* field floors at 0.05). |
 | `focus_time` | number | Add to `focus_time` (floored at **0.1** — an upgraded tower always keeps some recovery). |
