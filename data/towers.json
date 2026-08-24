@@ -629,7 +629,7 @@
   },
   "jammer": {
     "name": "Jammer",
-    "description": "Support tower whose wave slows everything it touches.\nGood at: throttling groups to a crawl so your other towers hit them far longer; can blanket the whole board.\nWeak: little damage of its own; short range and a steep price until upgraded.",
+    "description": "Support tower whose wave slows everything it can touch.\nGood at: throttling groups to a crawl so your other towers hit them far longer; can blanket the whole board.\nWeak: little damage of its own; short range and a steep price until upgraded.",
     "color": "#f24fbe",
     "range": 3,
     "fire_rate": 0.8,
