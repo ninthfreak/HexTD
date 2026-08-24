@@ -1225,16 +1225,13 @@ func _apply_status_visual() -> void:
 	_set_inst_param(&"flash", _flash)
 
 # --------------------------------------------------------------- damage / reduction
-func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, ecc_pierce := 0.0, execute_threshold := 0.0, execute_no_decay := false) -> bool:
+func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, execute_threshold := 0.0, execute_no_decay := false) -> bool:
 	# Returns true if this hit depleted the current form (a "kill"), so the laser
 	# can trigger its focus_time delay.
 	if not _alive:
 		return false
-	if data.ecc:
-		# Bit Corruption is a full pierce; ecc_pierce is a partial one. Whatever
-		# fraction is NOT pierced still applies at the full ECC_RESIST rate.
-		var pierce: float = 1.0 if pierces_ecc else clampf(ecc_pierce, 0.0, 1.0)
-		amount *= (1.0 - ECC_RESIST * (1.0 - pierce))
+	if data.ecc and not pierces_ecc:
+		amount *= (1.0 - ECC_RESIST)
 	# Execute: a hit that would leave the target at or below this fraction of the
 	# CURRENT form's max HP deletes it instead. Measured post-resist, and against
 	# the current form so it stays meaningful partway down a decay chain.

@@ -635,7 +635,6 @@
     "fire_mode": "laser",
     "ramp_time": 3.0,
     "focus_time": 0.3,
-    "ecc_pierce": 0.5,
     "upgrades": [
       {
         "name": "Focus",
@@ -726,14 +725,12 @@
             "cost": 1600,
             "width": 0.03,
             "height": 0.03,
-            "ecc_pierce": 0.15,
             "damage": 300
           },
           {
             "cost": 3200,
             "width": 0.03,
             "height": 0.03,
-            "ecc_pierce": 0.2,
             "damage": 300
           },
           {
@@ -993,9 +990,9 @@
           {
             "cost": 6300,
             "fire_rate": 0.4,
-            "ecc_pierce": 0.4,
             "width": 0.03,
-            "height": 0.03
+            "height": 0.03,
+            "rule_charges": 2
           },
           {
             "cost": 15750,

@@ -362,8 +362,8 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "hops": "Hops", "hop_range": "Hop range", "hop_falloff": "Hop retention", "rule_charges": "Rule charges", "max_rules": "Live rules", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "rule_charges", "max_rules", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "hops": "Hops", "hop_range": "Hop range", "hop_falloff": "Hop retention", "rule_charges": "Rule charges", "max_rules": "Live rules", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "rule_charges", "max_rules", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "execute_threshold", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
@@ -395,7 +395,7 @@ func _delta_str(key: String, v: float) -> String:
 			return "%s%s°" % [sgn, _trim(v)]
 		"dos_slow_factor":
 			return "%s%s×" % [sgn, _trim(v)]
-		"ecc_pierce", "execute_threshold", "charge_retain", "hop_falloff":
+		"execute_threshold", "charge_retain", "hop_falloff":
 			return "%s%s%%" % [sgn, _trim(v * 100.0)]
 		_:
 			return "%s%s" % [sgn, _trim(v)]
@@ -432,7 +432,6 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.dos_freeze = maxf(0.0, data.dos_freeze + float(tier.get("dos_freeze", 0.0)))
 	data.dos_slow_time = maxf(0.0, data.dos_slow_time + float(tier.get("dos_slow_time", 0.0)))
 	data.dos_slow_factor = clampf(data.dos_slow_factor + float(tier.get("dos_slow_factor", 0.0)), 0.05, 1.0)
-	data.ecc_pierce = clampf(data.ecc_pierce + float(tier.get("ecc_pierce", 0.0)), 0.0, 1.0)
 	data.execute_threshold = clampf(data.execute_threshold + float(tier.get("execute_threshold", 0.0)), 0.0, 1.0)
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
 	if tier.has("focus_time"):
@@ -612,7 +611,6 @@ func _deploy_rule() -> bool:
 		return false
 	var rule := FirewallRule3D.new()
 	rule.pierces_ecc = data.bit_corruption
-	rule.ecc_pierce = data.ecc_pierce
 	rule.can_see_encrypted = data.cipher
 	rule.applies_dos = data.dos
 	rule.dos_freeze = data.dos_freeze
@@ -645,7 +643,6 @@ func _fire_arc(t) -> void:
 			cell, board.tower_reach(data.range_tiles), data.color, board)
 	w.arc_angle = data.arc_angle
 	w.pierces_ecc = data.bit_corruption
-	w.ecc_pierce = data.ecc_pierce
 	w.execute_threshold = data.execute_threshold
 	w.execute_no_decay = data.execute_no_decay
 	w.applies_dos = data.dos
@@ -686,7 +683,6 @@ func _fire_volley() -> void:
 				cell, board.tower_reach(data.range_tiles), data.color, board)
 		p.ignore_walls = data.ignore_walls
 		p.pierces_ecc = data.bit_corruption
-		p.ecc_pierce = data.ecc_pierce
 		p.execute_threshold = data.execute_threshold
 		p.execute_no_decay = data.execute_no_decay
 		p.can_see_encrypted = data.cipher
@@ -737,7 +733,7 @@ func _process_laser(delta: float) -> void:
 		# Convex (quadratic ease-in) ramp: ~0 early, full at ramp_time.
 		var factor := cr * cr
 		var killed: bool = _laser_target.take_damage(data.damage * factor * delta, data.bit_corruption,
-				false, data.ecc_pierce, data.execute_threshold, data.execute_no_decay)
+				false, data.execute_threshold, data.execute_no_decay)
 		if killed:
 			_laser_target = null
 			_charge *= data.charge_retain   # a kill is the other target-loss point
@@ -928,7 +924,6 @@ func _shoot(t) -> void:
 	_note_aim(t.pp - pp)
 	var p := Projectile3D.obtain(board)
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
-	p.ecc_pierce = data.ecc_pierce
 	p.execute_threshold = data.execute_threshold
 	p.execute_no_decay = data.execute_no_decay
 	p.board = board

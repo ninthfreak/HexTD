@@ -45,7 +45,6 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `dos_slow_time` | number | 2.0 | **NEW.** Seconds an enemy stays slowed after the freeze ends (override of `DOS_SLOW_TIME`). |
 | `dos_slow_factor` | number | 0.5 | **NEW.** Speed multiplier while slowed (override of `DOS_SLOW_FACTOR`); lower = harsher. |
 | `bit_corruption` | bool | false | Ignores enemy ECC 90% damage resist. |
-| `ecc_pierce` | number | 0 | **NEW.** Fraction of an enemy's ECC resist this tower ignores *natively* (0 = full 90% resist applies; 0.5 = only ~45% resist; 1 = fully ignored). `bit_corruption` overrides to a full pierce. |
 | `cipher` | bool | false | Can see and target Encrypted enemies. |
 | `buffer_overflow` | bool | false | Single-hit surplus damage spills into the target's decay children. **Single-target only.** |
 | `ignore_walls` | bool | false | "Tunneling": attack through blocking tiles (LOS ignored; `radial` spokes pass through walls). |
@@ -96,7 +95,7 @@ is a per-tower in-game toggle, not a JSON field.
   rather than concentrating on a tile. A rule damages each body that crosses it
   for `damage`, spending one of its `rule_charges` per body, and expires when
   spent. Rules honour the deploying tower's Cipher (Encrypted traffic passes
-  untouched without it), `bit_corruption` / `ecc_pierce`, and `dos`. They are
+  untouched without it), `bit_corruption`, and `dos`. They are
   destroyed with the tower, so selling cannot bank coverage. `projectile_speed`,
   `targets` and the `hop_*` fields are unused.
 
@@ -153,7 +152,6 @@ A tier mutates the tower's effective stats when purchased. Numeric entries are
 | `color` | `"#rrggbb"` | Replace `color` (omit / `""` = no change). |
 | `cipher` | `"on"`\|`"off"` | Enable/disable Cipher. |
 | `bit_corruption` | `"on"`\|`"off"` | Enable/disable Bit Corruption. |
-| `ecc_pierce` | number | Add to `ecc_pierce` (clamped 0–1). **NEW.** |
 | `ignore_walls` | `"on"`\|`"off"` | Enable/disable Tunneling. |
 | `buffer_overflow` | `"on"`\|`"off"` | Enable/disable Buffer Overflow. |
 | `dos` | `"on"`\|`"off"` | Enable/disable Denial of Service. |

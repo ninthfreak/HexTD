@@ -24,7 +24,6 @@ extends Resource
 @export var focus_time: float = 0.0           # seconds a tower is blind/idle after killing its target (Beam swarm tax)
 @export var charge_retain: float = 0.0        # "Prefocus": fraction of the laser's ramp kept when it loses or switches target (0 = ramp resets, 1 = never lost)
 @export var bit_corruption := false           # ignores enemy ECC damage resistance
-@export var ecc_pierce: float = 0.0           # fraction of ECC resist ignored natively (0 = full resist, 1 = fully ignored); bit_corruption overrides to a full pierce
 @export var execute_threshold: float = 0.0    # a hit landing at/below this fraction of the target's max HP kills it outright (0 = off)
 @export var execute_no_decay := false         # an execute kill also suppresses the target's decay spawn
 @export var cipher := false                   # can see and target Encrypted enemies
@@ -39,7 +38,7 @@ extends Resource
 ## Dictionary {"name": String, "tiers": Array}. Each tier (up to 5 per slot) is a
 ## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate"/"directions"/"targets"/"hops"/
 ## "hop_range"/"hop_falloff"/"arc_angle"/"rule_charges"/"max_rules"/
-## "ramp_time"/"focus_time"/"charge_retain"/"dos_freeze"/"dos_slow_time"/"dos_slow_factor"/"ecc_pierce"/
+## "ramp_time"/"focus_time"/"charge_retain"/"dos_freeze"/"dos_slow_time"/"dos_slow_factor"/
 ## "execute_threshold"/"height"/"width": additive deltas (may be negative),
 ## optional "color": "#rrggbb" override,
 ## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow"/"dos"/"execute_no_decay": "on"|"off"}.

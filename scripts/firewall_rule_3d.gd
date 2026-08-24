@@ -17,7 +17,6 @@ var cell := Vector2i.ZERO
 var damage := 30.0
 var charges := 4
 var pierces_ecc := false         # Bit Corruption, inherited from the deploying tower
-var ecc_pierce := 0.0
 var can_see_encrypted := false   # Cipher: a rule cannot filter what the tower cannot see
 var applies_dos := false
 var dos_freeze := 0.5
@@ -119,7 +118,7 @@ func _process(_delta: float) -> void:
 			continue
 		_hit[e] = true
 		charges -= 1
-		e.take_damage(damage, pierces_ecc, false, ecc_pierce)
+		e.take_damage(damage, pierces_ecc)
 		if applies_dos and is_instance_valid(e) and e._alive:
 			e.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 		_refresh_fade()
