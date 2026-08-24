@@ -882,6 +882,133 @@
       }
     ]
   },
+  "firewall": {
+    "name": "Firewall Daemon",
+    "description": "Runs in the background dropping filter rules onto the route ahead of it.\nGood at: covering ground no tower is watching, and holding a chokepoint before traffic reaches you.\nWeak: deals nothing on its own — a rule only bites when something crosses it, and each rule stops a fixed number of bodies.",
+    "color": "#ff8a4f",
+    "range": 3,
+    "fire_rate": 0.5,
+    "damage": 40,
+    "cost": 350,
+    "projectile_speed": 320,
+    "fire_mode": "deploy",
+    "rule_charges": 4,
+    "max_rules": 5,
+    "upgrades": [
+      {
+        "name": "Ruleset",
+        "tiers": [
+          {
+            "cost": 525,
+            "max_rules": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1400,
+            "rule_charges": 2,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2800,
+            "max_rules": 2,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 6300,
+            "rule_charges": 3,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 15750,
+            "max_rules": 3,
+            "rule_charges": 4,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ffb066"
+          }
+        ]
+      },
+      {
+        "name": "Magnitude",
+        "tiers": [
+          {
+            "cost": 525,
+            "damage": 45,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1400,
+            "damage": 130,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2800,
+            "damage": 340,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 6300,
+            "damage": 850,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 15750,
+            "damage": 1100,
+            "bit_corruption": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ff6a4f"
+          }
+        ]
+      },
+      {
+        "name": "Inspection",
+        "tiers": [
+          {
+            "cost": 525,
+            "fire_rate": 0.3,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1400,
+            "cipher": "on",
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2800,
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 6300,
+            "fire_rate": 0.4,
+            "ecc_pierce": 0.4,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 15750,
+            "range": 1,
+            "dos": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ff4f9a"
+          }
+        ]
+      }
+    ]
+  },
   "quantum": {
     "name": "Quantum",
     "description": "Apex arc tower that breaks all cryptography natively.\nGood at: AoE damage that ignores ECC, Encrypted, and TLS alike, deleting low-health bosses outright (Collapse) and blanketing the board (Superposition).\nWeak: enormous cost; weaker raw single-target damage than the Beam or Heavy.",

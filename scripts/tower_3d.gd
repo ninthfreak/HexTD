@@ -34,6 +34,7 @@ const MODE_SINGLE := 0
 const MODE_RADIAL := 1
 const MODE_LASER := 2
 const MODE_ARC := 3
+const MODE_DEPLOY := 4
 var _fire_mode_id := MODE_SINGLE
 
 func toggle_range_rotation() -> bool:
@@ -81,6 +82,8 @@ static func _mode_to_id(mode: String) -> int:
 			return MODE_LASER
 		"arc":
 			return MODE_ARC
+		"deploy":
+			return MODE_DEPLOY
 		_:
 			return MODE_SINGLE
 
@@ -359,8 +362,8 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "hops": "Hops", "hop_range": "Hop range", "hop_falloff": "Hop retention", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "hops": "Hops", "hop_range": "Hop range", "hop_falloff": "Hop retention", "rule_charges": "Rule charges", "max_rules": "Live rules", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "rule_charges", "max_rules", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
@@ -382,7 +385,7 @@ func tier_summary(s: int) -> String:
 func _delta_str(key: String, v: float) -> String:
 	var sgn := "+" if v > 0.0 else ""
 	match key:
-		"range", "directions", "targets", "hops", "hop_range":
+		"range", "directions", "targets", "hops", "hop_range", "rule_charges", "max_rules":
 			return "%s%d" % [sgn, int(round(v))]
 		"fire_rate":
 			return "%s%s/s" % [sgn, _trim(v)]
@@ -424,6 +427,8 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.hop_range = maxi(1, data.hop_range + int(round(float(tier.get("hop_range", 0.0)))))
 	data.hop_falloff = clampf(data.hop_falloff + float(tier.get("hop_falloff", 0.0)), 0.0, 1.0)
 	data.arc_angle = clampf(data.arc_angle + float(tier.get("arc_angle", 0.0)), 1.0, 360.0)
+	data.rule_charges = maxi(1, data.rule_charges + int(round(float(tier.get("rule_charges", 0.0)))))
+	data.max_rules = maxi(1, data.max_rules + int(round(float(tier.get("max_rules", 0.0)))))
 	data.dos_freeze = maxf(0.0, data.dos_freeze + float(tier.get("dos_freeze", 0.0)))
 	data.dos_slow_time = maxf(0.0, data.dos_slow_time + float(tier.get("dos_slow_time", 0.0)))
 	data.dos_slow_factor = clampf(data.dos_slow_factor + float(tier.get("dos_slow_factor", 0.0)), 0.05, 1.0)
@@ -463,6 +468,8 @@ func _process(delta: float) -> void:
 			_process_laser(delta)
 		MODE_ARC:
 			_process_arc(delta)
+		MODE_DEPLOY:
+			_process_deploy(delta)
 		_:
 			_process_targeted(delta)
 	if _flash_t >= 0.0:
@@ -550,6 +557,73 @@ func _process_radial(delta: float) -> void:
 			# gate reopens with an enemy present.
 			_cooldown = 0.0
 			_idle_cd = _idle_wait
+
+# Deploy: place filter rules on the route tiles in range, rather than shooting.
+# The tower idles once its rules are all live, and resumes as they are spent.
+var _rules: Array = []            # live FirewallRule3D instances this tower owns
+
+func _process_deploy(delta: float) -> void:
+	_cooldown -= delta
+	if _idle_cd > 0.0:
+		_idle_cd -= delta
+		return
+	if _cooldown <= 0.0:
+		if _deploy_rule():
+			_rearm()
+			_fire_flash()
+			_play_sfx("tower_fire")
+		else:
+			# Every reachable tile already carries a rule (or the cap is reached).
+			# Park on the idle gate rather than re-scanning the route every frame.
+			_cooldown = 0.0
+			_idle_cd = _idle_wait
+
+## Place one rule on the route tile in range that is furthest along the path and
+## does not already carry one. Returns false when there is nothing to place.
+## Rules do NOT stack: one tile carries at most one of this tower's rules, so the
+## tower covers ground rather than concentrating on a single tile.
+func _deploy_rule() -> bool:
+	if board == null or board.map == null:
+		return false
+	# drop rules that expired since the last deploy
+	var live: Array = []
+	for r in _rules:
+		if is_instance_valid(r):
+			live.append(r)
+	_rules = live
+	if _rules.size() >= data.max_rules:
+		return false
+	var taken := {}
+	for r in _rules:
+		taken[r.cell] = true
+	var best_cell := Vector2i.ZERO
+	var best_idx := -1
+	var path: Array = board.map.path
+	for i in range(path.size()):
+		var c: Vector2i = path[i]
+		if taken.has(c):
+			continue
+		if HexUtils.axial_distance(cell, c) > data.range_tiles:
+			continue
+		if i > best_idx:
+			best_idx = i
+			best_cell = c
+	if best_idx < 0:
+		return false
+	var rule := FirewallRule3D.new()
+	rule.pierces_ecc = data.bit_corruption
+	rule.ecc_pierce = data.ecc_pierce
+	rule.can_see_encrypted = data.cipher
+	rule.applies_dos = data.dos
+	rule.dos_freeze = data.dos_freeze
+	rule.dos_slow_time = data.dos_slow_time
+	rule.dos_slow_factor = data.dos_slow_factor
+	rule.setup(board, best_cell, data.damage, data.rule_charges, data.color)
+	var w: Vector2 = board.cell_center_world(best_cell)
+	rule.position = Vector3(w.x, FirewallRule3D.PLATE_Y, w.y)
+	board.add_projectile(rule)      # the shared entity layer; rules free themselves
+	_rules.append(rule)
+	return true
 
 # Arc: aim at the prioritised target and emit one expanding wave per shot.
 func _process_arc(delta: float) -> void:
@@ -1417,6 +1491,13 @@ func _update_beam(frac: float, on: bool) -> void:
 # Clean up the externally-parented beam nodes when the tower is removed.
 func _exit_tree() -> void:
 	_set_hum(false, 0.0)
+	# Deployed rules live on the board, not under the tower, so selling would
+	# otherwise leave them behind — and since selling refunds, place / deploy /
+	# sell / repeat would mint free coverage. A daemon's rules go with it.
+	for r in _rules:
+		if is_instance_valid(r):
+			r.queue_free()
+	_rules.clear()
 	if _beam != null and is_instance_valid(_beam):
 		_beam.queue_free()
 	if _beam_core != null and is_instance_valid(_beam_core):

@@ -29,7 +29,7 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `damage` | number | 10 | Damage per hit. For `laser`, max damage per second at full charge. For `arc`, 0 deals no damage (still applies ability effects). |
 | `cost` | int | 40 | Build cost. |
 | `projectile_speed` | number | 320 | Plane units/sec for `single`/`radial` shots and the `arc` wave front (1 hex ≈ 11.3). |
-| `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` \| `"arc"` (see below). |
+| `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` \| `"arc"` \| `"deploy"` (see below). |
 | `targets` | int | 1 | **NEW.** `single` only: number of distinct enemies engaged per fire cycle (furthest-along first). >1 = multi-target / no-overkill spray. |
 | `directions` | int | 6 | `radial` only: number of equally spaced spokes (min 1; 6 = hex flat sides). |
 | `hops` | int | 0 | **NEW.** `single` only: extra targets a shot forwards *itself* to after its first hit (0 = no forwarding). A shot strikes at most `hops + 1` bodies and never the same one twice. |
@@ -38,6 +38,8 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `ramp_time` | number | 2.0 | `laser` only: seconds of sustained fire to reach full power (min 0.05). |
 | `focus_time` | number | 0.0 | Seconds the tower is idle after **killing** a target (min 0). Taxes swarm clearing. |
 | `charge_retain` | number | 0 | **NEW.** "Prefocus": the fraction of a `laser`'s ramp kept when it loses or switches target (0 = the ramp restarts from zero every time, 1 = it is never lost). Clamped 0–1. Ignored by every other fire mode. |
+| `rule_charges` | int | 4 | **NEW.** `deploy` only: how many distinct bodies one deployed rule filters before it expires. Charges are spent PER BODY, not per frame — an enemy standing still on a rule is charged once. |
+| `max_rules` | int | 6 | **NEW.** `deploy` only: how many of this tower's rules may be live at once. |
 | `arc_angle` | number | 70 | **NEW.** `arc` only: full angular width of the wedge, in degrees (min 1, max 360; 360 = omnidirectional). |
 | `dos_freeze` | number | 0.5 | **NEW.** Seconds an enemy is fully stopped by a DoS hit (per-tower override of the former global `DOS_STOP`). |
 | `dos_slow_time` | number | 2.0 | **NEW.** Seconds an enemy stays slowed after the freeze ends (override of `DOS_SLOW_TIME`). |
@@ -88,6 +90,16 @@ is a per-tower in-game toggle, not a JSON field.
   `arc_angle = 360` it is omnidirectional. `fire_rate` is waves/second. The arc wave is
   **not** blocked by walls, so `ignore_walls` is a no-op on `arc`.
 
+- **`deploy`** — does not attack. On its `fire_rate` cadence it places a **rule**
+  on the route tile within `range` that is furthest along the path and does not
+  already carry one of its rules; rules do NOT stack, so a tower covers ground
+  rather than concentrating on a tile. A rule damages each body that crosses it
+  for `damage`, spending one of its `rule_charges` per body, and expires when
+  spent. Rules honour the deploying tower's Cipher (Encrypted traffic passes
+  untouched without it), `bit_corruption` / `ecc_pierce`, and `dos`. They are
+  destroyed with the tower, so selling cannot bank coverage. `projectile_speed`,
+  `targets` and the `hop_*` fields are unused.
+
 ## Upgrades + Crosspathing
 
 `upgrades` is an array of **3 paths**; each path has **5 tiers** the player buys
@@ -131,6 +143,8 @@ A tier mutates the tower's effective stats when purchased. Numeric entries are
 | `focus_time` | number | Add to `focus_time` (floored at **0.1** — an upgraded tower always keeps some recovery). |
 | `charge_retain` | number | Add to `charge_retain` (clamped 0–1). **NEW.** |
 | `arc_angle` | number | Add to `arc_angle` (clamped 1–360). **NEW.** |
+| `rule_charges` | number | Add to `rule_charges` (rounded, floored at 1). **NEW.** |
+| `max_rules` | number | Add to `max_rules` (rounded, floored at 1). **NEW.** |
 | `dos_freeze` | number | Add to `dos_freeze` (floored at 0). **NEW.** |
 | `dos_slow_time` | number | Add to `dos_slow_time` (floored at 0). **NEW.** |
 | `dos_slow_factor` | number | Add to `dos_slow_factor` (clamped 0.05–1.0). **NEW.** |
