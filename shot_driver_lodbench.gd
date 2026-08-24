@@ -55,7 +55,7 @@ func _populate(main, n: int) -> void:
 				"sides", "ecc", "encrypted", "display_name"]:
 			ed.set(prop, src.get(prop))
 		ed.health = 1e15
-		ed.speed = src.speed
+		ed.speed = src.speed * 0.04   # crawls: movement still ticks, nobody reaches the goal
 		ed.reward = 0
 		ed.reduces_to = null
 		forms.append(ed)
@@ -154,8 +154,8 @@ func drive(main) -> void:
 		frame_ms.sort()
 		var st: Dictionary = _stats(main)
 		print("LODB: --- %s ---" % mode)
-		print("LODB:   alive=%d  reduced=%d%%  (would-drop by_size=%d%% by_crowd=%d%%)  avg enemies/cell=%.1f"
-			% [st["alive"], int(100.0 * float(st["reduced"]) / float(maxi(st["alive"], 1))),
+		print("LODB:   alive=%d  load=L%d  reduced=%d%%  (would-drop by_size=%d%% by_crowd=%d%%)  avg enemies/cell=%.1f"
+			% [st["alive"], Enemy3D.load_level, int(100.0 * float(st["reduced"]) / float(maxi(st["alive"], 1))),
 			   int(100.0 * float(st["by_size"]) / float(maxi(st["alive"], 1))),
 			   int(100.0 * float(st["by_crowd"]) / float(maxi(st["alive"], 1))), st["crowd_avg"]])
 		print("LODB:   script_ms p50=%.2f p95=%.2f | frame_ms p50=%.2f (software GL — not GPU-representative)"

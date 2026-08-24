@@ -183,6 +183,7 @@ func _ready() -> void:
 	_build_ui()
 	_build_map_title()
 	_build_stats_overlay()
+	_build_perf_overlay()
 	_build_wave_banner()
 	_build_badge_tooltip()
 	_update_labels()
@@ -388,6 +389,7 @@ func _process(delta: float) -> void:
 	_ease_zoom(delta)
 	_camera_keys(delta)
 	_update_lod_globals()
+	_update_perf(delta)
 	_update_preview()
 	_update_cam_readout()
 	_cheat_tick(delta)
@@ -430,6 +432,8 @@ func _update_lod_globals() -> void:
 	Enemy3D.lod_k = vp.y / maxf(0.0001, tan(deg_to_rad(camera.fov) * 0.5))
 	Enemy3D.lod_cam_pos = camera.global_position
 	Enemy3D.lod_frame += 1
+	# Load level from the live count: O(1), and the count is already to hand.
+	Enemy3D.update_load_level(board.enemies.size())
 
 func _camera_keys(delta: float) -> void:
 	var dir := Vector2.ZERO
@@ -698,6 +702,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		_cancel()
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F3:
+		_toggle_perf()
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _mouse_over_pane():
@@ -1204,6 +1211,89 @@ func _build_stat_row(parent: Control, glyph: String, text_col: Color) -> Label:
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(lbl)
 	return lbl
+
+# ---------------------------------------------------------------- perf overlay
+# F3 toggles a live read-out of what the frame actually costs. The point is to
+# tell CPU-bound from GPU-bound on real hardware: script ms is main-thread
+# GDScript, draw calls / primitives are what the renderer is asked to submit. If
+# the frame time tracks script ms, more aggressive LOD will not help — LOD sheds
+# primitives, not script work.
+const PERF_SAMPLES := 30         # frame-time window, ~half a second at 60fps
+var perf_label: Label
+var _perf_on := false
+var _perf_frames: Array[float] = []
+var _perf_last_us: int = 0
+var _perf_accum := 0.0
+
+func _build_perf_overlay() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 5                # above the wave banner, so it is never hidden
+	add_child(layer)
+	perf_label = Label.new()
+	perf_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	perf_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	perf_label.position = Vector2(-16, 10)
+	perf_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	perf_label.add_theme_font_size_override("font_size", 18)
+	perf_label.add_theme_color_override("font_color", Color(0.72, 0.95, 0.78))
+	perf_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	perf_label.add_theme_constant_override("outline_size", 5)
+	perf_label.text = ""
+	perf_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	perf_label.visible = false
+	layer.add_child(perf_label)
+	_perf_last_us = Time.get_ticks_usec()
+
+func _toggle_perf() -> void:
+	_perf_on = not _perf_on
+	perf_label.visible = _perf_on
+	_perf_frames.clear()
+	_perf_last_us = Time.get_ticks_usec()
+
+func _update_perf(delta: float) -> void:
+	# Sample the wall clock even while hidden is pointless work, so bail early.
+	if not _perf_on:
+		return
+	var now := Time.get_ticks_usec()
+	_perf_frames.append(float(now - _perf_last_us) / 1000.0)
+	_perf_last_us = now
+	if _perf_frames.size() > PERF_SAMPLES:
+		_perf_frames.remove_at(0)
+	# Refresh the text a few times a second, not every frame: the label rebuild
+	# would otherwise show up in the very number it is reporting.
+	_perf_accum += delta
+	if _perf_accum < 0.2 or _perf_frames.is_empty():
+		return
+	_perf_accum = 0.0
+	var sum := 0.0
+	var worst := 0.0
+	for v in _perf_frames:
+		sum += v
+		worst = maxf(worst, v)
+	var mean: float = sum / float(_perf_frames.size())
+	var script_ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	var alive: int = board.enemies.size()
+	# "bound" is the honest read: script time is a floor under the frame, so when
+	# it accounts for most of the frame the CPU is the constraint and no amount of
+	# extra LOD will help.
+	var share: float = 0.0 if mean <= 0.001 else clampf(script_ms / mean, 0.0, 1.0)
+	var bound := "CPU" if share > 0.6 else ("GPU/draw" if share < 0.35 else "mixed")
+	perf_label.text = "%.1f fps  (%.1f ms, worst %.1f)\nscript %.2f ms  -> %s\ndraws %d   prims %s\nenemies %d   load L%d" % [
+		1000.0 / maxf(mean, 0.001), mean, worst, script_ms, bound,
+		draws, _thousands(prims), alive, Enemy3D.load_level]
+
+func _thousands(n: int) -> String:
+	var s := str(n)
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return out
 
 # ---------------------------------------------------------------- map title
 # The map name, bold and centred along the top of the play area (not the side bar).
