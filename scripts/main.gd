@@ -162,7 +162,7 @@ func _ability_text(icon: String) -> String:
 		"cipher":
 			return "Cipher\nSees and targets encrypted enemies."
 		"bit_corruption":
-			return "Bit corruption\nBypasses ECC damage resistance."
+			return "Bit Corruption\nBypasses ECC damage resistance."
 		"tunneling":
 			return "Tunneling\nShots pass through walls."
 		_:

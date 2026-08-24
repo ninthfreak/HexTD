@@ -81,9 +81,9 @@ level-by-level in-game. Tiers within a path are sequential.
 
 ```json
 "upgrades": [
-  { "name": "Caliber", "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
-  { "name": "Action",  "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
-  { "name": "Optics",  "tiers": [ {…}, {…}, {…}, {…}, {…} ] }
+  { "name": "Magnitude", "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
+  { "name": "Overclock", "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
+  { "name": "Optics",    "tiers": [ {…}, {…}, {…}, {…}, {…} ] }
 ]
 ```
 

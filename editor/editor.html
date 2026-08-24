@@ -842,7 +842,7 @@ function upgradeEditor(t){
         ...field('color (override)',el('input',{type:'text',value:(u.color||''),placeholder:'no change',oninput:ev=>{u.color=ev.target.value.trim();setDirty('towers');}})),
         ...field('cipher',tri(u,'cipher')),
         ...field('bit corruption',tri(u,'bit_corruption')),
-        ...field('ignore walls',tri(u,'ignore_walls')),
+        ...field('tunneling',tri(u,'ignore_walls')),
         ...field('buffer overflow',tri(u,'buffer_overflow')),
         ...field('denial of service',tri(u,'dos')),
       ];

@@ -112,7 +112,7 @@ func tier_summary(s: int) -> String:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
 		lines.append("Color change")
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow"}
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit Corruption", "ignore_walls": "Tunneling", "buffer_overflow": "Buffer Overflow"}
 	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":
