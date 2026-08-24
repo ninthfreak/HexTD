@@ -33,8 +33,8 @@ art/
 │   ├── dos.svg _backplate.png _glyph.png _rim.png
 │   └── tunneling.svg .png _backplate.png _glyph.png _rim.png
 ├── towers/      # tower selection buttons (filenames keep the tower_ prefix)
-│   └── tower_basic.png tower_jammer.png tower_laser.png
-│       tower_machinegun.png tower_radial.png tower_slow.png
+│   └── tower_basic.png tower_jammer.png tower_beam.png
+│       tower_flood.png tower_splitter.png tower_heavy.png
 ├── ui/          # sandbox / transport control buttons
 │   ├── pause.svg play.svg
 │   ├── speed_1x.svg speed_2x.svg speed_3x.svg

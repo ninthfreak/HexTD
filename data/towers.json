@@ -122,7 +122,7 @@
       }
     ]
   },
-  "machinegun": {
+  "flood": {
     "name": "Flood",
     "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; Bit Corruption chews through ECC-armored swarms.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
     "color": "#9141ac",
@@ -245,7 +245,7 @@
       }
     ]
   },
-  "slow": {
+  "heavy": {
     "name": "Heavy",
     "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses, and piercing ECC armor (Logic Bomb).\nWeak: slow fire overkills weak enemies and lets swarms slip past; can't see Encrypted.",
     "color": "#ffb84d",
@@ -369,7 +369,7 @@
       }
     ]
   },
-  "radial": {
+  "splitter": {
     "name": "Splitter",
     "description": "Area tower that fires a ring of straight spokes.\nGood at: cheaply shredding clustered or lined-up enemies; widens to twelve wall-piercing spokes.\nWeak: poor against lone targets; coverage depends on the path layout.",
     "color": "#1a5fb4",
@@ -495,7 +495,7 @@
       }
     ]
   },
-  "laser": {
+  "beam": {
     "name": "Beam",
     "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused, the longest reach on the board, and countering TLS.\nWeak: swarms and fast movers reset its ramp until Prefocus is unlocked.",
     "color": "#ed333b",

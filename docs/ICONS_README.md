@@ -36,8 +36,8 @@ single-image sources, not used by the parallax badge path.
 
 ## Tower selection buttons
 
-`tower_<id>.png` — one per tower id in `towers.json` (`tower_basic`, `tower_machinegun`,
-`tower_slow`, `tower_radial`, `tower_laser`, `tower_jammer`). Each is a full 512×512
+`tower_<id>.png` — one per tower id in `towers.json` (`tower_basic`, `tower_flood`,
+`tower_heavy`, `tower_splitter`, `tower_beam`, `tower_jammer`). Each is a full 512×512
 **hex face** (dark tile + coloured rim baked in, transparent outside the hex). Wired
 in `main_3d.gd` via `_load_art("tower_" + id)`; a colored-hex placeholder shows until
 the file exists. Rename a tower key → rename its file.

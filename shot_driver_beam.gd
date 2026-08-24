@@ -19,7 +19,7 @@ func drive(main) -> void:
 
 	# --- Beam: buy Lens level by level, reporting the stats a player would see ---
 	var spot = stand.call()
-	main.placing_id = "laser"
+	main.placing_id = "beam"
 	main._try_place(spot)
 	main.placing_id = ""
 	var tw = main.board.tower_at(spot)
@@ -35,7 +35,7 @@ func drive(main) -> void:
 
 	# --- Beam: Decrypt now graduates ECC pierce instead of stacking damage ---
 	var s2 = stand.call()
-	main.placing_id = "laser"
+	main.placing_id = "beam"
 	main._try_place(s2)
 	main.placing_id = ""
 	var tw2 = main.board.tower_at(s2)

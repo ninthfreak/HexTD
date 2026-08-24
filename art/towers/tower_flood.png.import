@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://7fxly2iduu7c"
-path="res://.godot/imported/tower_machinegun.png-b6485b7297cd732cc10e7fa8474e2bdf.ctex"
+uid="uid://q1uanhuvgbnu"
+path="res://.godot/imported/tower_flood.png-2d01e7d8fc005737eb9351d6d1729218.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/towers/tower_machinegun.png"
-dest_files=["res://.godot/imported/tower_machinegun.png-b6485b7297cd732cc10e7fa8474e2bdf.ctex"]
+source_file="res://art/towers/tower_flood.png"
+dest_files=["res://.godot/imported/tower_flood.png-2d01e7d8fc005737eb9351d6d1729218.ctex"]
 
 [params]
 

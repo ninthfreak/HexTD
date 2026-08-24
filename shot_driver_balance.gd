@@ -394,7 +394,7 @@ func _section_self_check() -> void:
 	await _selftest_reset(std)
 	p("")
 	p("%-14s %8s %8s %8s  %s" % ["tower", "paper", "measured", "ratio", "verdict"])
-	for id in ["basic", "slow", "machinegun", "laser"]:
+	for id in ["basic", "heavy", "flood", "beam"]:
 		var td: TowerData = main.content.tower(id)
 		if td == null:
 			continue
@@ -417,7 +417,7 @@ func _selftest_reset(probe: EnemyData) -> void:
 	await _reset_board()
 	# A radial tower: its volley puts several spokes in the air at once, and they
 	# fly for a fifth of a second, so the ordnance count is easy to catch.
-	var tid := "radial"
+	var tid := "splitter"
 	if main.content.tower(tid) == null:
 		tid = str(main.content.tower_ids()[0])
 	_place(tid, _anchor)

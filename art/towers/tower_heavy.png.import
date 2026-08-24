@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c6v5dcie8lbwd"
-path="res://.godot/imported/tower_laser.png-f39c52cb64d257b153de58cbe0dc2809.ctex"
+uid="uid://cb17kkcyym3go"
+path="res://.godot/imported/tower_heavy.png-38ff88bcf6de0dd151ca8cde2b91478e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/towers/tower_laser.png"
-dest_files=["res://.godot/imported/tower_laser.png-f39c52cb64d257b153de58cbe0dc2809.ctex"]
+source_file="res://art/towers/tower_heavy.png"
+dest_files=["res://.godot/imported/tower_heavy.png-38ff88bcf6de0dd151ca8cde2b91478e.ctex"]
 
 [params]
 

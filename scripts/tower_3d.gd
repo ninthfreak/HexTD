@@ -365,7 +365,10 @@ func tier_summary(s: int) -> String:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
 		lines.append("Color change")
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow", "dos": "Denial of service", "execute_no_decay": "Garbage Collection"}
+	# These must read exactly as the ability badges name them (see ABILITY_BADGES):
+	# a tier that grants Tunneling should not describe itself as "Ignore walls"
+	# while the badge it lights up says Tunneling.
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit Corruption", "ignore_walls": "Tunneling", "buffer_overflow": "Buffer Overflow", "dos": "Denial of Service", "execute_no_decay": "Garbage Collection"}
 	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos", "execute_no_decay"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":

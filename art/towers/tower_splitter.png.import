@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c7gr6awiqr1bu"
-path="res://.godot/imported/tower_radial.png-62ee7bd09b8cdb18ede72739d073528b.ctex"
+uid="uid://clfvr1w40fv71"
+path="res://.godot/imported/tower_splitter.png-abf73c0ed268af284faa27062ccf8ee4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/towers/tower_radial.png"
-dest_files=["res://.godot/imported/tower_radial.png-62ee7bd09b8cdb18ede72739d073528b.ctex"]
+source_file="res://art/towers/tower_splitter.png"
+dest_files=["res://.godot/imported/tower_splitter.png-abf73c0ed268af284faa27062ccf8ee4.ctex"]
 
 [params]
 
