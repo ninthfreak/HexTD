@@ -69,6 +69,11 @@ is a per-tower in-game toggle, not a JSON field.
   A hop chooses its own target, so it applies the tower's Cipher itself: without
   Cipher a shot routes *around* Encrypted bodies. Hops do not re-check line of
   sight — `ignore_walls` still governs the tower's own target acquisition.
+  Every hop is a full hit, so `buffer_overflow`, `execute_threshold` and `dos`
+  apply again at each one — but `execute_threshold` is a fraction of the target's
+  max HP, so unlike damage it does *not* weaken along the chain. A body the shot
+  has already struck is never revisited, including after it decays; the decay
+  children are new bodies, so the chain can continue into them.
 - **`radial`** — fires a volley of `directions` straight spokes whenever any enemy is in
   range. Spokes are stopped by blocking walls unless `ignore_walls`.
 - **`laser`** — locks one target and ramps damage with a convex (quadratic ease-in)
