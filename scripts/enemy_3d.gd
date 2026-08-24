@@ -1169,6 +1169,17 @@ func _apply_lod(reduced: bool) -> void:
 func apply_dos(freeze := DOS_STOP, slow_time := DOS_SLOW_TIME, slow_factor := DOS_SLOW_FACTOR) -> void:
 	if not _alive:
 		return
+	# Heavy traffic shrugs jamming off. Graduated rather than a flag, matching how
+	# ECC resists damage: the durations shrink and the slow factor eases back
+	# toward 1.0 (no slow at all), so dos_resist = 1 is true immunity and anything
+	# between is a partial shrug.
+	if data.dos_resist > 0.0:
+		if data.dos_resist >= 1.0:
+			return
+		var keep: float = 1.0 - data.dos_resist
+		freeze *= keep
+		slow_time *= keep
+		slow_factor = lerpf(slow_factor, 1.0, data.dos_resist)
 	# Re-application takes the stronger of each: longer freeze/slow, and the lower
 	# (stronger) slow factor. A fresh hit on an un-debuffed enemy takes its factor.
 	var active := _freeze_time > 0.0 or _slow_time > 0.0

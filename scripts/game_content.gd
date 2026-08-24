@@ -153,6 +153,7 @@ func _enemy_from_dict(id: String, d: Dictionary) -> EnemyData:
 	e.reduce_count = maxi(1, int(d.get("reduce_count", 1)))
 	e.ecc = bool(d.get("ecc", false))
 	e.encrypted = bool(d.get("encrypted", false))
+	e.dos_resist = clampf(float(d.get("dos_resist", 0.0)), 0.0, 1.0)
 	e.death_sound = str(d.get("death_sound", ""))
 	return e
 

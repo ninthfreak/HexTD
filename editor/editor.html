@@ -238,6 +238,7 @@ function enemiesToJSON(enemies, order){
     if(+e.glow!==1) o.glow=+e.glow;
     if(o.reduces_to && +e.reduce_count>1) o.reduce_count=Math.round(+e.reduce_count);
     if(e.ecc) o.ecc=true;
+    if(+e.dos_resist) o.dos_resist=Math.min(1,Math.max(0,+e.dos_resist));
     if(e.encrypted) o.encrypted=true;
     if(e.death_sound) o.death_sound=e.death_sound;
     out[id]=o; }
@@ -251,7 +252,7 @@ function enemiesFromJSON(obj){
       side:+(d.side??16), length:+(d.length??32), width:+(d.width??16),
       radius:+(d.radius??16), sides:+(d.sides??8),
       reduces_to:(d.reduces_to==null?'':String(d.reduces_to)),
-      reduce_count:+(d.reduce_count??1), ecc:!!d.ecc, encrypted:!!d.encrypted, glow:+(d.glow??1), death_sound:(d.death_sound??'') }; }
+      reduce_count:+(d.reduce_count??1), ecc:!!d.ecc, encrypted:!!d.encrypted, dos_resist:+(d.dos_resist??0), glow:+(d.glow??1), death_sound:(d.death_sound??'') }; }
   return {enemies, order};
 }
 function towersToJSON(towers, order){
@@ -667,6 +668,7 @@ function renderEnemyEditor(){
         ...field('reward',num('reward')), ...field('glow (0 = none)',num('glow','0.1')),
         ...field('death sound',el('input',{type:'text',value:e.death_sound||'',placeholder:'blank = default',oninput:ev=>upd('death_sound',ev.target.value)})),
         ...field('reduces to',reduceSel), ...field('decay count',countSel),
+        ...field('DoS resist (0-1, 1 = immune to jamming)',num('dos_resist','0.05')),
         el('div',{class:'full',style:'display:flex;gap:22px;flex-wrap:wrap;margin-top:2px'},
           checkbox('ECC — resists 90% damage', e.ecc, ev=>upd('ecc',ev.target.checked)),
           checkbox('Encrypted — needs Cipher', e.encrypted, ev=>upd('encrypted',ev.target.checked)))),

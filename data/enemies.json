@@ -283,7 +283,8 @@
     "reward": 250,
     "reduces_to": "kibibyte",
     "glow": 1.8,
-    "reduce_count": 4
+    "reduce_count": 4,
+    "dos_resist": 1.0
   },
   "ecc_mebibyte": {
     "name": "ECC Mebibyte",
@@ -296,7 +297,8 @@
     "reduces_to": "ecc_kibibyte",
     "glow": 1.8,
     "reduce_count": 4,
-    "ecc": true
+    "ecc": true,
+    "dos_resist": 1.0
   },
   "enc_mebibyte": {
     "name": "Encrypted Mebibyte",
@@ -309,7 +311,8 @@
     "reduces_to": "enc_kibibyte",
     "glow": 1.8,
     "reduce_count": 4,
-    "encrypted": true
+    "encrypted": true,
+    "dos_resist": 1.0
   },
   "tls_mebibyte": {
     "name": "TLS Mebibyte",
@@ -323,7 +326,8 @@
     "glow": 1.8,
     "reduce_count": 4,
     "ecc": true,
-    "encrypted": true
+    "encrypted": true,
+    "dos_resist": 1.0
   },
   "gibibyte": {
     "name": "Gibibyte",
@@ -335,7 +339,8 @@
     "reward": 800,
     "reduces_to": "mebibyte",
     "glow": 2,
-    "reduce_count": 4
+    "reduce_count": 4,
+    "dos_resist": 1.0
   },
   "ecc_gibibyte": {
     "name": "ECC Gibibyte",
@@ -348,7 +353,8 @@
     "reduces_to": "ecc_mebibyte",
     "glow": 2,
     "reduce_count": 4,
-    "ecc": true
+    "ecc": true,
+    "dos_resist": 1.0
   },
   "enc_gibibyte": {
     "name": "Encrypted Gibibyte",
@@ -361,7 +367,8 @@
     "reduces_to": "enc_mebibyte",
     "glow": 2,
     "reduce_count": 4,
-    "encrypted": true
+    "encrypted": true,
+    "dos_resist": 1.0
   },
   "tls_gibibyte": {
     "name": "TLS Gibibyte",
@@ -375,7 +382,8 @@
     "glow": 2,
     "reduce_count": 4,
     "ecc": true,
-    "encrypted": true
+    "encrypted": true,
+    "dos_resist": 1.0
   },
   "tebibyte": {
     "name": "Tebibyte",
@@ -387,7 +395,8 @@
     "reward": 2500,
     "reduces_to": "gibibyte",
     "glow": 2.4,
-    "reduce_count": 4
+    "reduce_count": 4,
+    "dos_resist": 1.0
   },
   "ecc_tebibyte": {
     "name": "ECC Tebibyte",
@@ -400,7 +409,8 @@
     "reduces_to": "ecc_gibibyte",
     "glow": 2.4,
     "reduce_count": 4,
-    "ecc": true
+    "ecc": true,
+    "dos_resist": 1.0
   },
   "enc_tebibyte": {
     "name": "Encrypted Tebibyte",
@@ -413,7 +423,8 @@
     "reduces_to": "enc_gibibyte",
     "glow": 2.4,
     "reduce_count": 4,
-    "encrypted": true
+    "encrypted": true,
+    "dos_resist": 1.0
   },
   "tls_tebibyte": {
     "name": "TLS Tebibyte",
@@ -427,6 +438,7 @@
     "glow": 2.4,
     "reduce_count": 4,
     "ecc": true,
-    "encrypted": true
+    "encrypted": true,
+    "dos_resist": 1.0
   }
 }
