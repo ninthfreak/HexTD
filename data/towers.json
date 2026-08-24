@@ -1,7 +1,7 @@
 {
   "basic": {
     "name": "Basic",
-    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage.\nWeak: at base, swarms and big late-game health pools; never pierces ECC.",
+    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage; Buffer Overflow spills overkill into the decay children, and Optics adds Cipher, then Tunneling.\nWeak: at base, swarms and big late-game health pools; never gets Bit Corruption, so ECC armor always blunts it.",
     "color": "#59b2ff",
     "range": 4,
     "fire_rate": 1.6,
@@ -124,7 +124,7 @@
   },
   "flood": {
     "name": "Flood",
-    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; Bit Corruption chews through ECC-armored swarms.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
+    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; Bit Corruption chews through ECC-armored swarms; its rapid taps land inside the Execute window far more often than a big hitter can, and Garbage Collection then takes the target's whole decay chain with it. Optics adds Cipher and Tunneling.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
     "color": "#9141ac",
     "range": 3,
     "fire_rate": 8,
@@ -249,7 +249,7 @@
   },
   "heavy": {
     "name": "Heavy",
-    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses, and piercing ECC armor (Logic Bomb).\nWeak: slow fire overkills weak enemies and lets swarms slip past; can't see Encrypted.",
+    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses; Bit Corruption (Logic Bomb) pierces ECC armor, and Buffer Overflow spills its overkill into the decay children instead of wasting it.\nWeak: slow fire overkills weak enemies and lets swarms slip past; never gets Cipher, so Encrypted traffic stays invisible to it.",
     "color": "#ffb84d",
     "range": 4,
     "fire_rate": 0.6,
@@ -373,7 +373,7 @@
   },
   "splitter": {
     "name": "Splitter",
-    "description": "Area tower that fires a ring of straight spokes.\nGood at: cheaply shredding clustered or lined-up enemies; widens to twelve wall-piercing spokes.\nWeak: poor against lone targets; coverage depends on the path layout.",
+    "description": "Area tower that fires a ring of straight spokes.\nGood at: cheaply shredding clustered or lined-up enemies; Bit Corruption arrives on the first Corruption tier to cut ECC swarms, and Spread widens it to twelve spokes that Tunneling drives straight through walls.\nWeak: poor against lone targets; coverage depends on the path layout; never gets Cipher.",
     "color": "#1a5fb4",
     "range": 3,
     "fire_rate": 1.2,
@@ -499,7 +499,7 @@
   },
   "router": {
     "name": "Router",
-    "description": "Forwards each shot from target to target, weakening at every hop.\nGood at: strung-out lines on the route, and finishing a cluster one shot started.\nWeak: a lone enemy with nothing near it — every hop past the first is wasted.",
+    "description": "Forwards each shot from target to target, weakening at every hop.\nGood at: strung-out lines on the route, and finishing a cluster one shot started; Cipher lets it see and chain through Encrypted traffic, Bit Corruption cuts ECC, and Tunneling ignores walls outright.\nWeak: a lone enemy with nothing near it - every hop past the first is wasted.",
     "color": "#4fd08a",
     "range": 4,
     "fire_rate": 1.2,
@@ -627,7 +627,7 @@
   },
   "beam": {
     "name": "Beam",
-    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused, the longest reach on the board, and countering TLS.\nWeak: swarms and fast movers reset its ramp until Prefocus is unlocked.",
+    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused, and the longest reach on the board; Decrypt opens with Cipher and closes with Bit Corruption and Tunneling, so neither TLS nor a wall hides anything from it.\nWeak: swarms and fast movers reset its ramp until Prefocus is unlocked.",
     "color": "#ed333b",
     "range": 8,
     "fire_rate": 1.2,
@@ -756,7 +756,7 @@
   },
   "jammer": {
     "name": "Jammer",
-    "description": "Support tower whose wave slows everything it can touch.\nGood at: throttling groups to a crawl so your other towers hit them far longer; can blanket the whole board.\nWeak: little damage of its own; short range and a steep price until upgraded.",
+    "description": "Support tower whose Denial of Service wave slows everything it can touch.\nGood at: throttling groups to a crawl so your other towers hit them far longer; can blanket the whole board; Cipher reaches Encrypted traffic and Bit Corruption lets its damage bite through ECC.\nWeak: little damage of its own; short range and a steep price until upgraded; the largest enemies shrug the jam off completely.",
     "color": "#f24fbe",
     "range": 3,
     "fire_rate": 0.8,
@@ -883,7 +883,7 @@
   },
   "firewall": {
     "name": "Firewall Daemon",
-    "description": "Runs in the background dropping filter rules onto the route ahead of it.\nGood at: covering ground no tower is watching, and holding a chokepoint before traffic reaches you.\nWeak: deals nothing on its own — a rule only bites when something crosses it, and each rule stops a fixed number of bodies.",
+    "description": "Runs in the background dropping filter rules onto the route ahead of it.\nGood at: covering ground no tower is watching, and holding a chokepoint before traffic reaches you; Cipher makes its rules inspect Encrypted traffic, Bit Corruption cuts ECC, and Denial of Service turns every rule into a speed bump.\nWeak: deals nothing on its own - a rule only bites when something crosses it, and each rule stops a fixed number of bodies.",
     "color": "#ff8a4f",
     "range": 3,
     "fire_rate": 0.5,
@@ -1010,7 +1010,7 @@
   },
   "quantum": {
     "name": "Quantum",
-    "description": "Apex arc tower that breaks all cryptography natively.\nGood at: AoE damage that ignores ECC, Encrypted, and TLS alike, deleting low-health bosses outright (Collapse) and blanketing the board (Superposition).\nWeak: enormous cost; weaker raw single-target damage than the Beam or Heavy.",
+    "description": "Apex arc tower that breaks all cryptography natively.\nGood at: AoE damage carrying Bit Corruption and Cipher from the start, so ECC, Encrypted and TLS are all alike to it; Collapse adds Execute and Garbage Collection, deleting a low-health boss outright along with its whole decay chain, and Superposition blankets the board.\nWeak: enormous cost; weaker raw single-target damage than the Beam or Heavy.",
     "color": "#2fe3d0",
     "range": 5,
     "fire_rate": 1.2,
