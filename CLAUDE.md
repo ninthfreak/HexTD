@@ -12,14 +12,22 @@ decision record, status, and open assumptions — start there.**
 ## New abilities are mine to approve — STOP and ask
 
 **Never add a new ability without raising it with me first, as its own question,
-before writing any code.** An ability is any new rule that changes what a tower
-or an enemy *does* in combat — a new stat field, flag, resistance, immunity, or
-special interaction. Not a numeric tweak to an existing one.
+before writing any code.** Naming an existing ability or choosing its glyph
+counts too — those are mine to decide, not yours to settle and report.
 
-This has gone wrong four times. `ecc_pierce`, `execute_threshold`,
-`charge_retain`, and enemy `dos_resist` all reached the game without me being
-asked. Every one of them silently changed outcomes a player could not see, and
-balance work was done on top of them.
+**Ability vs. attribute — know the difference.** An *ability* is a new rule: it
+changes what a tower or an enemy *does*, creates an interaction that did not
+exist, or lets something ignore a rule everything else obeys. It earns a name
+and a glyph. An *attribute* is a number that tunes behaviour the thing already
+has — rate of fire, range, ramp time, how much of a laser's wind-up survives a
+target change. Attributes can be upgraded and still be attributes; being
+tunable does not make something special. Don't dress an attribute up as an
+ability, and don't slip an ability in as "just another field".
+
+This has gone wrong three times. `ecc_pierce`, `execute_threshold` (and the
+Garbage Collection flag riding with it), and enemy `dos_resist` all reached the
+game without me being asked. Each one silently changed outcomes a player could
+not see, and balance work was done on top of them.
 
 When you think the game wants a new ability:
 
