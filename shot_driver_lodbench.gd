@@ -42,13 +42,25 @@ func _populate(main, n: int) -> void:
 	await get_tree().process_frame
 	# Post-cascade population: the small decay forms a big enemy breaks into,
 	# spread along the route the way _walk_back actually spaces them.
+	# Immortal CLONES of the real decay forms: towers must still fire (they drive
+	# _refresh_buckets and are part of the load) but the population has to hold
+	# steady or the averages are taken over a board that empties as it runs.
 	var forms: Array = []
 	for id in ["bit", "crumb", "nybble", "byte", "doublet"]:
-		var ed = main.content.enemy(id)
-		if ed != null:
-			forms.append(ed)
+		var src = main.content.enemy(id)
+		if src == null:
+			continue
+		var ed := EnemyData.new()
+		for prop in ["shape", "color", "glow", "side", "length", "width", "radius",
+				"sides", "ecc", "encrypted", "display_name"]:
+			ed.set(prop, src.get(prop))
+		ed.health = 1e15
+		ed.speed = src.speed
+		ed.reward = 0
+		ed.reduces_to = null
+		forms.append(ed)
 	if forms.is_empty():
-		forms.append(main.content.enemy(main.content.enemy_ids()[0]))
+		return
 	var total_len := 0.0
 	for i in range(_pts.size() - 1):
 		total_len += _pts[i].distance_to(_pts[i + 1])
@@ -61,7 +73,6 @@ func _populate(main, n: int) -> void:
 		e.split.connect(main._on_enemy_split)
 		e.setup(ed, _pts)
 		e.place_on_path(int(pl["index"]), pl["pos"])
-		e.data = ed
 		main.board.add_enemy(e)
 
 func drive(main) -> void:
