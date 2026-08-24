@@ -1112,6 +1112,34 @@ func _update_lod() -> void:
 	elif px < drop_px or buried:
 		_apply_lod(true)
 
+## Settle a just-placed enemy's detail tier instead of letting it wait out its
+## stagger. The LOD test only runs every LOD_TEST_MASK+1 frames on a per-enemy
+## phase, so without this a spawn renders at full detail for up to 8 frames —
+## worst exactly when a big body decays and spawns a crowd at once.
+## `parent_reduced` carries a decay parent's tier: a child is never larger than
+## the body it came from and starts at the same spot, so if the parent was
+## reduced the child must be too. That holds without recomputing anything, and
+## it is also correct on the spawn frame, when the child's `crowd` is still at
+## its default because the bucket index has not seen it yet.
+func prime_lod(parent_reduced := false) -> void:
+	if parent_reduced:
+		_apply_lod(true)
+		return
+	# Deliberately NOT estimating `crowd` here. The obvious stand-in — the parent's
+	# cell occupancy — over-reduces, because _walk_back spaces the children out
+	# along the route rather than stacking them in the parent's cell; measured, it
+	# demoted a round of fresh children that the next bucket rebuild put straight
+	# back to full detail, which pops. The crowd rule simply starts one frame late,
+	# when _refresh_buckets() first sees the new body.
+	_update_lod()
+	# The size half of the test is settled above, but `crowd` is not: the bucket
+	# index has not seen this body yet, so the crowd rule cannot fire until the
+	# next rebuild AND the next staggered test. Re-phase so that test lands 1-3
+	# frames out instead of up to 8. Spread over three slots rather than one so a
+	# cascade's children do not all land on the same frame, which is the whole
+	# point of the stagger.
+	_lod_phase = int(-(lod_frame + 1 + (randi() % 3))) & LOD_TEST_MASK
+
 # Swap between the shared full and faces-only meshes. Both come from the same
 # cache entry and the materials are re-pointed rather than rebuilt, so a crossing
 # costs a mesh assignment and at most one material lookup — never a body rebuild.
@@ -1266,7 +1294,10 @@ func _on_depleted(carry := 0.0, pierces_ecc := false, no_decay := false) -> void
 		var placements := []
 		for k in range(1, count):
 			var res := _walk_back(parent_index, parent_pos, spacing * float(k))
-			placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z), "carry": per_child, "pierce": pierces_ecc})
+			# `lod` carries this body's detail tier to its children so they do not
+			# spend their first frames at full detail (see prime_lod).
+			placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z), "carry": per_child, "pierce": pierces_ecc,
+					"lod": _lod_reduced})
 		split.emit(lesser, placements)
 	# Spill into this first child too. One-hop: the carried hit does not itself
 	# overflow (buffer_overflow arg left false), but a child it kills decays normally.

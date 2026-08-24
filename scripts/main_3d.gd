@@ -853,6 +853,7 @@ func _spawn_enemy(type_id: String) -> void:
 	e.split.connect(_on_enemy_split)
 	e.setup(ed, board.get_path_points())
 	board.add_enemy(e)
+	e.prime_lod()          # settle the tier now rather than after up to 8 frames
 
 func _on_enemy_split(lesser, placements: Array) -> void:
 	for pl in placements:
@@ -863,6 +864,9 @@ func _on_enemy_split(lesser, placements: Array) -> void:
 		e.setup(lesser, board.get_path_points())
 		e.place_on_path(int(pl["index"]), pl["pos"])
 		board.add_enemy(e)
+		# Inherit the parent's detail tier: a decay child is never larger than the
+		# body it came from, so a reduced parent means a reduced child.
+		e.prime_lod(bool(pl.get("lod", false)))
 		# Buffer Overflow: a freshly spawned child takes its share of the surplus.
 		var carry: float = float(pl.get("carry", 0.0))
 		if carry > 0.0:
