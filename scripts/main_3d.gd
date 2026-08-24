@@ -1219,7 +1219,9 @@ func _build_stat_row(parent: Control, glyph: String, text_col: Color) -> Label:
 # the frame time tracks script ms, more aggressive LOD will not help — LOD sheds
 # primitives, not script work.
 const PERF_SAMPLES := 30         # frame-time window, ~half a second at 60fps
+const PERF_SLOW_MS := 17.5       # ~57fps; above this the frame is fine and the CPU/GPU split is noise
 var perf_label: Label
+var perf_button: TextureButton      # sandbox-only toggle; null in game mode
 var _perf_on := false
 var _perf_frames: Array[float] = []
 var _perf_last_us: int = 0
@@ -1249,6 +1251,14 @@ func _toggle_perf() -> void:
 	perf_label.visible = _perf_on
 	_perf_frames.clear()
 	_perf_last_us = Time.get_ticks_usec()
+	_refresh_perf_button()
+
+# Dim the toggle while the read-out is hidden — the same self_modulate state
+# tint the pause button uses, so hover glow (which rides modulate) composes.
+func _refresh_perf_button() -> void:
+	if perf_button == null:
+		return
+	perf_button.self_modulate = Color(1, 1, 1) if _perf_on else Color(0.42, 0.42, 0.42, 0.85)
 
 func _update_perf(delta: float) -> void:
 	# Sample the wall clock even while hidden is pointless work, so bail early.
@@ -1260,8 +1270,10 @@ func _update_perf(delta: float) -> void:
 	if _perf_frames.size() > PERF_SAMPLES:
 		_perf_frames.remove_at(0)
 	# Refresh the text a few times a second, not every frame: the label rebuild
-	# would otherwise show up in the very number it is reporting.
-	_perf_accum += delta
+	# would otherwise show up in the very number it is reporting. Accumulate WALL
+	# clock, not delta — delta is scaled by the 2x/3x speed control, which would
+	# otherwise make the read-out refresh faster the faster the game runs.
+	_perf_accum += _perf_frames[_perf_frames.size() - 1] * 0.001
 	if _perf_accum < 0.2 or _perf_frames.is_empty():
 		return
 	_perf_accum = 0.0
@@ -1279,7 +1291,12 @@ func _update_perf(delta: float) -> void:
 	# it accounts for most of the frame the CPU is the constraint and no amount of
 	# extra LOD will help.
 	var share: float = 0.0 if mean <= 0.001 else clampf(script_ms / mean, 0.0, 1.0)
-	var bound := "CPU" if share > 0.6 else ("GPU/draw" if share < 0.35 else "mixed")
+	# Only name a bound when the frame is actually struggling. A vsynced 60fps
+	# frame is mostly idle wait, which would otherwise read as "GPU/draw" and send
+	# you chasing a bottleneck that is not there.
+	var bound := "headroom"
+	if mean > PERF_SLOW_MS:
+		bound = "CPU" if share > 0.6 else ("GPU/draw" if share < 0.35 else "mixed")
 	perf_label.text = "%.1f fps  (%.1f ms, worst %.1f)\nscript %.2f ms  -> %s\ndraws %d   prims %s\nenemies %d   load L%d" % [
 		1000.0 / maxf(mean, 0.001), mean, worst, script_ms, bound,
 		draws, _thousands(prims), alive, Enemy3D.load_level]
@@ -1780,6 +1797,17 @@ func _build_ui() -> void:
 		cheat_button.button_down.connect(_on_cheat_down)
 		cheat_button.button_up.connect(_on_cheat_up)
 		util_row.add_child(cheat_button)
+
+		# Sandbox-only diagnostic, next to the other sandbox tools. F3 still works.
+		perf_button = TextureButton.new()
+		_style_icon_button(perf_button, "perf_stats")
+		perf_button.tooltip_text = "Performance read-out (F3): frame time, script time, draw calls.\nNames whether the frame is CPU- or draw-bound."
+		perf_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		perf_button.pressed.connect(func() -> void:
+			_play_sfx("ui_click")
+			_toggle_perf())
+		util_row.add_child(perf_button)
+		_refresh_perf_button()
 
 	var exit_button := Button.new()
 	exit_button.text = "Exit to map select"

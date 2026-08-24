@@ -1,0 +1,11 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+  <path d="M232.0,120.0 L176.0,217.0 L64.0,217.0 L8.0,120.0 L64.0,23.0 L176.0,23.0 Z" fill="none" stroke="#6fe89a" stroke-width="16" stroke-linejoin="round" opacity="0.28"/>
+  <path d="M232.0,120.0 L176.0,217.0 L64.0,217.0 L8.0,120.0 L64.0,23.0 L176.0,23.0 Z" fill="#161B22" stroke="#6fe89a" stroke-width="5" stroke-linejoin="round"/>
+  <!-- frame-time bars: a short spike among steady frames, which is what the
+       read-out is for -->
+  <rect x="62"  y="132" width="24" height="40" rx="5" fill="#6fe89a" opacity="0.55"/>
+  <rect x="94"  y="112" width="24" height="60" rx="5" fill="#6fe89a" opacity="0.75"/>
+  <rect x="126" y="126" width="24" height="46" rx="5" fill="#6fe89a" opacity="0.75"/>
+  <rect x="158" y="76"  width="24" height="96" rx="5" fill="#6fe89a"/>
+  <line x1="54" y1="180" x2="190" y2="180" stroke="#6fe89a" stroke-width="8" stroke-linecap="round"/>
+</svg>
