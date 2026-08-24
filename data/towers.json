@@ -11,7 +11,7 @@
     "fire_mode": "single",
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 150,
@@ -48,7 +48,7 @@
         ]
       },
       {
-        "name": "Action",
+        "name": "Overclock",
         "tiers": [
           {
             "cost": 150,
@@ -123,8 +123,8 @@
     ]
   },
   "machinegun": {
-    "name": "Machine Gun",
-    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; AP Rounds chew through ECC-armored swarms.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
+    "name": "Flood",
+    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; Bit Corruption chews through ECC-armored swarms.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
     "color": "#9141ac",
     "range": 3,
     "fire_rate": 8,
@@ -134,7 +134,7 @@
     "fire_mode": "single",
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 150,
@@ -171,7 +171,7 @@
         ]
       },
       {
-        "name": "Overdrive",
+        "name": "Overclock",
         "tiers": [
           {
             "cost": 150,
@@ -257,7 +257,7 @@
     "fire_mode": "single",
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 375,
@@ -382,7 +382,7 @@
     "directions": 6,
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 225,
