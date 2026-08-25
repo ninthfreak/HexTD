@@ -23,6 +23,7 @@ var dos_freeze := 0.5
 var dos_slow_time := 2.0
 var dos_slow_factor := 0.5
 var col := Color(0.45, 0.85, 1.0)
+var source_tower = null        # Tower3D to credit for damage/kills (untyped: keeps the dependency edge loose, like `board`)
 
 var _hit := {}                   # bodies this rule has already charged for
 var _cell_set := {}              # {cell: true}, built once — avoids a per-frame allocation
@@ -118,7 +119,7 @@ func _process(_delta: float) -> void:
 			continue
 		_hit[e] = true
 		charges -= 1
-		e.take_damage(damage, pierces_ecc)
+		e.take_damage(damage, pierces_ecc, false, 0.0, false, source_tower)
 		if applies_dos and is_instance_valid(e) and e._alive:
 			e.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 		_refresh_fade()

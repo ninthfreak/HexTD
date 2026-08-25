@@ -78,6 +78,9 @@ const WAVE_DONE_COL := Color(0.5, 0.85, 0.55)
 const GOLD_COL := Color(1.0, 0.82, 0.25)
 const COST_RED_COL := Color(1.0, 0.42, 0.42)
 const LOCKED_COL := Color(0.75, 0.5, 0.5, 0.8)
+# Lifetime tally figures: warmer than the plain attribute values, so "what this
+# tower has done" reads apart from "what this tower is".
+const TALLY_COL := Color(0.98, 0.85, 0.55)
 var speed_steps := [1.0, 2.0, 3.0]
 var speed_index := 0
 var paused := false
@@ -125,6 +128,9 @@ var crosspath_hint: Label            # one-line reason shown while a path is cro
 var attr_header: Label               # "ATTRIBUTES" section label, hidden with no selection
 var attr_grid: GridContainer         # name/value rows for the selected tower's stats
 var _attr_key: Array = []            # (tower id, upgrade rev) of the rows currently built
+var tally_dmg_value: Label           # live "Damage dealt" figure for the selected tower
+var tally_kill_value: Label          # live "Destroyed" figure for the selected tower
+var _tally_shown: Array = []         # last (damage, kills) written, to skip idle text churn
 var info_label: Label
 
 # --- ability badges ---
@@ -359,6 +365,8 @@ func _frame_camera() -> void:
 
 # ---------------------------------------------------------------- per-frame
 func _process(delta: float) -> void:
+	if has_selected and tally_dmg_value != null:
+		_refresh_tally(board.tower_at(selected_cell))
 	if _wave_running:
 		_wave_clock += delta
 		while not _spawn_timeline.is_empty():
@@ -652,26 +660,68 @@ func _update_attr_panel(t) -> void:
 	for c in attr_grid.get_children():
 		attr_grid.remove_child(c)
 		c.queue_free()
+	tally_dmg_value = null
+	tally_kill_value = null
 	var showing: bool = t != null
 	attr_grid.visible = showing
 	attr_header.visible = showing
 	if not showing:
 		return
 	for row in t.stat_rows():
-		var name_lbl := Label.new()
-		name_lbl.text = str(row[0])
-		name_lbl.add_theme_font_size_override("font_size", 12)
-		name_lbl.add_theme_color_override("font_color", Color(0.62, 0.67, 0.80))
-		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-		attr_grid.add_child(name_lbl)
-		var val_lbl := Label.new()
-		val_lbl.text = str(row[1])
-		val_lbl.add_theme_font_size_override("font_size", 12)
-		val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		val_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		# the Abilities row can list six names — wrap rather than widen the pane
-		val_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		attr_grid.add_child(val_lbl)
+		_add_attr_row(str(row[0]), str(row[1]))
+	# Lifetime tally last, under the fixed attributes: these two move constantly,
+	# so their value labels are kept and rewritten in place rather than rebuilt.
+	tally_dmg_value = _add_attr_row("Damage dealt", "0", TALLY_COL)
+	tally_kill_value = _add_attr_row("Destroyed", "0", TALLY_COL)
+	_tally_shown = []
+	_refresh_tally(t)
+
+# One name/value pair in the attribute grid; returns the VALUE label so a caller
+# that needs to keep updating it does not have to go hunting for it again.
+func _add_attr_row(name: String, value: String, value_col := Color(1, 1, 1)) -> Label:
+	var name_lbl := Label.new()
+	name_lbl.text = name
+	name_lbl.add_theme_font_size_override("font_size", 12)
+	name_lbl.add_theme_color_override("font_color", Color(0.62, 0.67, 0.80))
+	name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	attr_grid.add_child(name_lbl)
+	var val_lbl := Label.new()
+	val_lbl.text = value
+	val_lbl.add_theme_font_size_override("font_size", 12)
+	val_lbl.add_theme_color_override("font_color", value_col)
+	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# the Abilities row can list six names — wrap rather than widen the pane
+	val_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	attr_grid.add_child(val_lbl)
+	return val_lbl
+
+# Rewrite the two tally figures for the selected tower. Called every frame, so it
+# does nothing at all unless one of the numbers actually moved — assigning Label
+# text re-lays-out the pane, and these tick on every projectile impact.
+func _refresh_tally(t) -> void:
+	if t == null or tally_dmg_value == null or not is_instance_valid(tally_dmg_value):
+		return
+	var d: int = int(round(t.damage_dealt))
+	var k: int = t.kills
+	var now: Array = [d, k]
+	if now == _tally_shown:
+		return
+	_tally_shown = now
+	tally_dmg_value.text = _group_digits(d)
+	tally_kill_value.text = _group_digits(k)
+
+# 1234567 -> "1,234,567". Late-wave totals run into the millions and are
+# unreadable as a bare digit run.
+func _group_digits(v: int) -> String:
+	var s: String = str(absi(v))
+	var out := ""
+	var n: int = s.length()
+	for i in range(n):
+		if i > 0 and (n - i) % 3 == 0:
+			out += ","
+		out += s[i]
+	return ("-" + out) if v < 0 else out
 
 func _on_upgrade_pressed(s: int) -> void:
 	if not has_selected:
@@ -909,7 +959,9 @@ func _on_enemy_split(lesser, placements: Array) -> void:
 		# Buffer Overflow: a freshly spawned child takes its share of the surplus.
 		var carry: float = float(pl.get("carry", 0.0))
 		if carry > 0.0:
-			e.take_damage(carry, bool(pl.get("pierce", false)))
+			# Buffer Overflow spill: credited to the tower whose hit created it, so
+			# the ability shows up in that tower's damage total rather than nowhere.
+			e.take_damage(carry, bool(pl.get("pierce", false)), false, 0.0, false, pl.get("src"))
 
 func _on_start_pressed() -> void:
 	if waves.is_empty():

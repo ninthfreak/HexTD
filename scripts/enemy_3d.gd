@@ -1225,9 +1225,16 @@ func _apply_status_visual() -> void:
 	_set_inst_param(&"flash", _flash)
 
 # --------------------------------------------------------------- damage / reduction
-func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, execute_threshold := 0.0, execute_no_decay := false) -> bool:
+func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, execute_threshold := 0.0, execute_no_decay := false, source = null) -> bool:
 	# Returns true if this hit depleted the current form (a "kill"), so the laser
 	# can trigger its focus_time delay.
+	#
+	# `source` is the Tower3D to credit (untyped: ordnance holds it untyped too).
+	# Accounting happens HERE rather than at the call sites because this is the
+	# only place that knows the post-ECC, post-Execute figure and the remaining
+	# health to clamp it against — a caller measuring health before/after would
+	# get nonsense on a decay kill, where `health` is immediately replaced with
+	# the child form's full value.
 	if not _alive:
 		return false
 	if data.ecc and not pierces_ecc:
@@ -1243,9 +1250,16 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, 
 	var carry := 0.0
 	if buffer_overflow and amount > health:
 		carry = amount - health
+	# Credit the firing tower: damage is clamped to what was actually there to
+	# remove, so overkill on a 5 HP body does not read as a 5000-damage hit.
+	# Buffer Overflow surplus is NOT counted here — it is credited separately as
+	# it lands on each decay child, so it is never double-counted.
+	var applied: float = minf(amount, health)
 	health -= amount
+	if source != null and is_instance_valid(source):
+		source.record_damage(applied, health <= 0.0)
 	if health <= 0.0:
-		_on_depleted(carry, pierces_ecc, executed and execute_no_decay)
+		_on_depleted(carry, pierces_ecc, executed and execute_no_decay, source)
 		return true
 	_flash = 1.0
 	_refresh_bar(health / data.health)
@@ -1255,7 +1269,7 @@ func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, 
 # lookup showed up in profiles); re-resolved only if the cached node was freed.
 static var _am_cached: Node = null
 
-func _on_depleted(carry := 0.0, pierces_ecc := false, no_decay := false) -> void:
+func _on_depleted(carry := 0.0, pierces_ecc := false, no_decay := false, source = null) -> void:
 	# no_decay: an execute kill with execute_no_decay suppresses the split, so the
 	# body's whole remaining sub-tree goes with it.
 	var lesser: EnemyData = data.reduces_to
@@ -1305,12 +1319,12 @@ func _on_depleted(carry := 0.0, pierces_ecc := false, no_decay := false) -> void
 			# `lod` carries this body's detail tier to its children so they do not
 			# spend their first frames at full detail (see prime_lod).
 			placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z), "carry": per_child, "pierce": pierces_ecc,
-					"lod": _lod_reduced})
+					"lod": _lod_reduced, "src": source})
 		split.emit(lesser, placements)
 	# Spill into this first child too. One-hop: the carried hit does not itself
 	# overflow (buffer_overflow arg left false), but a child it kills decays normally.
 	if per_child > 0.0:
-		take_damage(per_child, pierces_ecc)
+		take_damage(per_child, pierces_ecc, false, 0.0, false, source)
 
 func _walk_back(seg: int, p: Vector2, back: float) -> Vector3:
 	while back > 0.0:
