@@ -623,6 +623,21 @@ func _process_radial(delta: float) -> void:
 # The tower idles once its rules are all live, and resumes as they are spent.
 var _rules: Array = []            # live FirewallRule3D instances this tower owns
 
+# ---------------------------------------------------------------- lifetime tally
+# What this tower has actually done, credited from Enemy3D.take_damage (the only
+# place that knows the post-resist figure). Survives upgrades — _apply_levels()
+# replaces `data`, never the node — and dies with the tower, so selling really
+# does throw the record away.
+var damage_dealt := 0.0
+var kills := 0
+
+## Credit one landed hit. `applied` is already clamped to the health that was
+## there to remove, so overkill never inflates the total.
+func record_damage(applied: float, killed: bool) -> void:
+	damage_dealt += applied
+	if killed:
+		kills += 1
+
 func _process_deploy(delta: float) -> void:
 	_cooldown -= delta
 	if _idle_cd > 0.0:
@@ -664,7 +679,12 @@ func _deploy_rule() -> bool:
 		var c: Vector2i = path[i]
 		if taken.has(c):
 			continue
-		if HexUtils.axial_distance(cell, c) > data.range_tiles:
+		# `_reach` (= range_tiles + footprint radius), NOT the raw stat: range is
+		# measured from the tower's FOOTPRINT edge everywhere else — the drawn
+		# overlay, radial spokes and arc waves all use board.tower_reach() — so a
+		# raw comparison here made deploy the one mode that fell a whole ring short
+		# of the disk the player is shown.
+		if HexUtils.axial_distance(cell, c) > _reach:
 			continue
 		if i > best_idx:
 			best_idx = i
@@ -678,6 +698,7 @@ func _deploy_rule() -> bool:
 	rule.dos_freeze = data.dos_freeze
 	rule.dos_slow_time = data.dos_slow_time
 	rule.dos_slow_factor = data.dos_slow_factor
+	rule.source_tower = self
 	rule.setup(board, best_cell, data.damage, data.rule_charges, data.color)
 	var w: Vector2 = board.cell_center_world(best_cell)
 	rule.position = Vector3(w.x, FirewallRule3D.PLATE_Y, w.y)
@@ -705,6 +726,7 @@ func _fire_arc(t) -> void:
 			cell, board.tower_reach(data.range_tiles), data.color, board)
 	w.arc_angle = data.arc_angle
 	w.pierces_ecc = data.bit_corruption
+	w.source_tower = self
 	w.execute_threshold = data.execute_threshold
 	w.execute_no_decay = data.execute_no_decay
 	w.applies_dos = data.dos
@@ -745,6 +767,7 @@ func _fire_volley() -> void:
 				cell, board.tower_reach(data.range_tiles), data.color, board)
 		p.ignore_walls = data.ignore_walls
 		p.pierces_ecc = data.bit_corruption
+		p.source_tower = self
 		p.execute_threshold = data.execute_threshold
 		p.execute_no_decay = data.execute_no_decay
 		p.can_see_encrypted = data.cipher
@@ -795,7 +818,7 @@ func _process_laser(delta: float) -> void:
 		# Convex (quadratic ease-in) ramp: ~0 early, full at ramp_time.
 		var factor := cr * cr
 		var killed: bool = _laser_target.take_damage(data.damage * factor * delta, data.bit_corruption,
-				false, data.execute_threshold, data.execute_no_decay)
+				false, data.execute_threshold, data.execute_no_decay, self)
 		if killed:
 			_laser_target = null
 			_charge *= data.charge_retain   # a kill is the other target-loss point
@@ -986,6 +1009,7 @@ func _shoot(t) -> void:
 	_note_aim(t.pp - pp)
 	var p := Projectile3D.obtain(board)
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
+	p.source_tower = self
 	p.execute_threshold = data.execute_threshold
 	p.execute_no_decay = data.execute_no_decay
 	p.board = board
