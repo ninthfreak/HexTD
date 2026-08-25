@@ -679,7 +679,12 @@ func _deploy_rule() -> bool:
 		var c: Vector2i = path[i]
 		if taken.has(c):
 			continue
-		if HexUtils.axial_distance(cell, c) > data.range_tiles:
+		# `_reach` (= range_tiles + footprint radius), NOT the raw stat: range is
+		# measured from the tower's FOOTPRINT edge everywhere else — the drawn
+		# overlay, radial spokes and arc waves all use board.tower_reach() — so a
+		# raw comparison here made deploy the one mode that fell a whole ring short
+		# of the disk the player is shown.
+		if HexUtils.axial_distance(cell, c) > _reach:
 			continue
 		if i > best_idx:
 			best_idx = i

@@ -54,9 +54,13 @@ func drive(main) -> void:
 		# Cover the FURTHEST-along in-range route tiles, not the first ones found:
 		# the Firewall lays its rules on the highest path index it can reach, so
 		# probes taken in path order miss it entirely and it scores a false zero.
+		# tower_reach(), not the raw stat: range is measured from the footprint edge,
+		# and the deploy gate now agrees — probes taken at the raw radius would sit
+		# inside the Firewall's rules' reach but short of where it actually lays them.
+		var rr: int = main.board.tower_reach(tw.data.range_tiles)
 		var reach: Array = []
 		for c in main.map.path:
-			if HexUtils.axial_distance(spot, c) <= tw.data.range_tiles:
+			if HexUtils.axial_distance(spot, c) <= rr:
 				reach.append(c)
 		var probes: Array = []
 		for i in range(maxi(0, reach.size() - 5), reach.size()):
