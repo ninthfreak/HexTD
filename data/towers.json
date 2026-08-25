@@ -1,7 +1,7 @@
 {
   "basic": {
     "name": "Basic",
-    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage.\nWeak: at base, swarms and big late-game health pools; never pierces ECC.",
+    "description": "Reliable all-rounder: cheap, accurate single shots at good range.\nGood at: steady single-target damage and early coverage; Buffer Overflow spills overkill into the decay children, and Optics adds Cipher, then Tunneling.\nWeak: at base, swarms and big late-game health pools; never gets Bit Corruption, so ECC armor always blunts it.",
     "color": "#59b2ff",
     "range": 4,
     "fire_rate": 1.6,
@@ -11,7 +11,7 @@
     "fire_mode": "single",
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 150,
@@ -48,7 +48,7 @@
         ]
       },
       {
-        "name": "Action",
+        "name": "Overclock",
         "tiers": [
           {
             "cost": 150,
@@ -122,9 +122,9 @@
       }
     ]
   },
-  "machinegun": {
-    "name": "Machine Gun",
-    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; AP Rounds chew through ECC-armored swarms.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
+  "flood": {
+    "name": "Flood",
+    "description": "Swarm shredder with a very high rate of fire.\nGood at: melting fast, fragile clusters; Bit Corruption chews through ECC-armored swarms; its rapid taps land inside the Execute window far more often than a big hitter can, and Garbage Collection then takes the target's whole decay chain with it. Optics adds Cipher and Tunneling.\nWeak: low per-hit damage on tanks and bosses; short range until upgraded.",
     "color": "#9141ac",
     "range": 3,
     "fire_rate": 8,
@@ -134,7 +134,7 @@
     "fire_mode": "single",
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 150,
@@ -164,6 +164,8 @@
           {
             "cost": 4500,
             "damage": 60,
+            "execute_threshold": 0.1,
+            "execute_no_decay": "on",
             "width": 0.1,
             "height": 0.1,
             "color": "#b84a85"
@@ -171,7 +173,7 @@
         ]
       },
       {
-        "name": "Overdrive",
+        "name": "Overclock",
         "tiers": [
           {
             "cost": 150,
@@ -245,9 +247,9 @@
       }
     ]
   },
-  "slow": {
+  "heavy": {
     "name": "Heavy",
-    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses, and piercing ECC armor (Logic Bomb).\nWeak: slow fire overkills weak enemies and lets swarms slip past; can't see Encrypted.",
+    "description": "Heavy hitter built around one enormous shot at a time.\nGood at: deleting tanks and bosses; Bit Corruption (Logic Bomb) pierces ECC armor, and Buffer Overflow spills its overkill into the decay children instead of wasting it.\nWeak: slow fire overkills weak enemies and lets swarms slip past; never gets Cipher, so Encrypted traffic stays invisible to it.",
     "color": "#ffb84d",
     "range": 4,
     "fire_rate": 0.6,
@@ -257,7 +259,7 @@
     "fire_mode": "single",
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 375,
@@ -369,9 +371,9 @@
       }
     ]
   },
-  "radial": {
+  "splitter": {
     "name": "Splitter",
-    "description": "Area tower that fires a ring of straight spokes.\nGood at: cheaply shredding clustered or lined-up enemies; widens to twelve wall-piercing spokes.\nWeak: poor against lone targets; coverage depends on the path layout.",
+    "description": "Area tower that fires a ring of straight spokes.\nGood at: cheaply shredding clustered or lined-up enemies; Bit Corruption arrives on the first Corruption tier to cut ECC swarms, and Spread widens it to twelve spokes that Tunneling drives straight through walls.\nWeak: poor against lone targets; coverage depends on the path layout; never gets Cipher.",
     "color": "#1a5fb4",
     "range": 3,
     "fire_rate": 1.2,
@@ -382,7 +384,7 @@
     "directions": 6,
     "upgrades": [
       {
-        "name": "Caliber",
+        "name": "Magnitude",
         "tiers": [
           {
             "cost": 225,
@@ -495,9 +497,137 @@
       }
     ]
   },
-  "laser": {
+  "router": {
+    "name": "Router",
+    "description": "Forwards each shot from target to target, weakening at every hop.\nGood at: strung-out lines on the route, and finishing a cluster one shot started; Cipher lets it see and chain through Encrypted traffic, Bit Corruption cuts ECC, and Tunneling ignores walls outright.\nWeak: a lone enemy with nothing near it - every hop past the first is wasted.",
+    "color": "#4fd08a",
+    "range": 4,
+    "fire_rate": 1.2,
+    "damage": 25,
+    "cost": 300,
+    "projectile_speed": 600,
+    "fire_mode": "single",
+    "hops": 2,
+    "hop_range": 2,
+    "hop_falloff": 0.6,
+    "upgrades": [
+      {
+        "name": "TTL",
+        "tiers": [
+          {
+            "cost": 450,
+            "hops": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1200,
+            "hops": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2400,
+            "hops": 1,
+            "hop_range": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 5400,
+            "hops": 2,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 13500,
+            "hops": 3,
+            "hop_falloff": 0.15,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#3ee0a0"
+          }
+        ]
+      },
+      {
+        "name": "Magnitude",
+        "tiers": [
+          {
+            "cost": 450,
+            "damage": 20,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1200,
+            "damage": 55,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2400,
+            "damage": 130,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 5400,
+            "damage": 320,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 13500,
+            "damage": 400,
+            "bit_corruption": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#8ce07a"
+          }
+        ]
+      },
+      {
+        "name": "Latency",
+        "tiers": [
+          {
+            "cost": 450,
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1200,
+            "cipher": "on",
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2400,
+            "fire_rate": 0.6,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 5400,
+            "fire_rate": 0.8,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 13500,
+            "fire_rate": 1.2,
+            "ignore_walls": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#4fd0d0"
+          }
+        ]
+      }
+    ]
+  },
+  "beam": {
     "name": "Beam",
-    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused, the longest reach on the board, and countering TLS.\nWeak: swarms and fast movers reset its ramp until Prefocus is unlocked.",
+    "description": "Long-range beam that ramps to devastating sustained damage.\nGood at: melting a single boss once focused, and the longest reach on the board; Decrypt opens with Cipher and closes with Bit Corruption and Tunneling, so neither TLS nor a wall hides anything from it.\nWeak: swarms and fast movers reset its ramp until Prefocus is unlocked.",
     "color": "#ed333b",
     "range": 8,
     "fire_rate": 1.2,
@@ -507,7 +637,6 @@
     "fire_mode": "laser",
     "ramp_time": 3.0,
     "focus_time": 0.3,
-    "ecc_pierce": 0.5,
     "upgrades": [
       {
         "name": "Focus",
@@ -598,14 +727,12 @@
             "cost": 1600,
             "width": 0.03,
             "height": 0.03,
-            "ecc_pierce": 0.15,
             "damage": 300
           },
           {
             "cost": 3200,
             "width": 0.03,
             "height": 0.03,
-            "ecc_pierce": 0.2,
             "damage": 300
           },
           {
@@ -629,7 +756,7 @@
   },
   "jammer": {
     "name": "Jammer",
-    "description": "Support tower whose wave slows everything it can touch.\nGood at: throttling groups to a crawl so your other towers hit them far longer; can blanket the whole board.\nWeak: little damage of its own; short range and a steep price until upgraded.",
+    "description": "Support tower whose Denial of Service wave slows everything it can touch.\nGood at: throttling groups to a crawl so your other towers hit them far longer; can blanket the whole board; Cipher reaches Encrypted traffic and Bit Corruption lets its damage bite through ECC.\nWeak: little damage of its own; short range and a steep price until upgraded; the largest enemies shrug the jam off completely.",
     "color": "#f24fbe",
     "range": 3,
     "fire_rate": 0.8,
@@ -754,9 +881,136 @@
       }
     ]
   },
+  "firewall": {
+    "name": "Firewall Daemon",
+    "description": "Runs in the background dropping filter rules onto the route ahead of it.\nGood at: covering ground no tower is watching, and holding a chokepoint before traffic reaches you; Cipher makes its rules inspect Encrypted traffic, Bit Corruption cuts ECC, and Denial of Service turns every rule into a speed bump.\nWeak: deals nothing on its own - a rule only bites when something crosses it, and each rule stops a fixed number of bodies.",
+    "color": "#ff8a4f",
+    "range": 3,
+    "fire_rate": 0.5,
+    "damage": 25,
+    "cost": 450,
+    "projectile_speed": 320,
+    "fire_mode": "deploy",
+    "rule_charges": 4,
+    "max_rules": 5,
+    "upgrades": [
+      {
+        "name": "Ruleset",
+        "tiers": [
+          {
+            "cost": 525,
+            "max_rules": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1400,
+            "rule_charges": 2,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2800,
+            "max_rules": 2,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 6300,
+            "rule_charges": 3,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 15750,
+            "max_rules": 3,
+            "rule_charges": 4,
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ffb066"
+          }
+        ]
+      },
+      {
+        "name": "Magnitude",
+        "tiers": [
+          {
+            "cost": 525,
+            "damage": 45,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1400,
+            "damage": 130,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2800,
+            "damage": 340,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 6300,
+            "damage": 850,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 15750,
+            "damage": 1100,
+            "bit_corruption": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ff6a4f"
+          }
+        ]
+      },
+      {
+        "name": "Inspection",
+        "tiers": [
+          {
+            "cost": 525,
+            "fire_rate": 0.3,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 1400,
+            "cipher": "on",
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 2800,
+            "range": 1,
+            "width": 0.03,
+            "height": 0.03
+          },
+          {
+            "cost": 6300,
+            "fire_rate": 0.4,
+            "width": 0.03,
+            "height": 0.03,
+            "rule_charges": 2
+          },
+          {
+            "cost": 15750,
+            "range": 1,
+            "dos": "on",
+            "width": 0.1,
+            "height": 0.1,
+            "color": "#ff4f9a"
+          }
+        ]
+      }
+    ]
+  },
   "quantum": {
     "name": "Quantum",
-    "description": "Apex arc tower that breaks all cryptography natively.\nGood at: AoE damage that ignores ECC, Encrypted, and TLS alike, deleting low-health bosses outright (Collapse) and blanketing the board (Superposition).\nWeak: enormous cost; weaker raw single-target damage than the Beam or Heavy.",
+    "description": "Apex arc tower that breaks all cryptography natively.\nGood at: AoE damage carrying Bit Corruption and Cipher from the start, so ECC, Encrypted and TLS are all alike to it; Collapse adds Execute and Garbage Collection, deleting a low-health boss outright along with its whole decay chain, and Superposition blankets the board.\nWeak: enormous cost; weaker raw single-target damage than the Beam or Heavy.",
     "color": "#2fe3d0",
     "range": 5,
     "fire_rate": 1.2,

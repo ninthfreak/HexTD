@@ -10,16 +10,20 @@ extends Resource
 @export var damage: float = 10.0
 @export var cost: int = 40
 @export var projectile_speed: float = 320.0   # pixels per second
-@export var fire_mode: String = "single"      # "single" = homing shot; "radial" = burst; "laser" = charging beam
+@export var fire_mode: String = "single"      # "single" = homing shot; "radial" = burst; "laser" = charging beam; "arc" = aimed wave; "deploy" = places rules on route tiles
 @export var directions: int = 6               # radial only: number of equally-spaced spokes (6 = hex flat sides)
 @export var targets: int = 1                   # single only: distinct enemies engaged per fire cycle (one shot each)
+@export var hops: int = 0                      # single only: extra targets a shot forwards itself to after its first hit (0 = no forwarding)
+@export var hop_range: int = 2                 # single only: how far, in hex tiles, a shot may look for its next hop
+@export var hop_falloff: float = 0.6           # single only: damage multiplier applied at each hop (0.6 = each hop deals 60% of the last)
 @export var arc_angle: float = 70.0            # arc only: aimed wedge width in degrees (>=360 = all directions)
+@export var rule_charges: int = 4              # deploy only: bodies one deployed rule filters before it expires
+@export var max_rules: int = 6                 # deploy only: how many of this tower's rules may be live at once
 @export var ignore_walls: bool = false        # "Tunneling": attack through blocking tiles (targeting ignores LOS; radial spokes pass through walls)
 @export var ramp_time: float = 2.0            # laser only: seconds of sustained fire to reach full power (damage = max dmg/sec)
 @export var focus_time: float = 0.0           # seconds a tower is blind/idle after killing its target (Beam swarm tax)
 @export var charge_retain: float = 0.0        # "Prefocus": fraction of the laser's ramp kept when it loses or switches target (0 = ramp resets, 1 = never lost)
 @export var bit_corruption := false           # ignores enemy ECC damage resistance
-@export var ecc_pierce: float = 0.0           # fraction of ECC resist ignored natively (0 = full resist, 1 = fully ignored); bit_corruption overrides to a full pierce
 @export var execute_threshold: float = 0.0    # a hit landing at/below this fraction of the target's max HP kills it outright (0 = off)
 @export var execute_no_decay := false         # an execute kill also suppresses the target's decay spawn
 @export var cipher := false                   # can see and target Encrypted enemies
@@ -32,8 +36,9 @@ extends Resource
 @export var width_scale: float = 1.0          # body width / footprint multiplier
 ## Up to 3 upgrade slots (independent paths), authored in the editor. Each slot is a
 ## Dictionary {"name": String, "tiers": Array}. Each tier (up to 5 per slot) is a
-## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate"/"directions"/"targets"/"arc_angle"/
-## "ramp_time"/"focus_time"/"charge_retain"/"dos_freeze"/"dos_slow_time"/"dos_slow_factor"/"ecc_pierce"/
+## Dictionary {"cost": int, optional "damage"/"range"/"fire_rate"/"directions"/"targets"/"hops"/
+## "hop_range"/"hop_falloff"/"arc_angle"/"rule_charges"/"max_rules"/
+## "ramp_time"/"focus_time"/"charge_retain"/"dos_freeze"/"dos_slow_time"/"dos_slow_factor"/
 ## "execute_threshold"/"height"/"width": additive deltas (may be negative),
 ## optional "color": "#rrggbb" override,
 ## optional "cipher"/"bit_corruption"/"ignore_walls"/"buffer_overflow"/"dos"/"execute_no_decay": "on"|"off"}.

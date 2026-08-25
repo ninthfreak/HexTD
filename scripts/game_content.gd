@@ -51,13 +51,17 @@ func _tower_from_dict(d: Dictionary) -> TowerData:
 	t.fire_mode = str(d.get("fire_mode", "single"))
 	t.directions = maxi(1, int(d.get("directions", 6)))
 	t.targets = maxi(1, int(d.get("targets", 1)))
+	t.hops = maxi(0, int(d.get("hops", 0)))
+	t.hop_range = maxi(1, int(d.get("hop_range", 2)))
+	t.hop_falloff = clampf(float(d.get("hop_falloff", 0.6)), 0.0, 1.0)
 	t.arc_angle = clampf(float(d.get("arc_angle", 70.0)), 1.0, 360.0)
+	t.rule_charges = maxi(1, int(d.get("rule_charges", 4)))
+	t.max_rules = maxi(1, int(d.get("max_rules", 6)))
 	t.ignore_walls = bool(d.get("ignore_walls", false))
 	t.ramp_time = maxf(0.05, float(d.get("ramp_time", 2.0)))
 	t.focus_time = maxf(0.0, float(d.get("focus_time", 0.0)))
 	t.charge_retain = clampf(float(d.get("charge_retain", 0.0)), 0.0, 1.0)
 	t.bit_corruption = bool(d.get("bit_corruption", false))
-	t.ecc_pierce = clampf(float(d.get("ecc_pierce", 0.0)), 0.0, 1.0)
 	t.execute_threshold = clampf(float(d.get("execute_threshold", 0.0)), 0.0, 1.0)
 	t.execute_no_decay = bool(d.get("execute_no_decay", false))
 	t.cipher = bool(d.get("cipher", false))
@@ -90,7 +94,7 @@ func _parse_upgrades(arr) -> Array:
 				if typeof(u) != TYPE_DICTIONARY:
 					continue
 				var tier := {"cost": int(u.get("cost", 0))}
-				for stat in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
+				for stat in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "arc_angle", "rule_charges", "max_rules", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "execute_threshold", "height", "width"]:
 					if u.has(stat):
 						tier[stat] = float(u[stat])
 				for flag in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos", "execute_no_decay"]:
@@ -148,6 +152,7 @@ func _enemy_from_dict(id: String, d: Dictionary) -> EnemyData:
 	e.reduce_count = maxi(1, int(d.get("reduce_count", 1)))
 	e.ecc = bool(d.get("ecc", false))
 	e.encrypted = bool(d.get("encrypted", false))
+	e.dos_resist = clampf(float(d.get("dos_resist", 0.0)), 0.0, 1.0)
 	e.death_sound = str(d.get("death_sound", ""))
 	return e
 

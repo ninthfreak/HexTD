@@ -33,6 +33,7 @@ extends Resource
 @export var reduce_count := 1    # how many of the lesser form to spawn on death (1, 2, 4, or 10)
 @export var ecc := false         # resists most damage unless the tower has Bit Corruption
 @export var encrypted := false   # invisible to towers that lack Cipher
+@export var dos_resist: float = 0.0  # fraction of a DoS (freeze + slow) this body shrugs off; 1.0 = fully immune to jamming
 @export var death_sound := ""    # SFX name (res://audio/<name>.wav); blank = shared default
 @export var rank := 0            # position in the editor list (0 = top); "Strongest" targeting prefers the largest rank (lowest in the list)
 var reduces_to: EnemyData = null

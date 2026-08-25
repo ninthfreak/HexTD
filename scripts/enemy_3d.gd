@@ -105,6 +105,38 @@ const LOD_TEST_MASK := 7
 const LOD_CROWD_MIN := 3
 const LOD_CROWD_CLEAR := 2
 
+# Load level: how hard the board is working RIGHT NOW, from the live enemy count
+# alone. The size rule asks "can the player see this detail?" and the crowd rule
+# asks "is it behind something?" — neither asks "can we afford it?", which is the
+# question that actually matters once a wave gets big. Measured on the authored
+# wave list: waves 1-75 peak at a median 385 live entities and waves 76-80 at
+# 531, then wave 81 jumps to 1154 and the 81-85 band sits at a median 944. So the
+# thresholds are placed to leave everything up to wave 80 completely untouched
+# and to engage exactly where the wave list doubles.
+# Entering a level costs more than leaving it, so a count hovering on a boundary
+# cannot oscillate — same reason the px and crowd rules have gaps.
+static var load_level := 0
+const LOAD_ENTER := [0, 400, 800]     # >= this many alive to move UP into level i
+const LOAD_LEAVE := [0, 340, 700]     # <  this many alive to fall back OUT of level i
+# Added to the drop/restore thresholds per level: a busier board sheds detail at
+# a larger apparent size. Index by load_level; the 8px gap is preserved.
+const LOAD_DROP_BONUS := [0.0, 24.0, 64.0]
+# The largest cell population at which the biggest enemy in a cell still keeps
+# its detail. At level 0 the lead is always exempt (today's behaviour); under
+# load the exemption is withdrawn, because at 8 to a cell even the biggest body
+# is buried. 0 = never exempt.
+const LOAD_LEAD_MAX := [1 << 30, 6, 0]
+
+## Recompute the shared load level from the live enemy count. Called once per
+## frame by Main3D; O(1), and the count is already known.
+static func update_load_level(alive: int) -> void:
+	var lv := load_level
+	while lv < 2 and alive >= LOAD_ENTER[lv + 1]:
+		lv += 1
+	while lv > 0 and alive < LOAD_LEAVE[lv]:
+		lv -= 1
+	load_level = lv
+
 const DEATH_FX_PER_FRAME := 12
 # Whether enemy bodies cast into the shadow map. Measured at 400 enemies: casting
 # costs ~585 objects, ~585 draw calls and ~178k primitives — 43% of ALL draw calls
@@ -1064,13 +1096,49 @@ func _update_lod() -> void:
 	var dz: float = lod_cam_pos.z - pp.y
 	var d: float = maxf(1.0, sqrt(dx * dx + dy * dy + dz * dz))
 	var px: float = hit_radius * lod_k / d
+	# Both thresholds shift together with the load level, so the hysteresis gap
+	# between them is unchanged and a level change cannot make an enemy flicker.
+	var bonus: float = LOAD_DROP_BONUS[load_level]
+	var drop_px: float = LOD_DROP_PX + bonus
+	var restore_px: float = LOD_RESTORE_PX + bonus
+	# The biggest body in a cell normally keeps its detail; under load that
+	# exemption is withdrawn, because a deep pile buries even the largest.
+	var lead_exempt: bool = crowd_lead and crowd < LOAD_LEAD_MAX[load_level]
 	# Buried in a pile counts the same as being tiny: the detail cannot be seen.
-	var buried := not crowd_lead and crowd >= LOD_CROWD_MIN
+	var buried := not lead_exempt and crowd >= LOD_CROWD_MIN
 	if _lod_reduced:
-		if px > LOD_RESTORE_PX and (crowd_lead or crowd <= LOD_CROWD_CLEAR):
+		if px > restore_px and (lead_exempt or crowd <= LOD_CROWD_CLEAR):
 			_apply_lod(false)
-	elif px < LOD_DROP_PX or buried:
+	elif px < drop_px or buried:
 		_apply_lod(true)
+
+## Settle a just-placed enemy's detail tier instead of letting it wait out its
+## stagger. The LOD test only runs every LOD_TEST_MASK+1 frames on a per-enemy
+## phase, so without this a spawn renders at full detail for up to 8 frames —
+## worst exactly when a big body decays and spawns a crowd at once.
+## `parent_reduced` carries a decay parent's tier: a child is never larger than
+## the body it came from and starts at the same spot, so if the parent was
+## reduced the child must be too. That holds without recomputing anything, and
+## it is also correct on the spawn frame, when the child's `crowd` is still at
+## its default because the bucket index has not seen it yet.
+func prime_lod(parent_reduced := false) -> void:
+	if parent_reduced:
+		_apply_lod(true)
+		return
+	# Deliberately NOT estimating `crowd` here. The obvious stand-in — the parent's
+	# cell occupancy — over-reduces, because _walk_back spaces the children out
+	# along the route rather than stacking them in the parent's cell; measured, it
+	# demoted a round of fresh children that the next bucket rebuild put straight
+	# back to full detail, which pops. The crowd rule simply starts one frame late,
+	# when _refresh_buckets() first sees the new body.
+	_update_lod()
+	# The size half of the test is settled above, but `crowd` is not: the bucket
+	# index has not seen this body yet, so the crowd rule cannot fire until the
+	# next rebuild AND the next staggered test. Re-phase so that test lands 1-3
+	# frames out instead of up to 8. Spread over three slots rather than one so a
+	# cascade's children do not all land on the same frame, which is the whole
+	# point of the stagger.
+	_lod_phase = int(-(lod_frame + 1 + (randi() % 3))) & LOD_TEST_MASK
 
 # Swap between the shared full and faces-only meshes. Both come from the same
 # cache entry and the materials are re-pointed rather than rebuilt, so a crossing
@@ -1101,6 +1169,17 @@ func _apply_lod(reduced: bool) -> void:
 func apply_dos(freeze := DOS_STOP, slow_time := DOS_SLOW_TIME, slow_factor := DOS_SLOW_FACTOR) -> void:
 	if not _alive:
 		return
+	# Heavy traffic shrugs jamming off. Graduated rather than a flag, matching how
+	# ECC resists damage: the durations shrink and the slow factor eases back
+	# toward 1.0 (no slow at all), so dos_resist = 1 is true immunity and anything
+	# between is a partial shrug.
+	if data.dos_resist > 0.0:
+		if data.dos_resist >= 1.0:
+			return
+		var keep: float = 1.0 - data.dos_resist
+		freeze *= keep
+		slow_time *= keep
+		slow_factor = lerpf(slow_factor, 1.0, data.dos_resist)
 	# Re-application takes the stronger of each: longer freeze/slow, and the lower
 	# (stronger) slow factor. A fresh hit on an un-debuffed enemy takes its factor.
 	var active := _freeze_time > 0.0 or _slow_time > 0.0
@@ -1146,16 +1225,13 @@ func _apply_status_visual() -> void:
 	_set_inst_param(&"flash", _flash)
 
 # --------------------------------------------------------------- damage / reduction
-func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, ecc_pierce := 0.0, execute_threshold := 0.0, execute_no_decay := false) -> bool:
+func take_damage(amount: float, pierces_ecc := false, buffer_overflow := false, execute_threshold := 0.0, execute_no_decay := false) -> bool:
 	# Returns true if this hit depleted the current form (a "kill"), so the laser
 	# can trigger its focus_time delay.
 	if not _alive:
 		return false
-	if data.ecc:
-		# Bit Corruption is a full pierce; ecc_pierce is a partial one. Whatever
-		# fraction is NOT pierced still applies at the full ECC_RESIST rate.
-		var pierce: float = 1.0 if pierces_ecc else clampf(ecc_pierce, 0.0, 1.0)
-		amount *= (1.0 - ECC_RESIST * (1.0 - pierce))
+	if data.ecc and not pierces_ecc:
+		amount *= (1.0 - ECC_RESIST)
 	# Execute: a hit that would leave the target at or below this fraction of the
 	# CURRENT form's max HP deletes it instead. Measured post-resist, and against
 	# the current form so it stays meaningful partway down a decay chain.
@@ -1226,7 +1302,10 @@ func _on_depleted(carry := 0.0, pierces_ecc := false, no_decay := false) -> void
 		var placements := []
 		for k in range(1, count):
 			var res := _walk_back(parent_index, parent_pos, spacing * float(k))
-			placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z), "carry": per_child, "pierce": pierces_ecc})
+			# `lod` carries this body's detail tier to its children so they do not
+			# spend their first frames at full detail (see prime_lod).
+			placements.append({"index": int(res.x), "pos": Vector2(res.y, res.z), "carry": per_child, "pierce": pierces_ecc,
+					"lod": _lod_reduced})
 		split.emit(lesser, placements)
 	# Spill into this first child too. One-hop: the carried hit does not itself
 	# overflow (buffer_overflow arg left false), but a child it kills decays normally.

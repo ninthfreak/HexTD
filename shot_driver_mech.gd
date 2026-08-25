@@ -1,11 +1,12 @@
 extends Node
-## Dev-only: verifies ecc_pierce / execute_threshold / execute_no_decay and the
-## fire-rate cadence fix against the real combat code. Not part of the game.
+## Dev-only: verifies the ECC resist / Bit Corruption rule, execute_threshold /
+## execute_no_decay and the fire-rate cadence fix against the real combat code.
+## Not part of the game.
 
 func drive(main) -> void:
 	var pts: PackedVector2Array = main.board.get_path_points()
 
-	# --- ecc_pierce -----------------------------------------------------------
+	# --- ECC resist vs Bit Corruption ----------------------------------------
 	var ep := EnemyData.new()
 	ep.health = 1000000.0
 	ep.speed = 0.0
@@ -13,19 +14,16 @@ func drive(main) -> void:
 	ep.radius = 16.0
 	ep.ecc = true
 	var got := {}
-	for label in ["none", "half", "full"]:
+	for label in ["resisted", "bit_corruption"]:
 		var e := Enemy3D.new()
 		e.setup(ep, pts)
 		main.board.add_enemy(e)
 		var b: float = e.health
-		match label:
-			"none": e.take_damage(1000.0, false, false, 0.0)
-			"half": e.take_damage(1000.0, false, false, 0.5)
-			"full": e.take_damage(1000.0, true, false, 0.0)
+		e.take_damage(1000.0, label == "bit_corruption")
 		got[label] = b - e.health
 		e.queue_free()
-	print("MECH: ecc_pierce  none=%.0f half=%.0f full=%.0f   (expect 100 / 550 / 1000)"
-		% [got["none"], got["half"], got["full"]])
+	print("MECH: ECC  resisted=%.0f bit_corruption=%.0f   (expect 100 / 1000)"
+		% [got["resisted"], got["bit_corruption"]])
 
 	# --- execute_threshold / execute_no_decay ---------------------------------
 	var lesser := EnemyData.new()
@@ -43,7 +41,7 @@ func drive(main) -> void:
 			var e := Enemy3D.new()
 			e.setup(pd, pts)
 			main.board.add_enemy(e)
-			var killed: bool = e.take_damage(dmg, false, false, 0.0, 0.15, true)
+			var killed: bool = e.take_damage(dmg, false, false, 0.15, true)
 			var form := "gone" if (not is_instance_valid(e)) or (not e._alive) else ("decayed" if e.data == lesser else "alive")
 			print("MECH: execute dmg=%d leaves %d%% decay_chain=%-5s -> killed=%-5s form=%s"
 				% [int(dmg), int((1000.0 - dmg) / 10.0), str(decay), str(killed), form])

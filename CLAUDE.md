@@ -9,6 +9,45 @@ decision record, status, and open assumptions — start there.**
 
 ---
 
+## New abilities are mine to approve — STOP and ask
+
+**Never add a new ability without raising it with me first, as its own question,
+before writing any code.** Naming an existing ability or choosing its glyph
+counts too — those are mine to decide, not yours to settle and report.
+
+**Ability vs. attribute — know the difference.** An *ability* is a new rule: it
+changes what a tower or an enemy *does*, creates an interaction that did not
+exist, or lets something ignore a rule everything else obeys. It earns a name
+and a glyph. An *attribute* is a number that tunes behaviour the thing already
+has — rate of fire, range, ramp time, how much of a laser's wind-up survives a
+target change. Attributes can be upgraded and still be attributes; being
+tunable does not make something special. Don't dress an attribute up as an
+ability, and don't slip an ability in as "just another field".
+
+This has gone wrong three times. `ecc_pierce`, `execute_threshold` (and the
+Garbage Collection flag riding with it), and enemy `dos_resist` all reached the
+game without me being asked. Each one silently changed outcomes a player could
+not see, and balance work was done on top of them.
+
+When you think the game wants a new ability:
+
+1. **Stop before implementing.** Proposing is not permission. Wait for my answer.
+2. **Ask about the ability by itself.** Not as a bullet inside a long report, not
+   as a line in a diff summary, not bundled with unrelated work. If it is buried
+   in something else, it does not count as having been raised — and I will treat
+   it as if you never asked.
+3. **Bring it as a proposal to workshop, not a finished thing.** What it does in
+   plain functional language, why the game wants it, **candidate names**, and a
+   **candidate glyph**. Naming and glyph are decided together — I pick both.
+4. **No ability ships invisible.** Every one needs a glyph and player-visible
+   text (tooltip / upgrade description) explaining it. If a rule changes what a
+   player sees happen, the player must be able to find out why. An ability with
+   no visual tell is an unfinished ability, not a shipped one.
+
+The same applies to anything found *declared but not implemented* — a dead field
+in a data file or resource is not authorization to build it. Tell me it is dead
+and ask whether I want it live or gone.
+
 ## Environment & testing
 
 - Do not assume Godot is runnable in every environment. If a `godot` binary is

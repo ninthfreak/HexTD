@@ -122,6 +122,9 @@ var upgrade_buttons: Array = []
 var _tower_buttons: Array = []       # HexTowerButton list (cost-affordability refresh)
 var sell_button: Button
 var crosspath_hint: Label            # one-line reason shown while a path is crosspath-locked
+var attr_header: Label               # "ATTRIBUTES" section label, hidden with no selection
+var attr_grid: GridContainer         # name/value rows for the selected tower's stats
+var _attr_key: Array = []            # (tower id, upgrade rev) of the rows currently built
 var info_label: Label
 
 # --- ability badges ---
@@ -183,6 +186,7 @@ func _ready() -> void:
 	_build_ui()
 	_build_map_title()
 	_build_stats_overlay()
+	_build_perf_overlay()
 	_build_wave_banner()
 	_build_badge_tooltip()
 	_update_labels()
@@ -388,6 +392,7 @@ func _process(delta: float) -> void:
 	_ease_zoom(delta)
 	_camera_keys(delta)
 	_update_lod_globals()
+	_update_perf(delta)
 	_update_preview()
 	_update_cam_readout()
 	_cheat_tick(delta)
@@ -430,6 +435,8 @@ func _update_lod_globals() -> void:
 	Enemy3D.lod_k = vp.y / maxf(0.0001, tan(deg_to_rad(camera.fov) * 0.5))
 	Enemy3D.lod_cam_pos = camera.global_position
 	Enemy3D.lod_frame += 1
+	# Load level from the live count: O(1), and the count is already to hand.
+	Enemy3D.update_load_level(board.enemies.size())
 
 func _camera_keys(delta: float) -> void:
 	var dir := Vector2.ZERO
@@ -629,6 +636,42 @@ func _update_tower_buttons(sel_t = null) -> void:
 		sell_button.disabled = false
 		(btn_cl(sell_button)).set_cost("Sell  (+", t.sell_value(), ")", false, WAVE_DONE_COL)
 		sell_button.tooltip_text = "Refund %d%% of everything spent on this tower." % t.refund_percent()
+	_update_attr_panel(t)
+
+# The selected tower's full stat block. Reached only through _update_tower_buttons,
+# whose key already covers (tower, money, upgrade rev) — so an early return there
+# means nothing here could have moved either. The extra key below then skips the
+# rebuild on the money-only changes that do get through.
+func _update_attr_panel(t) -> void:
+	if attr_grid == null:
+		return
+	var key: Array = [t.get_instance_id() if t != null else 0, _upgrade_rev]
+	if key == _attr_key:
+		return
+	_attr_key = key
+	for c in attr_grid.get_children():
+		attr_grid.remove_child(c)
+		c.queue_free()
+	var showing: bool = t != null
+	attr_grid.visible = showing
+	attr_header.visible = showing
+	if not showing:
+		return
+	for row in t.stat_rows():
+		var name_lbl := Label.new()
+		name_lbl.text = str(row[0])
+		name_lbl.add_theme_font_size_override("font_size", 12)
+		name_lbl.add_theme_color_override("font_color", Color(0.62, 0.67, 0.80))
+		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		attr_grid.add_child(name_lbl)
+		var val_lbl := Label.new()
+		val_lbl.text = str(row[1])
+		val_lbl.add_theme_font_size_override("font_size", 12)
+		val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		val_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# the Abilities row can list six names — wrap rather than widen the pane
+		val_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		attr_grid.add_child(val_lbl)
 
 func _on_upgrade_pressed(s: int) -> void:
 	if not has_selected:
@@ -698,6 +741,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		_cancel()
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_F3:
+		_toggle_perf()
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _mouse_over_pane():
@@ -846,6 +892,7 @@ func _spawn_enemy(type_id: String) -> void:
 	e.split.connect(_on_enemy_split)
 	e.setup(ed, board.get_path_points())
 	board.add_enemy(e)
+	e.prime_lod()          # settle the tier now rather than after up to 8 frames
 
 func _on_enemy_split(lesser, placements: Array) -> void:
 	for pl in placements:
@@ -856,6 +903,9 @@ func _on_enemy_split(lesser, placements: Array) -> void:
 		e.setup(lesser, board.get_path_points())
 		e.place_on_path(int(pl["index"]), pl["pos"])
 		board.add_enemy(e)
+		# Inherit the parent's detail tier: a decay child is never larger than the
+		# body it came from, so a reduced parent means a reduced child.
+		e.prime_lod(bool(pl.get("lod", false)))
 		# Buffer Overflow: a freshly spawned child takes its share of the surplus.
 		var carry: float = float(pl.get("carry", 0.0))
 		if carry > 0.0:
@@ -1204,6 +1254,106 @@ func _build_stat_row(parent: Control, glyph: String, text_col: Color) -> Label:
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(lbl)
 	return lbl
+
+# ---------------------------------------------------------------- perf overlay
+# F3 toggles a live read-out of what the frame actually costs. The point is to
+# tell CPU-bound from GPU-bound on real hardware: script ms is main-thread
+# GDScript, draw calls / primitives are what the renderer is asked to submit. If
+# the frame time tracks script ms, more aggressive LOD will not help — LOD sheds
+# primitives, not script work.
+const PERF_SAMPLES := 30         # frame-time window, ~half a second at 60fps
+const PERF_SLOW_MS := 17.5       # ~57fps; above this the frame is fine and the CPU/GPU split is noise
+var perf_label: Label
+var perf_button: TextureButton      # sandbox-only toggle; null in game mode
+var _perf_on := false
+var _perf_frames: Array[float] = []
+var _perf_last_us: int = 0
+var _perf_accum := 0.0
+
+func _build_perf_overlay() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 5                # above the wave banner, so it is never hidden
+	add_child(layer)
+	perf_label = Label.new()
+	perf_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	perf_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	perf_label.position = Vector2(-16, 10)
+	perf_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	perf_label.add_theme_font_size_override("font_size", 18)
+	perf_label.add_theme_color_override("font_color", Color(0.72, 0.95, 0.78))
+	perf_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	perf_label.add_theme_constant_override("outline_size", 5)
+	perf_label.text = ""
+	perf_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	perf_label.visible = false
+	layer.add_child(perf_label)
+	_perf_last_us = Time.get_ticks_usec()
+
+func _toggle_perf() -> void:
+	_perf_on = not _perf_on
+	perf_label.visible = _perf_on
+	_perf_frames.clear()
+	_perf_last_us = Time.get_ticks_usec()
+	_refresh_perf_button()
+
+# Dim the toggle while the read-out is hidden — the same self_modulate state
+# tint the pause button uses, so hover glow (which rides modulate) composes.
+func _refresh_perf_button() -> void:
+	if perf_button == null:
+		return
+	perf_button.self_modulate = Color(1, 1, 1) if _perf_on else Color(0.42, 0.42, 0.42, 0.85)
+
+func _update_perf(delta: float) -> void:
+	# Sample the wall clock even while hidden is pointless work, so bail early.
+	if not _perf_on:
+		return
+	var now := Time.get_ticks_usec()
+	_perf_frames.append(float(now - _perf_last_us) / 1000.0)
+	_perf_last_us = now
+	if _perf_frames.size() > PERF_SAMPLES:
+		_perf_frames.remove_at(0)
+	# Refresh the text a few times a second, not every frame: the label rebuild
+	# would otherwise show up in the very number it is reporting. Accumulate WALL
+	# clock, not delta — delta is scaled by the 2x/3x speed control, which would
+	# otherwise make the read-out refresh faster the faster the game runs.
+	_perf_accum += _perf_frames[_perf_frames.size() - 1] * 0.001
+	if _perf_accum < 0.2 or _perf_frames.is_empty():
+		return
+	_perf_accum = 0.0
+	var sum := 0.0
+	var worst := 0.0
+	for v in _perf_frames:
+		sum += v
+		worst = maxf(worst, v)
+	var mean: float = sum / float(_perf_frames.size())
+	var script_ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	var alive: int = board.enemies.size()
+	# "bound" is the honest read: script time is a floor under the frame, so when
+	# it accounts for most of the frame the CPU is the constraint and no amount of
+	# extra LOD will help.
+	var share: float = 0.0 if mean <= 0.001 else clampf(script_ms / mean, 0.0, 1.0)
+	# Only name a bound when the frame is actually struggling. A vsynced 60fps
+	# frame is mostly idle wait, which would otherwise read as "GPU/draw" and send
+	# you chasing a bottleneck that is not there.
+	var bound := "headroom"
+	if mean > PERF_SLOW_MS:
+		bound = "CPU" if share > 0.6 else ("GPU/draw" if share < 0.35 else "mixed")
+	perf_label.text = "%.1f fps  (%.1f ms, worst %.1f)\nscript %.2f ms  -> %s\ndraws %d   prims %s\nenemies %d   load L%d" % [
+		1000.0 / maxf(mean, 0.001), mean, worst, script_ms, bound,
+		draws, _thousands(prims), alive, Enemy3D.load_level]
+
+func _thousands(n: int) -> String:
+	var s := str(n)
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = "," + out
+	return out
 
 # ---------------------------------------------------------------- map title
 # The map name, bold and centred along the top of the play area (not the side bar).
@@ -1691,6 +1841,17 @@ func _build_ui() -> void:
 		cheat_button.button_up.connect(_on_cheat_up)
 		util_row.add_child(cheat_button)
 
+		# Sandbox-only diagnostic, next to the other sandbox tools. F3 still works.
+		perf_button = TextureButton.new()
+		_style_icon_button(perf_button, "perf_stats")
+		perf_button.tooltip_text = "Performance read-out (F3): frame time, script time, draw calls.\nNames whether the frame is CPU- or draw-bound."
+		perf_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		perf_button.pressed.connect(func() -> void:
+			_play_sfx("ui_click")
+			_toggle_perf())
+		util_row.add_child(perf_button)
+		_refresh_perf_button()
+
 	var exit_button := Button.new()
 	exit_button.text = "Exit to map select"
 	exit_button.pressed.connect(func() -> void:
@@ -1716,6 +1877,23 @@ func _build_ui() -> void:
 	_tower_control_row.visible = false
 	_tower_control_row.add_theme_constant_override("separation", 4)
 	vbox.add_child(_tower_control_row)
+
+	# Full attribute read-out for the selected tower, between its control row and
+	# the upgrade buttons: what it IS now, above what it could become.
+	attr_header = Label.new()
+	attr_header.text = "ATTRIBUTES"
+	attr_header.add_theme_font_size_override("font_size", 13)
+	attr_header.add_theme_font_override("font", _bold_font(0.4))
+	attr_header.add_theme_color_override("font_color", Color(0.62, 0.67, 0.80))
+	attr_header.visible = false
+	vbox.add_child(attr_header)
+
+	attr_grid = GridContainer.new()
+	attr_grid.columns = 2
+	attr_grid.add_theme_constant_override("h_separation", 12)
+	attr_grid.add_theme_constant_override("v_separation", 2)
+	attr_grid.visible = false
+	vbox.add_child(attr_grid)
 
 	target_button = TextureButton.new()
 	_style_icon_button(target_button, "focus_first")

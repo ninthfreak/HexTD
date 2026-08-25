@@ -14,7 +14,6 @@ var range_tiles := 3
 var col := Color(1, 1, 1)
 var ignore_walls := false       # false: walls stop the shot
 var pierces_ecc := false        # tower had Bit Corruption
-var ecc_pierce := 0.0           # partial native ECC pierce (bit_corruption is the full one)
 var execute_threshold := 0.0    # kill outright at/below this fraction of the target's max HP
 var execute_no_decay := false   # an execute kill also suppresses the decay spawn
 var applies_dos := false        # tower had Denial of Service: freeze-then-slow each enemy hit
@@ -73,7 +72,7 @@ static func obtain(b) -> RadialProjectile3D:
 # carries its predecessor's state otherwise. `_hit` is the dangerous one: a stale
 # hit set makes a reused spoke silently refuse to damage those enemies. Add new
 # fields to this list when adding them above. Covered: board, dir, speed, damage,
-# origin_cell, range_tiles, col, ignore_walls, pierces_ecc, ecc_pierce,
+# origin_cell, range_tiles, col, ignore_walls, pierces_ecc,
 # execute_threshold, execute_no_decay, applies_dos,
 # dos_freeze, dos_slow_time, dos_slow_factor, can_see_encrypted, pp, _safety,
 # _safety_start, _hit, _cell, _cell_known, _dead, node transform / visibility /
@@ -89,7 +88,6 @@ func _reset() -> void:
 	col = Color(1, 1, 1)
 	ignore_walls = false
 	pierces_ecc = false
-	ecc_pierce = 0.0
 	execute_threshold = 0.0
 	execute_no_decay = false
 	applies_dos = false
@@ -237,7 +235,7 @@ func _check_hits() -> void:
 		if pp.distance_to(e.pp) <= r:
 			_hit[e] = true
 			var contact: Vector2 = e.pp
-			e.take_damage(damage, pierces_ecc, false, ecc_pierce, execute_threshold, execute_no_decay)
+			e.take_damage(damage, pierces_ecc, false, execute_threshold, execute_no_decay)
 			if applies_dos:
 				e.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 			var parent := get_parent()

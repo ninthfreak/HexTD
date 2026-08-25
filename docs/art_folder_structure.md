@@ -33,8 +33,8 @@ art/
 │   ├── dos.svg _backplate.png _glyph.png _rim.png
 │   └── tunneling.svg .png _backplate.png _glyph.png _rim.png
 ├── towers/      # tower selection buttons (filenames keep the tower_ prefix)
-│   └── tower_basic.png tower_jammer.png tower_laser.png
-│       tower_machinegun.png tower_radial.png tower_slow.png
+│   └── tower_basic.png tower_jammer.png tower_beam.png
+│       tower_flood.png tower_splitter.png tower_heavy.png
 ├── ui/          # sandbox / transport control buttons
 │   ├── pause.svg play.svg
 │   ├── speed_1x.svg speed_2x.svg speed_3x.svg
@@ -47,9 +47,11 @@ art/
     └── money.png
 ```
 
-No `.import` sidecars or `.godot/` are tracked in this repo (both gitignored), so
-there are no import files to move and none to commit — only the raw assets move.
-Godot regenerates imports on next open (§5).
+`.import` sidecars ARE tracked (only `.godot/` is gitignored) — see the note in
+`.gitignore`: they carry the importer settings and the uid each asset resolves
+to, and ignoring them lets every machine invent its own mapping. So `git mv` the
+sidecar with its asset, or delete it and regenerate with
+`godot --headless --import`, and commit the result (§5).
 
 ---
 
@@ -202,7 +204,8 @@ Also update the nearby comment that says "Drop a file named `<ability>` into
    `art/%s%s…` lines are the only allowed forms.)
 2. **Confirm the tree** matches §1; `art/` root holds only the four subfolders.
 3. **Re-import in Godot.** Open the project once so Godot re-imports all moved
-   assets into their new paths (regenerates the gitignored `.import`/`.godot` cache).
+   assets into their new paths (rebuilds the gitignored `.godot/` cache and
+   rewrites the tracked `.import` sidecars, which must then be committed).
    `ResourceLoader.exists(...)` returns false until this happens, so do it before
    smoke-testing.
 4. **Smoke test** the sandbox scene: tower build-bar icons, the transport/UI

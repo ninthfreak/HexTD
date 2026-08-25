@@ -19,7 +19,7 @@ func drive(main) -> void:
 
 	# --- Beam: buy Lens level by level, reporting the stats a player would see ---
 	var spot = stand.call()
-	main.placing_id = "laser"
+	main.placing_id = "beam"
 	main._try_place(spot)
 	main.placing_id = ""
 	var tw = main.board.tower_at(spot)
@@ -35,19 +35,19 @@ func drive(main) -> void:
 
 	# --- Beam: Decrypt now graduates ECC pierce instead of stacking damage ---
 	var s2 = stand.call()
-	main.placing_id = "laser"
+	main.placing_id = "beam"
 	main._try_place(s2)
 	main.placing_id = ""
 	var tw2 = main.board.tower_at(s2)
-	print("BEAM: Decrypt path — ecc_pierce / cipher / bit_corruption / walls")
-	print("BEAM:   base      ecc_pierce=%d%% cipher=%s bitcorr=%s walls=%s"
-		% [int(tw2.data.ecc_pierce * 100), str(tw2.data.cipher), str(tw2.data.bit_corruption), str(tw2.data.ignore_walls)])
+	print("BEAM: Decrypt path — cipher / bit_corruption / walls / damage")
+	print("BEAM:   base      cipher=%s bitcorr=%s walls=%s dmg=%.0f"
+		% [str(tw2.data.cipher), str(tw2.data.bit_corruption), str(tw2.data.ignore_walls), tw2.data.damage])
 	for lv in 5:
 		if not tw2.can_upgrade(2):
 			break
 		tw2.upgrade(2)
-		print("BEAM:   Decrypt T%d ecc_pierce=%d%% cipher=%s bitcorr=%s walls=%s"
-			% [lv + 1, int(tw2.data.ecc_pierce * 100), str(tw2.data.cipher), str(tw2.data.bit_corruption), str(tw2.data.ignore_walls)])
+		print("BEAM:   Decrypt T%d cipher=%s bitcorr=%s walls=%s dmg=%.0f"
+			% [lv + 1, str(tw2.data.cipher), str(tw2.data.bit_corruption), str(tw2.data.ignore_walls), tw2.data.damage])
 
 	# --- Basic: cipher must now arrive at Optics T2 ---
 	var s3 = stand.call()

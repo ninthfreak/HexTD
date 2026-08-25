@@ -29,18 +29,22 @@ The tower format is **not** kept backward compatible — redefine towers freely.
 | `damage` | number | 10 | Damage per hit. For `laser`, max damage per second at full charge. For `arc`, 0 deals no damage (still applies ability effects). |
 | `cost` | int | 40 | Build cost. |
 | `projectile_speed` | number | 320 | Plane units/sec for `single`/`radial` shots and the `arc` wave front (1 hex ≈ 11.3). |
-| `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` \| `"arc"` (see below). |
+| `fire_mode` | enum | `"single"` | `"single"` \| `"radial"` \| `"laser"` \| `"arc"` \| `"deploy"` (see below). |
 | `targets` | int | 1 | **NEW.** `single` only: number of distinct enemies engaged per fire cycle (furthest-along first). >1 = multi-target / no-overkill spray. |
 | `directions` | int | 6 | `radial` only: number of equally spaced spokes (min 1; 6 = hex flat sides). |
+| `hops` | int | 0 | **NEW.** `single` only: extra targets a shot forwards *itself* to after its first hit (0 = no forwarding). A shot strikes at most `hops + 1` bodies and never the same one twice. |
+| `hop_range` | int | 2 | **NEW.** `single` only: how far, in hex tiles from the body it just hit, a shot may look for its next hop. |
+| `hop_falloff` | number | 0.6 | **NEW.** `single` only: damage multiplier applied at each hop (0.6 = each hop deals 60% of the previous). Clamped 0–1. |
 | `ramp_time` | number | 2.0 | `laser` only: seconds of sustained fire to reach full power (min 0.05). |
 | `focus_time` | number | 0.0 | Seconds the tower is idle after **killing** a target (min 0). Taxes swarm clearing. |
 | `charge_retain` | number | 0 | **NEW.** "Prefocus": the fraction of a `laser`'s ramp kept when it loses or switches target (0 = the ramp restarts from zero every time, 1 = it is never lost). Clamped 0–1. Ignored by every other fire mode. |
+| `rule_charges` | int | 4 | **NEW.** `deploy` only: how many distinct bodies one deployed rule filters before it expires. Charges are spent PER BODY, not per frame — an enemy standing still on a rule is charged once. |
+| `max_rules` | int | 6 | **NEW.** `deploy` only: how many of this tower's rules may be live at once. |
 | `arc_angle` | number | 70 | **NEW.** `arc` only: full angular width of the wedge, in degrees (min 1, max 360; 360 = omnidirectional). |
 | `dos_freeze` | number | 0.5 | **NEW.** Seconds an enemy is fully stopped by a DoS hit (per-tower override of the former global `DOS_STOP`). |
 | `dos_slow_time` | number | 2.0 | **NEW.** Seconds an enemy stays slowed after the freeze ends (override of `DOS_SLOW_TIME`). |
 | `dos_slow_factor` | number | 0.5 | **NEW.** Speed multiplier while slowed (override of `DOS_SLOW_FACTOR`); lower = harsher. |
 | `bit_corruption` | bool | false | Ignores enemy ECC 90% damage resist. |
-| `ecc_pierce` | number | 0 | **NEW.** Fraction of an enemy's ECC resist this tower ignores *natively* (0 = full 90% resist applies; 0.5 = only ~45% resist; 1 = fully ignored). `bit_corruption` overrides to a full pierce. |
 | `cipher` | bool | false | Can see and target Encrypted enemies. |
 | `buffer_overflow` | bool | false | Single-hit surplus damage spills into the target's decay children. **Single-target only.** |
 | `ignore_walls` | bool | false | "Tunneling": attack through blocking tiles (LOS ignored; `radial` spokes pass through walls). |
@@ -60,6 +64,17 @@ is a per-tower in-game toggle, not a JSON field.
   and line of sight. With `targets > 1`, engages that many distinct enemies per cycle,
   one shot each (no overkill onto a single body). The only mode that uses
   `buffer_overflow`.
+  With `hops > 0` a shot forwards itself on impact to the nearest enemy within
+  `hop_range` tiles that it has not already struck, multiplying its damage by
+  `hop_falloff` each time, until it runs out of hops or finds nothing eligible.
+  A hop chooses its own target, so it applies the tower's Cipher itself: without
+  Cipher a shot routes *around* Encrypted bodies. Hops do not re-check line of
+  sight — `ignore_walls` still governs the tower's own target acquisition.
+  Every hop is a full hit, so `buffer_overflow`, `execute_threshold` and `dos`
+  apply again at each one — but `execute_threshold` is a fraction of the target's
+  max HP, so unlike damage it does *not* weaken along the chain. A body the shot
+  has already struck is never revisited, including after it decays; the decay
+  children are new bodies, so the chain can continue into them.
 - **`radial`** — fires a volley of `directions` straight spokes whenever any enemy is in
   range. Spokes are stopped by blocking walls unless `ignore_walls`.
 - **`laser`** — locks one target and ramps damage with a convex (quadratic ease-in)
@@ -74,6 +89,16 @@ is a per-tower in-game toggle, not a JSON field.
   `arc_angle = 360` it is omnidirectional. `fire_rate` is waves/second. The arc wave is
   **not** blocked by walls, so `ignore_walls` is a no-op on `arc`.
 
+- **`deploy`** — does not attack. On its `fire_rate` cadence it places a **rule**
+  on the route tile within `range` that is furthest along the path and does not
+  already carry one of its rules; rules do NOT stack, so a tower covers ground
+  rather than concentrating on a tile. A rule damages each body that crosses it
+  for `damage`, spending one of its `rule_charges` per body, and expires when
+  spent. Rules honour the deploying tower's Cipher (Encrypted traffic passes
+  untouched without it), `bit_corruption`, and `dos`. They are
+  destroyed with the tower, so selling cannot bank coverage. `projectile_speed`,
+  `targets` and the `hop_*` fields are unused.
+
 ## Upgrades + Crosspathing
 
 `upgrades` is an array of **3 paths**; each path has **5 tiers** the player buys
@@ -81,9 +106,9 @@ level-by-level in-game. Tiers within a path are sequential.
 
 ```json
 "upgrades": [
-  { "name": "Caliber", "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
-  { "name": "Action",  "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
-  { "name": "Optics",  "tiers": [ {…}, {…}, {…}, {…}, {…} ] }
+  { "name": "Magnitude", "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
+  { "name": "Overclock", "tiers": [ {…}, {…}, {…}, {…}, {…} ] },
+  { "name": "Optics",    "tiers": [ {…}, {…}, {…}, {…}, {…} ] }
 ]
 ```
 
@@ -109,11 +134,16 @@ A tier mutates the tower's effective stats when purchased. Numeric entries are
 | `range` | number | Add to `range` (rounded). |
 | `fire_rate` | number | Add to `fire_rate`. |
 | `targets` | number | Add to `targets` (rounded, floored at 1). **NEW.** |
+| `hops` | number | Add to `hops` (rounded, floored at 0). **NEW.** |
+| `hop_range` | number | Add to `hop_range` (rounded, floored at 1). **NEW.** |
+| `hop_falloff` | number | Add to `hop_falloff` (clamped 0–1). **NEW.** |
 | `directions` | number | Add to `directions` (rounded). |
 | `ramp_time` | number | Add to `ramp_time` (floored at 0; the *base* field floors at 0.05). |
 | `focus_time` | number | Add to `focus_time` (floored at **0.1** — an upgraded tower always keeps some recovery). |
 | `charge_retain` | number | Add to `charge_retain` (clamped 0–1). **NEW.** |
 | `arc_angle` | number | Add to `arc_angle` (clamped 1–360). **NEW.** |
+| `rule_charges` | number | Add to `rule_charges` (rounded, floored at 1). **NEW.** |
+| `max_rules` | number | Add to `max_rules` (rounded, floored at 1). **NEW.** |
 | `dos_freeze` | number | Add to `dos_freeze` (floored at 0). **NEW.** |
 | `dos_slow_time` | number | Add to `dos_slow_time` (floored at 0). **NEW.** |
 | `dos_slow_factor` | number | Add to `dos_slow_factor` (clamped 0.05–1.0). **NEW.** |
@@ -122,7 +152,6 @@ A tier mutates the tower's effective stats when purchased. Numeric entries are
 | `color` | `"#rrggbb"` | Replace `color` (omit / `""` = no change). |
 | `cipher` | `"on"`\|`"off"` | Enable/disable Cipher. |
 | `bit_corruption` | `"on"`\|`"off"` | Enable/disable Bit Corruption. |
-| `ecc_pierce` | number | Add to `ecc_pierce` (clamped 0–1). **NEW.** |
 | `ignore_walls` | `"on"`\|`"off"` | Enable/disable Tunneling. |
 | `buffer_overflow` | `"on"`\|`"off"` | Enable/disable Buffer Overflow. |
 | `dos` | `"on"`\|`"off"` | Enable/disable Denial of Service. |

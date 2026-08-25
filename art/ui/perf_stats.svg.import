@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dcf11lemrntm2"
-path="res://.godot/imported/tower_slow.png-b2693c63d1b3bfbbaf975d11f0d78d73.ctex"
+uid="uid://c2kn50on8qxr1"
+path="res://.godot/imported/perf_stats.svg-634246c8feab0afdc65f4a17741510ca.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/towers/tower_slow.png"
-dest_files=["res://.godot/imported/tower_slow.png-b2693c63d1b3bfbbaf975d11f0d78d73.ctex"]
+source_file="res://art/ui/perf_stats.svg"
+dest_files=["res://.godot/imported/perf_stats.svg-634246c8feab0afdc65f4a17741510ca.ctex"]
 
 [params]
 
@@ -32,3 +32,6 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
+svg/scale=1.0
+editor/scale_with_editor_scale=false
+editor/convert_colors_with_editor_theme=false

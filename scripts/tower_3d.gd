@@ -34,6 +34,7 @@ const MODE_SINGLE := 0
 const MODE_RADIAL := 1
 const MODE_LASER := 2
 const MODE_ARC := 3
+const MODE_DEPLOY := 4
 var _fire_mode_id := MODE_SINGLE
 
 func toggle_range_rotation() -> bool:
@@ -81,6 +82,8 @@ static func _mode_to_id(mode: String) -> int:
 			return MODE_LASER
 		"arc":
 			return MODE_ARC
+		"deploy":
+			return MODE_DEPLOY
 		_:
 			return MODE_SINGLE
 
@@ -359,13 +362,16 @@ func tier_summary(s: int) -> String:
 		return ""
 	var tier: Dictionary = base_data.upgrades[s]["tiers"][slot_levels[s]]
 	var lines := []
-	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "ecc_pierce": "ECC pierce", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
-	for key in ["damage", "range", "fire_rate", "directions", "targets", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "ecc_pierce", "execute_threshold", "height", "width"]:
+	var labels := {"damage": "Damage", "range": "Range", "fire_rate": "Fire rate", "directions": "Projectiles", "targets": "Targets", "hops": "Hops", "hop_range": "Hop range", "hop_falloff": "Hop retention", "rule_charges": "Rule charges", "max_rules": "Live rules", "arc_angle": "Arc", "ramp_time": "Ramp time", "focus_time": "Focus delay", "charge_retain": "Prefocus", "dos_freeze": "DoS freeze", "dos_slow_time": "DoS slow", "dos_slow_factor": "DoS factor", "execute_threshold": "Execute", "height": "Height", "width": "Width"}
+	for key in ["damage", "range", "fire_rate", "directions", "targets", "hops", "hop_range", "hop_falloff", "rule_charges", "max_rules", "arc_angle", "ramp_time", "focus_time", "charge_retain", "dos_freeze", "dos_slow_time", "dos_slow_factor", "execute_threshold", "height", "width"]:
 		if tier.has(key) and float(tier[key]) != 0.0:
 			lines.append("%s %s" % [labels[key], _delta_str(key, float(tier[key]))])
 	if str(tier.get("color", "")) != "":
 		lines.append("Color change")
-	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit corruption", "ignore_walls": "Ignore walls", "buffer_overflow": "Buffer overflow", "dos": "Denial of service", "execute_no_decay": "Garbage Collection"}
+	# These must read exactly as the ability badges name them (see ABILITY_BADGES):
+	# a tier that grants Tunneling should not describe itself as "Ignore walls"
+	# while the badge it lights up says Tunneling.
+	var flag_labels := {"cipher": "Cipher", "bit_corruption": "Bit Corruption", "ignore_walls": "Tunneling", "buffer_overflow": "Buffer Overflow", "dos": "Denial of Service", "execute_no_decay": "Garbage Collection"}
 	for key in ["cipher", "bit_corruption", "ignore_walls", "buffer_overflow", "dos", "execute_no_decay"]:
 		var fv := str(tier.get(key, ""))
 		if fv == "on":
@@ -379,7 +385,7 @@ func tier_summary(s: int) -> String:
 func _delta_str(key: String, v: float) -> String:
 	var sgn := "+" if v > 0.0 else ""
 	match key:
-		"range", "directions", "targets":
+		"range", "directions", "targets", "hops", "hop_range", "rule_charges", "max_rules":
 			return "%s%d" % [sgn, int(round(v))]
 		"fire_rate":
 			return "%s%s/s" % [sgn, _trim(v)]
@@ -389,7 +395,7 @@ func _delta_str(key: String, v: float) -> String:
 			return "%s%s°" % [sgn, _trim(v)]
 		"dos_slow_factor":
 			return "%s%s×" % [sgn, _trim(v)]
-		"ecc_pierce", "execute_threshold", "charge_retain":
+		"execute_threshold", "charge_retain", "hop_falloff":
 			return "%s%s%%" % [sgn, _trim(v * 100.0)]
 		_:
 			return "%s%s" % [sgn, _trim(v)]
@@ -401,6 +407,68 @@ func _trim(v: float) -> String:
 	if s.ends_with("."):
 		s = s.substr(0, s.length() - 1)
 	return s
+
+# Every attribute of the tower AS IT CURRENTLY STANDS (base plus bought tiers),
+# as [label, value] String pairs for the selection panel. Size and colour are
+# deliberately absent — they are presentation, not stats. A stat is listed only
+# for the fire modes that actually read it, so a single-target tower never shows
+# an arc angle it ignores. Labels match tier_summary()'s, so a path that says
+# "Fire rate +6/s" moves the row called "Fire rate".
+func stat_rows() -> Array:
+	var rows := []
+	if data == null:
+		return rows
+	var mode: String = data.fire_mode
+	var mode_names := {"single": "Single target", "radial": "Radial burst", "laser": "Beam", "arc": "Arc wave", "deploy": "Rule deployer"}
+	rows.append(["Mode", str(mode_names.get(mode, mode))])
+	rows.append(["Range", "%d tiles" % data.range_tiles])
+	if mode == "laser":
+		rows.append(["Damage", "%s/s" % _trim(data.damage)])
+		rows.append(["Ramp time", "%ss" % _trim(data.ramp_time)])
+		rows.append(["Focus delay", "%ss" % _trim(data.focus_time)])
+		rows.append(["Prefocus", "%s%%" % _trim(data.charge_retain * 100.0)])
+	else:
+		rows.append(["Damage", _trim(data.damage)])
+		var rate_unit: String = "volleys/s" if mode == "radial" else ("waves/s" if mode == "arc" else ("rules/s" if mode == "deploy" else "shots/s"))
+		rows.append(["Fire rate", "%s %s" % [_trim(data.fire_rate), rate_unit]])
+	if mode == "single" or mode == "radial" or mode == "arc":
+		rows.append(["Projectile speed", _trim(data.projectile_speed)])
+	if mode == "radial":
+		rows.append(["Projectiles", str(data.directions)])
+	if mode == "arc":
+		rows.append(["Arc", "%s°" % _trim(data.arc_angle)])
+	if mode == "deploy":
+		rows.append(["Rule charges", str(data.rule_charges)])
+		rows.append(["Live rules", str(data.max_rules)])
+	if mode == "single":
+		rows.append(["Targets", str(data.targets)])
+		if data.hops > 0:
+			rows.append(["Hops", str(data.hops)])
+			rows.append(["Hop range", "%d tiles" % data.hop_range])
+			rows.append(["Hop retention", "%s%%" % _trim(data.hop_falloff * 100.0)])
+	if data.execute_threshold > 0.0:
+		rows.append(["Execute", "at/below %s%% HP" % _trim(data.execute_threshold * 100.0)])
+	if data.dos:
+		rows.append(["DoS freeze", "%ss" % _trim(data.dos_freeze)])
+		rows.append(["DoS slow", "%ss" % _trim(data.dos_slow_time)])
+		rows.append(["DoS factor", "%s×" % _trim(data.dos_slow_factor)])
+	rows.append(["Target", target_priority.capitalize()])
+	# Named exactly as the ability badges name them (see ABILITY_BADGES).
+	var abilities: PackedStringArray = []
+	if data.bit_corruption:
+		abilities.append("Bit Corruption")
+	if data.cipher:
+		abilities.append("Cipher")
+	if data.buffer_overflow:
+		abilities.append("Buffer Overflow")
+	if data.ignore_walls:
+		abilities.append("Tunneling")
+	if data.dos:
+		abilities.append("Denial of Service")
+	if data.execute_no_decay:
+		abilities.append("Garbage Collection")
+	rows.append(["Abilities", ", ".join(abilities) if not abilities.is_empty() else "none"])
+	return rows
 
 func _apply_levels() -> void:
 	data = base_data.duplicate() as TowerData
@@ -417,11 +485,15 @@ func _apply_tier(tier: Dictionary) -> void:
 	data.fire_rate += float(tier.get("fire_rate", 0.0))
 	data.directions += int(round(float(tier.get("directions", 0.0))))
 	data.targets = maxi(1, data.targets + int(round(float(tier.get("targets", 0.0)))))
+	data.hops = maxi(0, data.hops + int(round(float(tier.get("hops", 0.0)))))
+	data.hop_range = maxi(1, data.hop_range + int(round(float(tier.get("hop_range", 0.0)))))
+	data.hop_falloff = clampf(data.hop_falloff + float(tier.get("hop_falloff", 0.0)), 0.0, 1.0)
 	data.arc_angle = clampf(data.arc_angle + float(tier.get("arc_angle", 0.0)), 1.0, 360.0)
+	data.rule_charges = maxi(1, data.rule_charges + int(round(float(tier.get("rule_charges", 0.0)))))
+	data.max_rules = maxi(1, data.max_rules + int(round(float(tier.get("max_rules", 0.0)))))
 	data.dos_freeze = maxf(0.0, data.dos_freeze + float(tier.get("dos_freeze", 0.0)))
 	data.dos_slow_time = maxf(0.0, data.dos_slow_time + float(tier.get("dos_slow_time", 0.0)))
 	data.dos_slow_factor = clampf(data.dos_slow_factor + float(tier.get("dos_slow_factor", 0.0)), 0.05, 1.0)
-	data.ecc_pierce = clampf(data.ecc_pierce + float(tier.get("ecc_pierce", 0.0)), 0.0, 1.0)
 	data.execute_threshold = clampf(data.execute_threshold + float(tier.get("execute_threshold", 0.0)), 0.0, 1.0)
 	data.ramp_time = maxf(0.0, data.ramp_time + float(tier.get("ramp_time", 0.0)))
 	if tier.has("focus_time"):
@@ -457,6 +529,8 @@ func _process(delta: float) -> void:
 			_process_laser(delta)
 		MODE_ARC:
 			_process_arc(delta)
+		MODE_DEPLOY:
+			_process_deploy(delta)
 		_:
 			_process_targeted(delta)
 	if _flash_t >= 0.0:
@@ -545,6 +619,72 @@ func _process_radial(delta: float) -> void:
 			_cooldown = 0.0
 			_idle_cd = _idle_wait
 
+# Deploy: place filter rules on the route tiles in range, rather than shooting.
+# The tower idles once its rules are all live, and resumes as they are spent.
+var _rules: Array = []            # live FirewallRule3D instances this tower owns
+
+func _process_deploy(delta: float) -> void:
+	_cooldown -= delta
+	if _idle_cd > 0.0:
+		_idle_cd -= delta
+		return
+	if _cooldown <= 0.0:
+		if _deploy_rule():
+			_rearm()
+			_fire_flash()
+			_play_sfx("tower_fire")
+		else:
+			# Every reachable tile already carries a rule (or the cap is reached).
+			# Park on the idle gate rather than re-scanning the route every frame.
+			_cooldown = 0.0
+			_idle_cd = _idle_wait
+
+## Place one rule on the route tile in range that is furthest along the path and
+## does not already carry one. Returns false when there is nothing to place.
+## Rules do NOT stack: one tile carries at most one of this tower's rules, so the
+## tower covers ground rather than concentrating on a single tile.
+func _deploy_rule() -> bool:
+	if board == null or board.map == null:
+		return false
+	# drop rules that expired since the last deploy
+	var live: Array = []
+	for r in _rules:
+		if is_instance_valid(r):
+			live.append(r)
+	_rules = live
+	if _rules.size() >= data.max_rules:
+		return false
+	var taken := {}
+	for r in _rules:
+		taken[r.cell] = true
+	var best_cell := Vector2i.ZERO
+	var best_idx := -1
+	var path: Array = board.map.path
+	for i in range(path.size()):
+		var c: Vector2i = path[i]
+		if taken.has(c):
+			continue
+		if HexUtils.axial_distance(cell, c) > data.range_tiles:
+			continue
+		if i > best_idx:
+			best_idx = i
+			best_cell = c
+	if best_idx < 0:
+		return false
+	var rule := FirewallRule3D.new()
+	rule.pierces_ecc = data.bit_corruption
+	rule.can_see_encrypted = data.cipher
+	rule.applies_dos = data.dos
+	rule.dos_freeze = data.dos_freeze
+	rule.dos_slow_time = data.dos_slow_time
+	rule.dos_slow_factor = data.dos_slow_factor
+	rule.setup(board, best_cell, data.damage, data.rule_charges, data.color)
+	var w: Vector2 = board.cell_center_world(best_cell)
+	rule.position = Vector3(w.x, FirewallRule3D.PLATE_Y, w.y)
+	board.add_projectile(rule)      # the shared entity layer; rules free themselves
+	_rules.append(rule)
+	return true
+
 # Arc: aim at the prioritised target and emit one expanding wave per shot.
 func _process_arc(delta: float) -> void:
 	_cooldown -= delta
@@ -565,7 +705,6 @@ func _fire_arc(t) -> void:
 			cell, board.tower_reach(data.range_tiles), data.color, board)
 	w.arc_angle = data.arc_angle
 	w.pierces_ecc = data.bit_corruption
-	w.ecc_pierce = data.ecc_pierce
 	w.execute_threshold = data.execute_threshold
 	w.execute_no_decay = data.execute_no_decay
 	w.applies_dos = data.dos
@@ -606,7 +745,6 @@ func _fire_volley() -> void:
 				cell, board.tower_reach(data.range_tiles), data.color, board)
 		p.ignore_walls = data.ignore_walls
 		p.pierces_ecc = data.bit_corruption
-		p.ecc_pierce = data.ecc_pierce
 		p.execute_threshold = data.execute_threshold
 		p.execute_no_decay = data.execute_no_decay
 		p.can_see_encrypted = data.cipher
@@ -657,7 +795,7 @@ func _process_laser(delta: float) -> void:
 		# Convex (quadratic ease-in) ramp: ~0 early, full at ramp_time.
 		var factor := cr * cr
 		var killed: bool = _laser_target.take_damage(data.damage * factor * delta, data.bit_corruption,
-				false, data.ecc_pierce, data.execute_threshold, data.execute_no_decay)
+				false, data.execute_threshold, data.execute_no_decay)
 		if killed:
 			_laser_target = null
 			_charge *= data.charge_retain   # a kill is the other target-loss point
@@ -848,9 +986,13 @@ func _shoot(t) -> void:
 	_note_aim(t.pp - pp)
 	var p := Projectile3D.obtain(board)
 	p.setup(pp, t, data.damage, data.projectile_speed, data.color, data.bit_corruption, data.buffer_overflow, data.dos)
-	p.ecc_pierce = data.ecc_pierce
 	p.execute_threshold = data.execute_threshold
 	p.execute_no_decay = data.execute_no_decay
+	p.board = board
+	p.hops = data.hops
+	p.hop_range = data.hop_range
+	p.hop_falloff = data.hop_falloff
+	p.can_see_encrypted = data.cipher
 	p.dos_freeze = data.dos_freeze
 	p.dos_slow_time = data.dos_slow_time
 	p.dos_slow_factor = data.dos_slow_factor
@@ -882,7 +1024,7 @@ func _rebuild_body() -> void:
 	_body.add_child(_turret)
 	_shell_mat = _make_shell_mat()
 	_accent_mat = _make_accent_mat(data.fire_mode == "arc")
-	_aims = data.fire_mode != "radial" and data.fire_mode != "laser"
+	_aims = data.fire_mode != "radial" and data.fire_mode != "laser" and data.fire_mode != "deploy"
 	var r: float = GameBoard3D.TOWER_RADIUS
 	# Plinth flats follow the hex cell's; inside _body (not _turret) so upgrade
 	# scaling composes but aim yaw never twists it off the cell.
@@ -927,6 +1069,21 @@ func _rebuild_body() -> void:
 					Vector3(rim * 0.70, h * 0.96, -0.9), Vector3(rim, h * 0.96, -0.9), Vector3(rim * 0.90, h * 1.12, -0.9)),
 					_accent_mat, PLINTH_H, _turret)
 			ring_r = r * 0.45
+		"deploy":
+			# Inline infrastructure, not a weapon: a low hex slab carrying a stack
+			# of rule plates with an emissive slot under each, tapering upward.
+			# Everything is on the cell's own corner phase (-PI/6) like the plinth,
+			# and there is no aim prong — this tower never points at anything.
+			var slab_h := 11.0
+			_part(_low_poly_cylinder(r * 0.92, slab_h, 6, -PI / 6.0), _shell_mat, PLINTH_H, _turret)
+			var stack_y := PLINTH_H + slab_h
+			for i in 3:
+				var pr: float = r * (0.84 - 0.10 * float(i))
+				_part(_low_poly_cylinder(pr, 1.8, 6, -PI / 6.0), _accent_mat, stack_y, _turret)
+				stack_y += 1.8
+				_part(_low_poly_cylinder(pr * 0.97, 5.0, 6, -PI / 6.0), _shell_mat, stack_y, _turret)
+				stack_y += 5.0
+			ring_r = r * 0.60
 		_:
 			# Cylinder + hot cap plate; a flat prong wedge past the cap rim at +X
 			# is the aim cue. Overlapping parts embed slightly to avoid coplanar caps.
@@ -1406,6 +1563,13 @@ func _update_beam(frac: float, on: bool) -> void:
 # Clean up the externally-parented beam nodes when the tower is removed.
 func _exit_tree() -> void:
 	_set_hum(false, 0.0)
+	# Deployed rules live on the board, not under the tower, so selling would
+	# otherwise leave them behind — and since selling refunds, place / deploy /
+	# sell / repeat would mint free coverage. A daemon's rules go with it.
+	for r in _rules:
+		if is_instance_valid(r):
+			r.queue_free()
+	_rules.clear()
 	if _beam != null and is_instance_valid(_beam):
 		_beam.queue_free()
 	if _beam_core != null and is_instance_valid(_beam_core):

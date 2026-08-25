@@ -25,6 +25,7 @@ is treated as "strongest" by that tower targeting mode).
 | `reduces_to` | id or `""` | `""` | Morph into this form on death; `""` = dies. Must be an existing id. |
 | `reduce_count` | int | 1 | Copies spawned on death (use with `reduces_to`). |
 | `ecc` | bool | false | Resists 90% damage unless tower has Bit Corruption. |
+| `dos_resist` | number | 0 | **NEW.** Fraction of a Denial-of-Service effect this body shrugs off, clamped 0–1. The freeze and slow durations are multiplied by `1 - dos_resist` and the slow factor eases toward 1.0 (no slow), so `1` is full immunity to jamming and values between are a partial shrug. Affects every DoS source, not just the Jammer.
 | `encrypted` | bool | false | Untargetable unless tower has Cipher. |
 | `death_sound` | string | `""` | `res://audio/<name>.wav`; blank = default. |
 

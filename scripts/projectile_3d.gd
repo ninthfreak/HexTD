@@ -9,8 +9,13 @@ var target                # Enemy3D (untyped to keep dependency edges loose)
 var speed: float
 var damage: float
 var col: Color
+var board = null               # GameBoard3D, for hop target lookup (untyped: loose dependency edge)
+var hops := 0                  # remaining forwards after the current hit
+var hop_range := 2             # how far, in tiles, to look for the next hop
+var hop_falloff := 0.6         # damage multiplier applied at each hop
+var can_see_encrypted := false # Cipher: a hop must not pick a target the tower cannot see
+var _hit := {}                 # enemies this shot already struck, so it cannot forward back onto one
 var pierces_ecc := false
-var ecc_pierce := 0.0          # partial native ECC pierce (bit_corruption is the full one)
 var execute_threshold := 0.0   # kill outright at/below this fraction of the target's max HP
 var execute_no_decay := false  # an execute kill also suppresses the decay spawn
 var buffer_overflow := false   # tower had Buffer Overflow: surplus spills into decay children
@@ -58,7 +63,8 @@ static func obtain(b) -> Projectile3D:
 # Full per-life reset. EVERY field a shot writes belongs here — a pooled instance
 # carries its predecessor's state otherwise, and a stale target or damage is a
 # gameplay bug, not a cosmetic one. Add new fields to this list when adding them
-# above. Covered: target, speed, damage, col, pierces_ecc, ecc_pierce,
+# above. Covered: target, speed, damage, col, board, hops, hop_range,
+# hop_falloff, can_see_encrypted, _hit, pierces_ecc,
 # execute_threshold, execute_no_decay, buffer_overflow,
 # applies_dos, dos_freeze, dos_slow_time, dos_slow_factor, pp, _roll, _dead,
 # node transform / visibility / processing, mesh rotation / scale / transparency /
@@ -68,8 +74,15 @@ func _reset() -> void:
 	speed = 0.0
 	damage = 0.0
 	col = Color(1, 1, 1)
+	board = null
+	hops = 0
+	hop_range = 2
+	hop_falloff = 0.6
+	can_see_encrypted = false
+	# _hit is the dangerous one: a stale set makes a reused shot silently refuse to
+	# forward onto enemies it never actually touched.
+	_hit.clear()
 	pierces_ecc = false
-	ecc_pierce = 0.0
 	execute_threshold = 0.0
 	execute_no_decay = false
 	buffer_overflow = false
@@ -98,6 +111,8 @@ func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := 
 	pierces_ecc = pierce
 	buffer_overflow = overflow
 	applies_dos = dos
+	if t != null:
+		_hit[t] = true
 	_ensure_mesh()
 	_mesh.material_override = _shared_mat(col)
 	# Aim on the spawn frame: _process would otherwise be the first thing to set
@@ -107,6 +122,38 @@ func setup(start_plane: Vector2, t, dmg: float, spd: float, c: Color, pierce := 
 		if to_t.length_squared() > 0.0:
 			_mesh.rotation = Vector3(_roll, -to_t.angle(), 0.0)
 	_sync_transform()
+
+## Forward this shot to its next target. Returns false when it has no hops left,
+## no board to search, or nothing eligible nearby — the caller then releases it.
+## The search is a cell-set lookup on the board's existing per-frame enemy index,
+## not a scan of every enemy, so a shot with many hops stays cheap.
+func _forward_from(contact: Vector2) -> bool:
+	if hops <= 0 or board == null:
+		return false
+	var origin: Vector2i = board.world_cell(contact)
+	var cands: Array = board.enemies_in_cell_set(board.range_cell_set(origin, hop_range))
+	var best = null
+	var best_d := INF
+	for e in cands:
+		if not is_instance_valid(e) or not e._alive:
+			continue
+		if _hit.has(e):
+			continue
+		# A hop picks its own target, so it has to honour Cipher itself — the
+		# tower's acquisition gate never sees this choice.
+		if e.data.encrypted and not can_see_encrypted:
+			continue
+		var d: float = contact.distance_squared_to(e.pp)
+		if d < best_d:
+			best_d = d
+			best = e
+	if best == null:
+		return false
+	target = best
+	_hit[best] = true
+	damage *= hop_falloff
+	hops -= 1
+	return true
 
 # One-time mesh child: a pooled instance keeps the one it built on its first
 # life. Per-shot mesh state belongs in _reset() / setup(), not here.
@@ -158,7 +205,7 @@ func _process(delta: float) -> void:
 	var step := speed * delta
 	if step >= dist:
 		var contact: Vector2 = target.pp
-		target.take_damage(damage, pierces_ecc, buffer_overflow, ecc_pierce, execute_threshold, execute_no_decay)
+		target.take_damage(damage, pierces_ecc, buffer_overflow, execute_threshold, execute_no_decay)
 		if applies_dos and is_instance_valid(target):
 			target.apply_dos(dos_freeze, dos_slow_time, dos_slow_factor)
 		var parent := get_parent()
@@ -167,7 +214,8 @@ func _process(delta: float) -> void:
 		var am: Node = _audio()
 		if am:
 			am.play_sfx("projectile_hit")
-		_release()
+		if not _forward_from(contact):
+			_release()
 	else:
 		pp += to_target / dist * step
 		# roll the bit around its long axis and keep that axis pointed at the

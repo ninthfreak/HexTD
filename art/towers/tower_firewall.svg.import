@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c6v5dcie8lbwd"
-path="res://.godot/imported/tower_laser.png-f39c52cb64d257b153de58cbe0dc2809.ctex"
+uid="uid://df0kos5tdo5ax"
+path="res://.godot/imported/tower_firewall.svg-ceb9cb709035978c6a3f356a5fb8539b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/towers/tower_laser.png"
-dest_files=["res://.godot/imported/tower_laser.png-f39c52cb64d257b153de58cbe0dc2809.ctex"]
+source_file="res://art/towers/tower_firewall.svg"
+dest_files=["res://.godot/imported/tower_firewall.svg-ceb9cb709035978c6a3f356a5fb8539b.ctex"]
 
 [params]
 
@@ -32,3 +32,6 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
+svg/scale=1.0
+editor/scale_with_editor_scale=false
+editor/convert_colors_with_editor_theme=false
